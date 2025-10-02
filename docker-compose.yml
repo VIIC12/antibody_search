@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  antibody-search:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: antibody-search-app
+    ports:
+      - "8501:8501"
+    volumes:
+      # Mount data directory for persistence
+      - ./data:/app/data
+      # Mount logs directory if needed
+      - ./logs:/app/logs
+    environment:
+      - PYTHONPATH=/app
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - antibody-search-network
+
+networks:
+  antibody-search-network:
+    driver: bridge
+
+volumes:
+  # Named volumes for data persistence
+  antibody-data:
+    driver: local
+  antibody-logs:
+    driver: local
