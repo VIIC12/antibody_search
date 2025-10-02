@@ -6,11 +6,13 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: antibody-search-app
+    env_file:
+      - .env
     ports:
       - "8501:8501"
     volumes:
       # Mount data directory for persistence
-      - ./data:/app/data
+      - ${OAS_DATA_DIR}:/app/data
       # Mount logs directory if needed
       - ./logs:/app/logs
     environment:

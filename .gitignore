@@ -9,6 +9,7 @@ venv/
 build/
 dist/
 env/
+.env
 *.egg-info/
 ENV/
 
