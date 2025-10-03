@@ -317,6 +317,9 @@ class AntibodySearchEngine:
         if gene.isdigit():
             gene = gene + '-'
         
+        # Determine if this is a light chain column
+        is_light_chain = '_light' in column
+        
         # Build pattern that matches gene correctly
         # For v_call: Match IGHV3- but not IGHV4-34 or IGHV33-
         # Strategy: Match pattern immediately after IGHV/IGHD/IGHJ prefix
@@ -328,20 +331,35 @@ class AntibodySearchEngine:
         # Use precise pattern: gene must be followed by * (allele) or end of string
         if gene.endswith('-'):
             # Family search (e.g., "3-"): match IGHV3-* but not IGHV33-*
-            pattern = f"IGHV{gene}%"
-            d_pattern = f"IGHD{gene}%"
-            j_pattern = f"IGHJ{gene}%"
+            if is_light_chain:
+                pattern = f"IGKV{gene}%"
+                d_pattern = f"IGKD{gene}%"  # Light chains don't have D genes typically
+                j_pattern = f"IGKJ{gene}%"
+            else:
+                pattern = f"IGHV{gene}%"
+                d_pattern = f"IGHD{gene}%"
+                j_pattern = f"IGHJ{gene}%"
         elif '-' in gene and not gene.endswith('*'):
             # Gene search (e.g., "3-3"): match IGHV3-3* but not IGHV3-33*
             # Add * to ensure it matches allele or end of string
-            pattern = f"IGHV{gene}*%"
-            d_pattern = f"IGHD{gene}*%"
-            j_pattern = f"IGHJ{gene}*%"
+            if is_light_chain:
+                pattern = f"IGKV{gene}*%"
+                d_pattern = f"IGKD{gene}*%"  # Light chains don't have D genes typically
+                j_pattern = f"IGKJ{gene}*%"
+            else:
+                pattern = f"IGHV{gene}*%"
+                d_pattern = f"IGHD{gene}*%"
+                j_pattern = f"IGHJ{gene}*%"
         else:
             # Exact match or already has wildcard
-            pattern = f"IGHV{gene}%"
-            d_pattern = f"IGHD{gene}%"
-            j_pattern = f"IGHJ{gene}%"
+            if is_light_chain:
+                pattern = f"IGKV{gene}%"
+                d_pattern = f"IGKD{gene}%"  # Light chains don't have D genes typically
+                j_pattern = f"IGKJ{gene}%"
+            else:
+                pattern = f"IGHV{gene}%"
+                d_pattern = f"IGHD{gene}%"
+                j_pattern = f"IGHJ{gene}%"
         
         return f"({column} LIKE '{pattern}' OR {column} LIKE '{d_pattern}' OR {column} LIKE '{j_pattern}')"
     
@@ -522,7 +540,7 @@ class AntibodySearchEngine:
                 SELECT 
                     subject,
                     COUNT(*) as hits,
-                    COUNT(DISTINCT file_source) as num_files
+                    COUNT(DISTINCT source_file) as num_files
                 FROM antibodies
                 WHERE {where_clause}
                 GROUP BY subject
@@ -781,7 +799,7 @@ class AntibodySearchEngine:
             light_j_conditions = []
             for col in self.schema['chain_columns']['j_call']:
                 if '_light' in col:
-                    light_j_conditions.append(f"{col} LIKE '%{light_j}%'")
+                    light_j_conditions.append(f"{col} LIKE '%IGKJ{light_j[1:]}%'")
             if light_j_conditions:
                 conditions.append(f"({' OR '.join(light_j_conditions)})")
         
@@ -837,7 +855,7 @@ class AntibodySearchEngine:
                 SELECT 
                     subject,
                     COUNT(*) as hits,
-                    COUNT(DISTINCT file_source) as num_files
+                    COUNT(DISTINCT source_file) as num_files
                 FROM antibodies
                 WHERE {where_clause}
                 GROUP BY subject
