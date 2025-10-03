@@ -15,13 +15,14 @@ import pandas as pd
 class AntibodySearchEngine:
     """High-performance antibody sequence search using DuckDB."""
     
-    def __init__(self, data_dir: str = "data/parquet", progress_callback=None):
+    def __init__(self, data_dir: str = "data/parquet", progress_callback=None, db_path: str = ":memory:"):
         """
         Initialize search engine.
         
         Args:
             data_dir: Directory containing Parquet files (relative to V3.0/)
             progress_callback: Optional callback function(progress, status) for progress updates
+            db_path: DuckDB database path (default: ":memory:" for in-memory database)
         """
         # Handle relative paths from V3.0 directory
         if not Path(data_dir).is_absolute():
@@ -30,7 +31,10 @@ class AntibodySearchEngine:
             self.data_dir = script_dir / data_dir
         else:
             self.data_dir = Path(data_dir)
-        self.conn = duckdb.connect(database=':memory:')
+        
+        # Connect to DuckDB with the specified database path
+        self.conn = duckdb.connect(database=db_path)
+        self.db_path = db_path
         
         # Register Parquet files as views
         self._register_data(progress_callback)
@@ -497,6 +501,15 @@ class AntibodySearchEngine:
         genes['j_genes'] = sorted(j_genes['j_call'].tolist())
         
         return genes
+    
+    def get_database_info(self) -> dict:
+        """Get information about the current database configuration."""
+        return {
+            'data_dir': str(self.data_dir),
+            'db_path': self.db_path,
+            'total_sequences': self.total_sequences,
+            'is_memory_db': self.db_path == ":memory:"
+        }
     
     def close(self):
         """Close database connection."""

@@ -7,7 +7,7 @@ High-performance antibody database search using DuckDB.
 
 import sys
 from pathlib import Path
-
+import os
 import streamlit as st
 import pandas as pd
 
@@ -15,7 +15,9 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from search_engine import AntibodySearchEngine
+import logging
 
+logger = logging.getLogger(__name__)
 
 # Page configuration
 st.set_page_config(
@@ -54,10 +56,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def init_search_engine(data_dir: str, progress_callback=None):
+def init_search_engine(data_dir: str, progress_callback=None, db_path: str = ":memory:"):
     """Initialize the search engine for a specific database."""
     try:
-        engine = AntibodySearchEngine(data_dir=data_dir, progress_callback=progress_callback)
+        engine = AntibodySearchEngine(data_dir=data_dir, progress_callback=progress_callback, db_path=db_path)
         return engine
     except Exception as e:
         st.error(f"Failed to initialize search engine for {data_dir}: {e}")
@@ -127,11 +129,14 @@ def main():
     st.markdown('<div class="main-header">🔬 ABDB V3.0</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">High-Performance Antibody Database Search</div>', unsafe_allow_html=True)
     
-    # Database selection - ALWAYS visible
-    available_databases = [
-        "data/unpaired/human/IGHG",
-        "data/testdatabase/IGHM",
-    ]
+    available_databases = []
+    # read ABHUNTER_DB_PATH from environment variable
+    abhunter_db_path = os.getenv("ABHUNTER_DB_PATH")
+    if abhunter_db_path:
+        logger.debug(f"Adding ABHUNTER_DB_PATH: {abhunter_db_path} databases")
+        for db in os.listdir(abhunter_db_path):
+            available_databases.append(os.path.join(abhunter_db_path, db))
+    
     
     # Filter to only show existing databases
     existing_databases = []
@@ -145,14 +150,16 @@ def main():
     
     # Database selector with info and reindex button - ALWAYS visible
     col1, col2, col3 = st.columns([2, 2, 1])
+    database_labels = [Path(db).name for db in existing_databases]
     with col1:
-        selected_db = st.selectbox(
+        selected_label = st.selectbox(
             "🗄️ Database",
-            existing_databases,
+            database_labels,
             index=0,
             help="Choose which database to search"
         )
-    
+        # Map the selected label back to the actual database path
+        selected_db = existing_databases[database_labels.index(selected_label)]
     with col2:
         # Show database info if loaded
         if 'search_engine' in st.session_state and st.session_state.get('current_db') == selected_db:
@@ -224,15 +231,12 @@ def main():
         st.markdown("""
         Search the [Observed Antibody Space (OAS)](https://opig.stats.ox.ac.uk/webapps/oas/) 
         database for specific antibody sequences.
-        
-        **Version:** 3.0 (DuckDB + Parquet)  
-        **Performance:** 100-1000x faster than V1.0
         """)
         
         st.markdown("### 🔗 Resources")
         st.markdown("""
         - [OAS Database](https://opig.stats.ox.ac.uk/webapps/oas/)
-        - [GitHub Repository](#)
+        - [GitHub Repository](https://github.com/vicci/antibody_search)
         - [Documentation](#)
         """)
     
