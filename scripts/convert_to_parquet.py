@@ -19,7 +19,9 @@ from typing import Dict, Any, Optional
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+import os
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logging.basicConfig(
     level=logging.INFO,
@@ -226,6 +228,13 @@ def main():
         default=None,
         help='Columns to keep (default: auto-detect based on chain type)'
     )
+    parser.add_argument(
+        '-j',
+        '--jobs',
+        type=int,
+        default=os.cpu_count(),
+        help='Number of jobs to run in parallel, defaults to all available cores'
+    )
     
     args = parser.parse_args()
     
@@ -258,12 +267,25 @@ def main():
     
     logger.info(f"Found {len(csv_files)} files to convert")
     logger.info(f"Output directory: {output_dir.absolute()}")
-    
-    # Convert files
+   
+   
+    # Convert files in parallel
+    logger.info(f"Converting files in parallel using {os.cpu_count()} cores")
     stats_list = []
-    for filepath in tqdm(csv_files, desc="Converting files"):
-        stats = convert_file(filepath, output_dir, args.columns)
-        stats_list.append(stats)
+    with ThreadPoolExecutor(max_workers=args.jobs) as executor:
+        future_to_file = {
+            executor.submit(convert_file, filepath, output_dir, args.columns): filepath
+            for filepath in csv_files
+        }
+        for future in tqdm(as_completed(future_to_file), total=len(csv_files), desc="Converting files"):
+            try:
+                stats = future.result()
+                stats_list.append(stats)
+            except Exception as exc:
+                stats_list.append({
+                    'filename': str(future_to_file[future]),
+                    'error': str(exc)
+                })
     
     # Create metadata table
     create_metadata_table(stats_list, output_dir)
