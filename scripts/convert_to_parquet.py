@@ -59,21 +59,28 @@ def get_columns_for_chain(filename: str) -> list:
     """
     filename_lower = filename.lower()
     
-    # Base columns for all chains
-    base_columns = ['v_call', 'd_call', 'j_call']
+    # Check if this is paired data (contains both heavy and light chain columns)
+    if 'paired' in filename_lower or 'all' in filename_lower:
+        # Paired data: extract both heavy and light chain columns
+        return [
+            # Heavy chain columns
+            'v_call_heavy', 'd_call_heavy', 'j_call_heavy',
+            'sequence_alignment_aa_heavy', 'cdr1_aa_heavy', 'cdr2_aa_heavy', 'cdr3_aa_heavy',
+            # Light chain columns  
+            'v_call_light', 'd_call_light', 'j_call_light',
+            'sequence_alignment_aa_light', 'cdr1_aa_light', 'cdr2_aa_light', 'cdr3_aa_light'
+        ]
     
-    # Heavy chain specific
-    if 'heavy' in filename_lower:
-        return base_columns + ['cdr1_aa', 'cdr2_aa', 'cdr3_aa']
+    # Unpaired data: single chain
+    elif 'heavy' in filename_lower:
+        return ['v_call', 'd_call', 'j_call', 'cdr1_aa', 'cdr2_aa', 'cdr3_aa']
     
-    # Light chain (future support)
     elif 'light' in filename_lower or 'lambda' in filename_lower or 'kappa' in filename_lower:
-        # Light chains use different CDR naming
-        return base_columns + ['cdr1_aa', 'cdr2_aa', 'cdr3_aa']
+        return ['v_call', 'd_call', 'j_call', 'cdr1_aa', 'cdr2_aa', 'cdr3_aa']
     
-    # Default: include all CDR columns
+    # Default: assume single chain
     else:
-        return base_columns + ['cdr1_aa', 'cdr2_aa', 'cdr3_aa']
+        return ['v_call', 'd_call', 'j_call', 'cdr1_aa', 'cdr2_aa', 'cdr3_aa']
 
 
 def convert_file(
@@ -113,12 +120,11 @@ def convert_file(
         )
         
         # Calculate CDR lengths from amino acid sequences
-        if 'cdr1_aa' in df.columns:
-            df['cdr1_length'] = df['cdr1_aa'].fillna('').str.len()
-        if 'cdr2_aa' in df.columns:
-            df['cdr2_length'] = df['cdr2_aa'].fillna('').str.len()
-        if 'cdr3_aa' in df.columns:
-            df['cdr3_length'] = df['cdr3_aa'].fillna('').str.len()
+        # Handle both unpaired and paired data
+        for col in df.columns:
+            if col.endswith('_aa') and 'cdr' in col:
+                length_col = col.replace('_aa', '_length')
+                df[length_col] = df[col].fillna('').str.len()
         
         # Add metadata as columns
         df['file_source'] = input_path.stem
@@ -126,15 +132,19 @@ def convert_file(
         df['isotype'] = metadata.get('Isotype', 'Unknown')
         df['disease'] = metadata.get('Disease', 'Unknown')
         df['species'] = metadata.get('Species', 'Unknown')
-        df['chain'] = 'Heavy' if 'heavy' in input_path.name.lower() else 'Light' if 'light' in input_path.name.lower() else 'Unknown'
+        # Determine chain type
+        filename_lower = input_path.name.lower()
+        if 'paired' in filename_lower or 'all' in filename_lower:
+            df['chain'] = 'Paired'
+        elif 'heavy' in filename_lower:
+            df['chain'] = 'Heavy'
+        elif 'light' in filename_lower or 'lambda' in filename_lower or 'kappa' in filename_lower:
+            df['chain'] = 'Light'
+        else:
+            df['chain'] = 'Unknown'
         
-        # Create output directory based on isotype (partitioning)
-        isotype = metadata.get('Isotype', 'Unknown')
-        output_subdir = output_dir / isotype
-        output_subdir.mkdir(parents=True, exist_ok=True)
-        
-        # Output path
-        output_path = output_subdir / f"{input_path.stem}.parquet"
+        # Output path - put directly in output directory
+        output_path = output_dir / f"{input_path.stem}.parquet"
         
         # Write to Parquet with optimal compression
         df.to_parquet(
@@ -188,13 +198,10 @@ def create_metadata_table(stats_list: list, output_dir: Path):
     if metadata_records:
         metadata_df = pd.DataFrame(metadata_records)
         
-        # Group by isotype and create metadata files in each subdirectory
-        for isotype, group_df in metadata_df.groupby('isotype'):
-            isotype_dir = output_dir / isotype
-            isotype_dir.mkdir(parents=True, exist_ok=True)
-            metadata_path = isotype_dir / 'metadata.parquet'
-            group_df.to_parquet(metadata_path, index=False)
-            logger.info(f"Created metadata table for {isotype}: {metadata_path}")
+        # Create single metadata file in the output directory root
+        metadata_path = output_dir / 'metadata.parquet'
+        metadata_df.to_parquet(metadata_path, index=False)
+        logger.info(f"Created metadata table: {metadata_path}")
 
 
 def main():
@@ -210,8 +217,8 @@ def main():
     parser.add_argument(
         '--output',
         type=str,
-        default='data/parquet',
-        help='Output directory for Parquet files (relative to V3.0/)'
+        default=None,
+        help='Output directory for Parquet files. If not specified, creates a "converted/" subdirectory in the input directory.'
     )
     parser.add_argument(
         '--limit',
@@ -230,7 +237,20 @@ def main():
     args = parser.parse_args()
     
     input_path = Path(args.input)
-    output_dir = Path(args.output)
+    
+    # Determine output directory
+    if args.output is not None:
+        # Output directory explicitly specified
+        output_dir = Path(args.output)
+    else:
+        # No output specified - create converted/ subdirectory in input directory
+        if input_path.is_file():
+            # Single file - use parent directory
+            output_dir = input_path.parent / "converted"
+        else:
+            # Directory - use same directory
+            output_dir = input_path / "converted"
+    
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Handle both file and directory input
