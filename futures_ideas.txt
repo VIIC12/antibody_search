@@ -5,3 +5,8 @@ https://www.nature.com/articles/s41598-023-38108-7
 
 ##
 Include/exlcude "NONE"
+
+
+st.query_params
+
+https://docs.streamlit.io/develop/api-reference/caching-and-state/st.query_params
