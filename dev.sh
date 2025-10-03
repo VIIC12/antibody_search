@@ -5,8 +5,8 @@ echo "🔬 Starting Antibody Search Database Development Environment"
 echo "=========================================================="
 
 # Check if Docker Compose is available
-if ! command -v docker-compose &> /dev/null; then
-    echo "❌ docker-compose not found. Please install Docker Compose."
+if ! command -v docker compose &> /dev/null; then
+    echo "❌ docker compose not found. Please install Docker Compose."
     exit 1
 fi
 
@@ -22,5 +22,5 @@ echo "   - Development app: http://172.22.180.238/dev or http://antibody.localho
 echo ""
 
 # Start development services with Docker Watch
-docker-compose --profile dev up --build
+docker compose --profile dev up -d antibody-search-dev --build
 

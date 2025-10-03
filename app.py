@@ -667,6 +667,7 @@ def main():
         st.stop()
     
     # Database selector with info and reindex button - ALWAYS visible
+    database_labels = [db.split("/")[-1] for db in existing_databases]
     col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
     with col1:
         selected_label = st.selectbox(
