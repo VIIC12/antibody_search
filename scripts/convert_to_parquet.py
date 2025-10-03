@@ -135,8 +135,8 @@ def convert_file(
         output_subdir = output_dir / isotype
         output_subdir.mkdir(parents=True, exist_ok=True)
         
-        # Output path
-        output_path = output_subdir / f"{input_path.stem}.parquet"
+        # Output path, input is csv.gz remove .gz and .csv
+        output_path = output_subdir / f"{input_path.stem.replace('.csv.gz', '.parquet')}"
         
         # Write to Parquet with optimal compression
         df.to_parquet(
