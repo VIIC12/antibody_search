@@ -2,6 +2,16 @@ GoogleDoc: https://docs.google.com/document/d/1BVCAJVQurnfQZvjDsTJ6hv-I6SYsuBtdR
 
 Dev-Server: http://172.22.180.238/
 
+### For local start w/o docker:
+
+```bash
+source venv/bin/activate
+export ABHUNTER_DB_PATH=./data
+streamlit run app.py
+```
+
+
+
 # ABHunter - Optimized Antibody Database Search
 
 High-performance antibody sequence search tool using DuckDB and Parquet
