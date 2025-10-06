@@ -14,7 +14,7 @@ import gzip
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 import pandas as pd
 import pyarrow as pa
@@ -226,6 +226,7 @@ def convert_file(
         
         # Calculate CDR lengths from amino acid sequences
         # Handle both unpaired and paired data
+            # -> cdr1_length, cdr1_lengt_hevy, cdr1_length_light
         for col in df.columns:
             if col.endswith('_aa') and 'cdr' in col:
                 length_col = col.replace('_aa', '_length')
@@ -233,20 +234,23 @@ def convert_file(
         
         # Add metadata as columns
         df['file_source'] = input_path.stem
-        df['subject'] = metadata.get('Subject', 'Unknown')
-        df['isotype'] = metadata.get('Isotype', 'Unknown')
-        df['disease'] = metadata.get('Disease', 'Unknown')
         df['species'] = metadata.get('Species', 'Unknown')
+        df['subject'] = metadata.get('Subject', 'Unknown')
+        df['disease'] = metadata.get('Disease', 'Unknown')
+        df['vaccine'] = metadata.get('Vaccine', 'Unknown')
+        df['isotype'] = metadata.get('Isotype', 'Unknown')
+        df['unqiue_sequences'] = metadata.get('Unique sequences', 'Unknown')
         # Use chain type from metadata
         df['chain'] = chain_type
         
-        # Create output directory based on isotype (partitioning)
+        # Create output directory based on chain_type and isotype (partitioning)
         isotype = metadata.get('Isotype', 'Unknown')
-        output_subdir = output_dir / isotype
+
+        output_subdir = output_dir / chain_type / isotype
         output_subdir.mkdir(parents=True, exist_ok=True)
         
-        # Output path, input is csv.gz remove .gz and .csv
-        output_path = output_subdir / f"{input_path.stem.replace('.csv.gz', '.parquet')}"
+        # Output path, input is csv.gz remove .gz (input_path.stem) and .csv (.replace) -> .parquet
+        output_path = output_subdir / f"{input_path.stem.replace('.csv', '.parquet')}"
         
         # Write to Parquet with optimal compression
         df.to_parquet(
@@ -270,6 +274,7 @@ def convert_file(
             f"  ✓ Converted: {stats['rows']:,} rows, "
             f"{stats['input_size_mb']:.1f}MB → {stats['output_size_mb']:.1f}MB "
             f"({stats['compression_ratio']:.1f}x)"
+            f"({stats['metadata']})"
         )
         
         return stats
@@ -280,30 +285,43 @@ def convert_file(
 
 
 def create_metadata_table(stats_list: list, output_dir: Path):
-    """Create a metadata table from all converted files."""
-    metadata_records = []
+    """Create metadata tables for each subdirectory containing Parquet files."""
+    # Group records by chain type and isotype (subdirectory structure)
+    grouped_records = {}
     
     for stats in stats_list:
         if 'error' not in stats and 'metadata' in stats:
+            metadata = stats['metadata']
+            chain_type = metadata.get('Chain', 'Unknown')
+            isotype = metadata.get('Isotype', 'Unknown')
+            
+            # Create key for grouping
+            subdir_key = (chain_type, isotype)
+            
+            if subdir_key not in grouped_records:
+                grouped_records[subdir_key] = []
+            
             record = {
                 'filename': stats['filename'],
                 'rows': stats['rows'],
-                'subject': stats['metadata'].get('Subject'),
-                'isotype': stats['metadata'].get('Isotype'),
-                'disease': stats['metadata'].get('Disease'),
-                'species': stats['metadata'].get('Species'),
-                'unique_sequences': stats['metadata'].get('Unique sequences'),
-                'total_sequences': stats['metadata'].get('Total sequences'),
+                'subject': metadata.get('Subject'),
+                'isotype': metadata.get('Isotype'),
+                'disease': metadata.get('Disease'),
+                'species': metadata.get('Species'),
+                'unique_sequences': metadata.get('Unique sequences')
             }
-            metadata_records.append(record)
+            grouped_records[subdir_key].append(record)
     
-    if metadata_records:
-        metadata_df = pd.DataFrame(metadata_records)
-        
-        # Create single metadata file in the output directory root
-        metadata_path = output_dir / 'metadata.parquet'
-        metadata_df.to_parquet(metadata_path, index=False)
-        logger.info(f"Created metadata table: {metadata_path}")
+    # Create metadata file in each subdirectory
+    for (chain_type, isotype), records in grouped_records.items():
+        if records:
+            metadata_df = pd.DataFrame(records)
+            
+            # Create metadata file in the same directory as the Parquet files
+            subdir = output_dir / chain_type / isotype
+            metadata_path = subdir / 'metadata.parquet'
+            metadata_df.to_parquet(metadata_path, index=False)
+            logger.info(f"Created metadata table: {metadata_path} ({len(records)} files)")
 
 
 def main():
@@ -388,7 +406,6 @@ def main():
     logger.info(f"Found {len(csv_files)} files to convert")
     logger.info(f"Output directory: {output_dir.absolute()}")
    
-   
     # Convert files in parallel
     logger.info(f"Converting files in parallel using {os.cpu_count()} cores")
     logger.info(f"Extraction level: {args.extraction_level}")
@@ -408,7 +425,7 @@ def main():
                     'error': str(exc)
                 })
     
-    # Create metadata table
+    # Create metadata table from all converted files
     create_metadata_table(stats_list, output_dir)
     
     # Summary statistics
