@@ -49,46 +49,140 @@ def extract_metadata(filepath: Path) -> Dict[str, Any]:
         return {}
 
 
-def get_columns_for_chain(filename: str) -> list:
+def get_columns_for_chain(chain_type: str, extraction_level: int = 1) -> list:
     """
-    Determine which columns to extract based on chain type.
+    Determine which columns to extract based on chain type from metadata and extraction level.
     
     Args:
-        filename: Name of the CSV.gz file
+        chain_type: Chain type from metadata ('Paired', 'Heavy', 'Light')
+        extraction_level: Extraction level (1=Basic, 2=+Additional, 3=+Full)
         
     Returns:
         List of column names to keep
     """
-    filename_lower = filename.lower()
+    chain_type_lower = chain_type.lower()
     
     # Check if this is paired data (contains both heavy and light chain columns)
-    if 'paired' in filename_lower or 'all' in filename_lower:
-        # Paired data: extract both heavy and light chain columns
-        return [
-            # Heavy chain columns
+    if chain_type_lower == 'paired':
+        # Define columns by extraction level for paired data
+        basic_columns = [
+            # Heavy chain basic columns
             'v_call_heavy', 'd_call_heavy', 'j_call_heavy',
-            'sequence_alignment_aa_heavy', 'cdr1_aa_heavy', 'cdr2_aa_heavy', 'cdr3_aa_heavy',
-            # Light chain columns  
+            'sequence_alignment_aa_heavy', 'v_sequence_alignment_aa_heavy', 
+            'd_sequence_alignment_aa_heavy', 'j_sequence_alignment_aa_heavy',
+            'cdr1_aa_heavy', 'cdr2_aa_heavy', 'cdr3_aa_heavy',
+            'v_identity_heavy', 'd_identity_heavy', 'j_identity_heavy',
+            # Light chain basic columns
             'v_call_light', 'd_call_light', 'j_call_light',
-            'sequence_alignment_aa_light', 'cdr1_aa_light', 'cdr2_aa_light', 'cdr3_aa_light'
+            'sequence_alignment_aa_light', 'v_sequence_alignment_aa_light',
+            'd_sequence_alignment_aa_light', 'j_sequence_alignment_aa_light',
+            'cdr1_aa_light', 'cdr2_aa_light', 'cdr3_aa_light',
+            'v_identity_light', 'd_identity_light', 'j_identity_light'
         ]
+        
+        additional_columns = [
+            # Heavy chain additional columns
+            'sequence_alignment_heavy', 'v_sequence_alignment_heavy',
+            'd_sequence_alignment_heavy', 'j_sequence_alignment_heavy',
+            'cdr1_heavy', 'cdr2_heavy', 'cdr3_heavy',
+            # Light chain additional columns
+            'sequence_alignment_light', 'v_sequence_alignment_light',
+            'd_sequence_alignment_light', 'j_sequence_alignment_light',
+            'cdr1_light', 'cdr2_light', 'cdr3_light'
+        ]
+        
+        full_columns = [
+            # Heavy chain full columns
+            'sequence_heavy', 'fwr1_heavy', 'fwr1_aa_heavy', 'fwr2_heavy', 'fwr2_aa_heavy',
+            'fwr3_heavy', 'fwr3_aa_heavy', 'junction_heavy', 'junction_length_heavy',
+            'junction_aa_heavy', 'junction_aa_length_heavy', 'v_score_heavy',
+            'd_score_heavy', 'j_score_heavy',
+            # Light chain full columns
+            'sequence_light', 'fwr1_light', 'fwr1_aa_light', 'fwr2_light', 'fwr2_aa_light',
+            'fwr3_light', 'fwr3_aa_light', 'junction_light', 'junction_length_light',
+            'junction_aa_light', 'junction_aa_length_light', 'v_score_light',
+            'd_score_light', 'j_score_light'
+        ]
+        
+        # Combine columns based on extraction level
+        columns = basic_columns.copy()
+        if extraction_level >= 2:
+            columns.extend(additional_columns)
+        if extraction_level >= 3:
+            columns.extend(full_columns)
+            
+        return columns
     
-    # Unpaired data: single chain
-    elif 'heavy' in filename_lower:
-        return ['v_call', 'd_call', 'j_call', 'cdr1_aa', 'cdr2_aa', 'cdr3_aa']
+    # Unpaired data: single chain with extraction levels
+    elif chain_type_lower == 'heavy':
+        # Define columns by extraction level for Heavy chain
+        basic_columns = [
+            'v_call', 'd_call', 'j_call',
+            'sequence_alignment_aa', 'v_sequence_alignment_aa', 
+            'd_sequence_alignment_aa', 'j_sequence_alignment_aa',
+            'cdr1_aa', 'cdr2_aa', 'cdr3_aa'
+        ]
+        
+        additional_columns = [
+            'sequence_alignment', 'v_sequence_alignment',
+            'd_sequence_alignment', 'j_sequence_alignment',
+            'cdr1', 'cdr2', 'cdr3',
+            'v_identity', 'd_identity', 'j_identity'
+        ]
+        
+        full_columns = [
+            'sequence', 'fwr2', 'fwr2_aa', 'fwr3', 'fwr3_aa',
+            'fwr4', 'fwr4_aa', 'v_score', 'd_score', 'j_score'
+        ]
+        
+        # Combine columns based on extraction level
+        columns = basic_columns.copy()
+        if extraction_level >= 2:
+            columns.extend(additional_columns)
+        if extraction_level >= 3:
+            columns.extend(full_columns)
+            
+        return columns
     
-    elif 'light' in filename_lower or 'lambda' in filename_lower or 'kappa' in filename_lower:
-        return ['v_call', 'd_call', 'j_call', 'cdr1_aa', 'cdr2_aa', 'cdr3_aa']
+    elif chain_type_lower == 'light':
+        # Define columns by extraction level for Light chain (identical to Heavy)
+        basic_columns = [
+            'v_call', 'd_call', 'j_call',
+            'sequence_alignment_aa', 'v_sequence_alignment_aa', 
+            'd_sequence_alignment_aa', 'j_sequence_alignment_aa',
+            'cdr1_aa', 'cdr2_aa', 'cdr3_aa'
+        ]
+        
+        additional_columns = [
+            'sequence_alignment', 'v_sequence_alignment',
+            'd_sequence_alignment', 'j_sequence_alignment',
+            'cdr1', 'cdr2', 'cdr3',
+            'v_identity', 'd_identity', 'j_identity'
+        ]
+        
+        full_columns = [
+            'sequence', 'fwr2', 'fwr2_aa', 'fwr3', 'fwr3_aa',
+            'fwr4', 'fwr4_aa', 'v_score', 'd_score', 'j_score'
+        ]
+        
+        # Combine columns based on extraction level
+        columns = basic_columns.copy()
+        if extraction_level >= 2:
+            columns.extend(additional_columns)
+        if extraction_level >= 3:
+            columns.extend(full_columns)
+            
+        return columns
     
-    # Default: assume single chain
+    # Invalid chain type
     else:
-        return ['v_call', 'd_call', 'j_call', 'cdr1_aa', 'cdr2_aa', 'cdr3_aa']
+        raise ValueError(f"Invalid chain type: '{chain_type}'. Expected 'Paired', 'Heavy', or 'Light'")
 
 
 def convert_file(
     input_path: Path,
     output_dir: Path,
-    columns: Optional[list] = None
+    extraction_level: int = 1
 ) -> Dict[str, Any]:
     """
     Convert single CSV.gz file to Parquet.
@@ -96,7 +190,7 @@ def convert_file(
     Args:
         input_path: Path to input CSV.gz file
         output_dir: Directory for output Parquet files
-        columns: Specific columns to keep (None = auto-detect)
+        extraction_level: Extraction level (1=Basic, 2=+Additional, 3=+Full)
     
     Returns:
         Dictionary with conversion statistics
@@ -106,10 +200,19 @@ def convert_file(
     # Extract metadata
     metadata = extract_metadata(input_path)
     
-    # Determine columns to keep
-    if columns is None:
-        columns = get_columns_for_chain(input_path.name)
-        logger.debug(f"Auto-detected columns: {columns}")
+    # Get chain type from metadata
+    chain_type = metadata.get('Chain', 'Unknown')
+    if chain_type == 'Unknown':
+        logger.error(f"No 'Chain' field found in metadata for {input_path}")
+        return {'filename': input_path.name, 'error': 'No Chain field in metadata'}
+    
+    # Determine columns to keep based on chain type and extraction level
+    try:
+        columns = get_columns_for_chain(chain_type, extraction_level)
+        logger.debug(f"Auto-detected columns for chain type '{chain_type}' (level {extraction_level}): {len(columns)} columns")
+    except ValueError as e:
+        logger.error(f"Invalid chain type in metadata for {input_path}: {e}")
+        return {'filename': input_path.name, 'error': str(e)}
     
     # Read CSV data (skip first line with metadata)
     try:
@@ -134,16 +237,8 @@ def convert_file(
         df['isotype'] = metadata.get('Isotype', 'Unknown')
         df['disease'] = metadata.get('Disease', 'Unknown')
         df['species'] = metadata.get('Species', 'Unknown')
-        # Determine chain type
-        filename_lower = input_path.name.lower()
-        if 'paired' in filename_lower or 'all' in filename_lower:
-            df['chain'] = 'Paired'
-        elif 'heavy' in filename_lower:
-            df['chain'] = 'Heavy'
-        elif 'light' in filename_lower or 'lambda' in filename_lower or 'kappa' in filename_lower:
-            df['chain'] = 'Light'
-        else:
-            df['chain'] = 'Unknown'
+        # Use chain type from metadata
+        df['chain'] = chain_type
         
         # Create output directory based on isotype (partitioning)
         isotype = metadata.get('Isotype', 'Unknown')
@@ -219,7 +314,7 @@ def main():
         '--input',
         type=str,
         required=True,
-        help='Input directory containing CSV.gz files, or path to a single CSV.gz file'
+        help='Input directory containing CSV.gz files, or path to CSV.gz files'
     )
     parser.add_argument(
         '--output',
@@ -234,18 +329,18 @@ def main():
         help='Limit number of files to convert (for testing)'
     )
     parser.add_argument(
-        '--columns',
-        type=str,
-        nargs='+',
-        default=None,
-        help='Columns to keep (default: auto-detect based on chain type)'
-    )
-    parser.add_argument(
         '-j',
         '--jobs',
         type=int,
         default=os.cpu_count(),
         help='Number of jobs to run in parallel, defaults to all available cores'
+    )
+    parser.add_argument(
+        '--extraction-level',
+        type=int,
+        choices=[1, 2, 3],
+        default=1,
+        help='Extraction level for paired data: 1=Basic (default), 2=+Additional, 3=+Full'
     )
     
     args = parser.parse_args()
@@ -296,10 +391,11 @@ def main():
    
     # Convert files in parallel
     logger.info(f"Converting files in parallel using {os.cpu_count()} cores")
+    logger.info(f"Extraction level: {args.extraction_level}")
     stats_list = []
     with ThreadPoolExecutor(max_workers=args.jobs) as executor:
         future_to_file = {
-            executor.submit(convert_file, filepath, output_dir, args.columns): filepath
+            executor.submit(convert_file, filepath, output_dir, args.extraction_level): filepath
             for filepath in csv_files
         }
         for future in tqdm(as_completed(future_to_file), total=len(csv_files), desc="Converting files"):
