@@ -23,6 +23,9 @@ High-performance antibody sequence search tool using DuckDB and Parquet
 ```
 antibody_search/               # Self-contained antibody_search directory
 ├── app.py                     # Streamlit web interface (main entry)
+├── pages/
+│   ├── search.py              # Search page
+│   ├── imprint.py             # Imprint page
 ├── requirements.txt           # Python dependencies
 ├── Dockerfile                 # Container configuration
 │
