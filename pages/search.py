@@ -88,21 +88,26 @@ def validate_motif_input(motif_str: str) -> bool:
     
 @st.cache_data(ttl="10m")  # Cache database discovery for 10 minutes
 def get_available_databases():
+    """Automatically detect databases by scanning for directories with metadata.parquet files."""
     available_databases = []
+    
     # read ABHUNTER_DB_PATH from environment variable
     abhunter_db_path = os.getenv("ABHUNTER_DB_PATH")
     if abhunter_db_path:
-        logger.debug(f"Adding ABHUNTER_DB_PATH: {abhunter_db_path} databases")
-        for db in os.listdir(abhunter_db_path):
-            available_databases.append(os.path.join(abhunter_db_path, db))
+        logger.debug(f"Scanning ABHUNTER_DB_PATH: {abhunter_db_path}")
+        data_dir = Path(abhunter_db_path)
+        if data_dir.exists():
+            # Recursively find all directories containing metadata.parquet
+            for metadata_file in data_dir.rglob("metadata.parquet"):
+                db_dir = metadata_file.parent
+                # Check if this directory also has other parquet files (not just metadata)
+                parquet_files = [f for f in db_dir.glob("*.parquet") if f.name != "metadata.parquet"]
+                if parquet_files:
+                    available_databases.append(str(db_dir))
+                    logger.debug(f"Found database: {db_dir} ({len(parquet_files)} parquet files)")
     
-    # Filter to only show existing databases
-    existing_databases = []
-    for db in available_databases:
-        if Path(db).exists() and any(Path(db).rglob("*.parquet")):
-            existing_databases.append(db)
-    
-    return existing_databases
+    logger.info(f"Found {len(available_databases)} available databases: {available_databases}")
+    return available_databases
 
 def get_database_schema(data_dir: str) -> Dict[str, Any]:
     """Get database schema information."""
