@@ -18,8 +18,8 @@ def render_sidebar():
     Select the the desired database from the dropdown menu, enter the search criteria, and click the "🔍 Search Database" button. The results will be displayed in the main area and can be downloaded as zipped parquet files.
 
     ### Resources
-    - [GitHub Repository](#)
-    - [Documentation API](#)
+    - [GitHub Repository](https://github.com/VIIC12/antibody_search#)
+    - [Documentation API](https://github.com/VIIC12/antibody_search/API/#)
     """)
     
     
@@ -54,9 +54,10 @@ def main():
     )
     
     search = st.Page("pages/search.py", title="Database Search", icon=":material/search:", default=True)
+    statistics = st.Page("pages/statistics.py", title="Statistics", icon=":material/bar_chart:")
     imprint = st.Page("pages/imprint.py", title="Imprint", icon=":material/info:")
 
-    entry_page = st.navigation([search, imprint], position="top")
+    entry_page = st.navigation([search, statistics, imprint], position="top")
 
     # Run the selected page
     entry_page.run()

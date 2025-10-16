@@ -643,6 +643,11 @@ def search_page_content():
     # Get available databases with caching
     existing_databases = get_available_databases()
     
+    # Sidebar - show immediately, even if no databases
+    with st.sidebar:
+        # Common sidebar content (About and License sections)
+        render_sidebar()
+    
     if not existing_databases:
         st.error("No databases found! Please run the data conversion script first.")
         st.stop()
@@ -707,7 +712,7 @@ def search_page_content():
     # Check if metadata needs updating
     metadata_fresh = check_metadata_freshness(selected_db)
     
-    # Sidebar
+    # Additional sidebar content for database management
     with st.sidebar:
         # Auto-load database if metadata is fresh and not loaded
         if 'search_engine' not in st.session_state or st.session_state.get('current_db') != selected_db:
@@ -741,9 +746,6 @@ def search_page_content():
         else:
             st.info("🛠️ **Development Mode**")
             st.caption("Full database control available.")
-
-        # Common sidebar content (About and License sections)
-        render_sidebar()
 
     # Handle reindex request with progress bar (only in development)
     if st.session_state.get('reindex_requested', False) and not is_production():
