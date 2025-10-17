@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Dict, Any
 import sys
+from datetime import datetime
 
 
 from search_engine import AntibodySearchEngine
@@ -86,76 +87,6 @@ def validate_motif_input(motif_str: str) -> bool:
     
     return pattern.match(motif_str) is not None
 
-def generate_similarity_pattern(motif: str, max_mismatches: int = 2) -> str:
-    """
-    Generate a regex pattern for similarity-based motif matching.
-    
-    Args:
-        motif: The motif pattern (e.g., "YY.D.*G")
-        max_mismatches: Maximum number of amino acid mismatches allowed (default: 2)
-    
-    Returns:
-        A regex pattern that matches sequences with up to max_mismatches differences
-    """
-    if not motif:
-        return ""
-    
-    import re
-    
-    # Define amino acid similarity groups (based on chemical properties)
-    amino_acid_groups = {
-        'A': '[AILV]',  # Aliphatic
-        'C': '[C]',     # Cysteine (unique)
-        'D': '[DE]',    # Acidic
-        'E': '[DE]',    # Acidic
-        'F': '[FWY]',   # Aromatic
-        'G': '[G]',     # Glycine (unique)
-        'H': '[H]',     # Histidine (unique)
-        'I': '[AILV]',  # Aliphatic
-        'K': '[KR]',    # Basic
-        'L': '[AILV]',  # Aliphatic
-        'M': '[M]',     # Methionine (unique)
-        'N': '[NQ]',    # Amide
-        'P': '[P]',     # Proline (unique)
-        'Q': '[NQ]',    # Amide
-        'R': '[KR]',    # Basic
-        'S': '[ST]',    # Hydroxyl
-        'T': '[ST]',    # Hydroxyl
-        'V': '[AILV]',  # Aliphatic
-        'W': '[FWY]',   # Aromatic
-        'Y': '[FWY]',   # Aromatic
-    }
-    
-    # Convert motif to regex pattern
-    regex_pattern = ""
-    i = 0
-    while i < len(motif):
-        char = motif[i].upper()
-        
-        if char == '*':
-            # Wildcard - match any characters
-            regex_pattern += '.*'
-        elif char == '.':
-            # Single character wildcard
-            regex_pattern += '.'
-        elif char in amino_acid_groups:
-            # Amino acid - create similarity group
-            if max_mismatches > 0:
-                # Allow the original amino acid or similar ones
-                original = f'[{char}]'
-                similar = amino_acid_groups[char]
-                # Create a pattern that matches either the original or similar amino acids
-                regex_pattern += f'({original}|{similar})'
-            else:
-                # Exact match only
-                regex_pattern += f'[{char}]'
-        else:
-            # Other characters (shouldn't happen with validation)
-            regex_pattern += re.escape(char)
-        
-        i += 1
-    
-    return regex_pattern
     
 @st.cache_data(ttl="10m")  # Cache database discovery for 10 minutes
 def get_available_databases():
@@ -180,6 +111,7 @@ def get_available_databases():
     logger.info(f"Found {len(available_databases)} available databases: {available_databases}")
     return available_databases
 
+@st.cache_data(ttl="10m")  # Cache schema for 10 minutes
 def get_database_schema(data_dir: str) -> Dict[str, Any]:
     """Get database schema information."""
     try:
@@ -193,6 +125,9 @@ def create_unpaired_search_form() -> Dict[str, Any]:
     """Create search form for unpaired data (current implementation)."""
     st.markdown("#### 🧬 Antibody Gene Search")
     
+    # Track validation state
+    validation_errors = []
+    
     # Gene fields
     col1, col2, col3 = st.columns(3)
     
@@ -205,8 +140,9 @@ def create_unpaired_search_form() -> Dict[str, Any]:
             key="ighv_input"
         )
         if ighv and not validate_gene_input(ighv):
-            st.markdown(":red[❌ Only: numbers, **-** , **|** **\\***]")
+            st.error("❌ Only: numbers, **-** , **|** **\\***")
             ighv_valid = False
+            validation_errors.append("IGHV Gene")
     
     with col2:
         ighd_valid = True
@@ -217,8 +153,9 @@ def create_unpaired_search_form() -> Dict[str, Any]:
             key="ighd_input"
         )
         if ighd and not validate_gene_input(ighd):
-            st.markdown(":red[❌ Only: numbers, **-** , **|** **\\***]")
+            st.error("❌ Only: numbers, **-** , **|** **\\***")
             ighd_valid = False
+            validation_errors.append("IGHD Gene")
     
     with col3:
         ighj_valid = True
@@ -229,8 +166,9 @@ def create_unpaired_search_form() -> Dict[str, Any]:
             key="ighj_input"
         )
         if ighj and not validate_gene_input(ighj):
-            st.markdown(":red[❌ Only: numbers, **-** , **|** **\\***]")
+            st.error("❌ Only: numbers, **-** , **|** **\\***")
             ighj_valid = False
+            validation_errors.append("IGHJ Gene")
     
     # CDR section - all CDR-related fields grouped together
     st.markdown("#### CDR Region Filters")
@@ -242,7 +180,7 @@ def create_unpaired_search_form() -> Dict[str, Any]:
     with col1:
         cdr1_length = st.number_input(
             "CDRH1 Length",
-            min_value=0, max_value=100, value=None, step=1,
+            min_value=0, max_value=100, value=None, step=1, format="%d",
             help="Length of CDRH1 region (amino acids)",
             placeholder="Optional", key="cdr1_length_input"
         )
@@ -250,7 +188,7 @@ def create_unpaired_search_form() -> Dict[str, Any]:
     with col2:
         cdr2_length = st.number_input(
             "CDRH2 Length",
-            min_value=0, max_value=100, value=None, step=1,
+            min_value=0, max_value=100, value=None, step=1, format="%d",
             help="Length of CDRH2 region (amino acids)",
             placeholder="Optional", key="cdr2_length_input"
         )
@@ -258,7 +196,7 @@ def create_unpaired_search_form() -> Dict[str, Any]:
     with col3:
         cdr3_length = st.number_input(
             "CDRH3 Length",
-            min_value=0, max_value=100, value=None, step=1,
+            min_value=0, max_value=100, value=None, step=1, format="%d",
             help="Length of CDRH3 region (amino acids)",
             placeholder="Optional", key="cdr3_length_input"
         )
@@ -276,16 +214,36 @@ def create_unpaired_search_form() -> Dict[str, Any]:
             key="cdr1_motif_input"
         )
         if cdr1_motif and not validate_motif_input(cdr1_motif):
-            st.markdown(":red[❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***]")
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***")
             cdr1_motif_valid = False
+            validation_errors.append("CDRH1 Motif")
         
-        # Similarity toggle for CDR1
-        cdr1_similarity = st.toggle(
-            "Similarity Search",
-            value=False,
-            help="Enable similarity-based matching (allows 1-2 amino acid differences)",
-            key="cdr1_similarity_toggle"
-        )
+        # Similarity toggle and mismatch threshold for CDR1
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            # Reset toggle to False if motif is empty
+            if not cdr1_motif and st.session_state.get("cdr1_similarity_toggle", False):
+                st.session_state["cdr1_similarity_toggle"] = False
+            
+            cdr1_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=not bool(cdr1_motif),
+                help="Enable similarity-based matching (requires motif input)" if not cdr1_motif else "Enable similarity-based matching",
+                key="cdr1_similarity_toggle"
+            )
+        with col_mismatch:
+            if cdr1_motif and cdr1_similarity:
+                # Calculate max mismatches based on motif length (all positions can be similar)
+                max_mismatches = len(cdr1_motif.replace('.', '').replace('*', ''))
+                cdr1_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key="cdr1_mismatches_input"
+                )
+            else:
+                cdr1_mismatches = 0  # Default value when similarity is disabled or no motif
     
     with col2:
         cdr2_motif_valid = True
@@ -296,16 +254,36 @@ def create_unpaired_search_form() -> Dict[str, Any]:
             key="cdr2_motif_input"
         )
         if cdr2_motif and not validate_motif_input(cdr2_motif):
-            st.markdown(":red[❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***]")
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***")
             cdr2_motif_valid = False
+            validation_errors.append("CDRH2 Motif")
         
-        # Similarity toggle for CDR2
-        cdr2_similarity = st.toggle(
-            "Similarity Search",
-            value=False,
-            help="Enable similarity-based matching (allows 1-2 amino acid differences)",
-            key="cdr2_similarity_toggle"
-        )
+        # Similarity toggle and mismatch threshold for CDR2
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            # Reset toggle to False if motif is empty
+            if not cdr2_motif and st.session_state.get("cdr2_similarity_toggle", False):
+                st.session_state["cdr2_similarity_toggle"] = False
+            
+            cdr2_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=not bool(cdr2_motif),
+                help="Enable similarity-based matching (requires motif input)" if not cdr2_motif else "Enable similarity-based matching",
+                key="cdr2_similarity_toggle"
+            )
+        with col_mismatch:
+            if cdr2_motif and cdr2_similarity:
+                # Calculate max mismatches based on motif length (all positions can be similar)
+                max_mismatches = len(cdr2_motif.replace('.', '').replace('*', ''))
+                cdr2_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key="cdr2_mismatches_input"
+                )
+            else:
+                cdr2_mismatches = 0  # Default value when similarity is disabled or no motif
     
     with col3:
         cdr3_motif_valid = True
@@ -316,27 +294,52 @@ def create_unpaired_search_form() -> Dict[str, Any]:
             key="cdr3_motif_input"
         )
         if cdr3_motif and not validate_motif_input(cdr3_motif):
-            st.markdown(":red[❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***]")
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***")
             cdr3_motif_valid = False
+            validation_errors.append("CDRH3 Motif")
         
-        # Similarity toggle for CDR3
-        cdr3_similarity = st.toggle(
-            "Similarity Search",
-            value=False,
-            help="Enable similarity-based matching (allows 1-2 amino acid differences)",
-            key="cdr3_similarity_toggle"
-        )
+        # Similarity toggle and mismatch threshold for CDR3
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            # Reset toggle to False if motif is empty
+            if not cdr3_motif and st.session_state.get("cdr3_similarity_toggle", False):
+                st.session_state["cdr3_similarity_toggle"] = False
+            
+            cdr3_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=not bool(cdr3_motif),
+                help="Enable similarity-based matching (requires motif input)" if not cdr3_motif else "Enable similarity-based matching",
+                key="cdr3_similarity_toggle"
+            )
+        with col_mismatch:
+            if cdr3_motif and cdr3_similarity:
+                # Calculate max mismatches based on motif length (all positions can be similar)
+                max_mismatches = len(cdr3_motif.replace('.', '').replace('*', ''))
+                cdr3_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key="cdr3_mismatches_input"
+                )
+            else:
+                cdr3_mismatches = 0  # Default value when similarity is disabled or no motif
     
     return {
         'ighv': ighv, 'ighd': ighd, 'ighj': ighj,
         'cdr1_length': cdr1_length, 'cdr2_length': cdr2_length, 'cdr3_length': cdr3_length,
         'cdr1_motif': cdr1_motif, 'cdr2_motif': cdr2_motif, 'cdr3_motif': cdr3_motif,
         'cdr1_similarity': cdr1_similarity, 'cdr2_similarity': cdr2_similarity, 'cdr3_similarity': cdr3_similarity,
-        'valid': all([ighv_valid, ighd_valid, ighj_valid, cdr1_motif_valid, cdr2_motif_valid, cdr3_motif_valid])
+        'cdr1_mismatches': cdr1_mismatches, 'cdr2_mismatches': cdr2_mismatches, 'cdr3_mismatches': cdr3_mismatches,
+        'valid': all([ighv_valid, ighd_valid, ighj_valid, cdr1_motif_valid, cdr2_motif_valid, cdr3_motif_valid]),
+        'validation_errors': validation_errors
     }
 
 def create_paired_search_form() -> Dict[str, Any]:
     """Create search form for paired data with separate heavy and light chain fields."""
+    # Track validation state
+    validation_errors = []
+    
     # Heavy Chain Section
     st.markdown("#### 🧬 Heavy Chain")
     col1, col2, col3 = st.columns(3)
@@ -350,8 +353,9 @@ def create_paired_search_form() -> Dict[str, Any]:
             key="heavy_v_input"
         )
         if heavy_v and not validate_gene_input(heavy_v):
-            st.markdown(":red[❌ Only: numbers, **-** , **|** **\\***]")
+            st.error("❌ Only: numbers, **-** , **|** **\\***")
             heavy_v_valid = False
+            validation_errors.append("Heavy IGHV Gene")
     
     with col2:
         heavy_d_valid = True
@@ -362,8 +366,9 @@ def create_paired_search_form() -> Dict[str, Any]:
             key="heavy_d_input"
         )
         if heavy_d and not validate_gene_input(heavy_d):
-            st.markdown(":red[❌ Only: numbers, **-** , **|** **\\***]")
+            st.error("❌ Only: numbers, **-** , **|** **\\***")
             heavy_d_valid = False
+            validation_errors.append("Heavy IGHD Gene")
     
     with col3:
         heavy_j_valid = True
@@ -374,8 +379,9 @@ def create_paired_search_form() -> Dict[str, Any]:
             key="heavy_j_input"
         )
         if heavy_j and not validate_gene_input(heavy_j):
-            st.markdown(":red[❌ Only: numbers, **-** , **|** **\\***]")
+            st.error("❌ Only: numbers, **-** , **|** **\\***")
             heavy_j_valid = False
+            validation_errors.append("Heavy IGHJ Gene")
     
     # Heavy Chain CDR Lengths
     st.markdown("##### Heavy Chain CDR Lengths (amino acids)")
@@ -384,7 +390,7 @@ def create_paired_search_form() -> Dict[str, Any]:
     with col1:
         heavy_cdr1_length = st.number_input(
             "CDRH1 Length",
-            min_value=0, max_value=100, value=None, step=1,
+            min_value=0, max_value=100, value=None, step=1, format="%d",
             help="Length of CDRH1 region (amino acids)",
             placeholder="Optional", key="heavy_cdr1_length_input"
         )
@@ -392,7 +398,7 @@ def create_paired_search_form() -> Dict[str, Any]:
     with col2:
         heavy_cdr2_length = st.number_input(
             "CDRH2 Length",
-            min_value=0, max_value=100, value=None, step=1,
+            min_value=0, max_value=100, value=None, step=1, format="%d",
             help="Length of CDRH2 region (amino acids)",
             placeholder="Optional", key="heavy_cdr2_length_input"
         )
@@ -400,7 +406,7 @@ def create_paired_search_form() -> Dict[str, Any]:
     with col3:
         heavy_cdr3_length = st.number_input(
             "CDRH3 Length",
-            min_value=0, max_value=100, value=None, step=1,
+            min_value=0, max_value=100, value=None, step=1, format="%d",
             help="Length of CDRH3 region (amino acids)",
             placeholder="Optional", key="heavy_cdr3_length_input"
         )
@@ -418,16 +424,36 @@ def create_paired_search_form() -> Dict[str, Any]:
             key="heavy_cdr1_motif_input"
         )
         if heavy_cdr1_motif and not validate_motif_input(heavy_cdr1_motif):
-            st.markdown(":red[❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***]")
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***")
             heavy_cdr1_motif_valid = False
+            validation_errors.append("Heavy CDRH1 Motif")
         
-        # Similarity toggle for Heavy CDR1
-        heavy_cdr1_similarity = st.toggle(
-            "Similarity Search",
-            value=False,
-            help="Enable similarity-based matching (allows 1-2 amino acid differences)",
-            key="heavy_cdr1_similarity_toggle"
-        )
+        # Similarity toggle and mismatch threshold for Heavy CDR1
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            # Reset toggle to False if motif is empty
+            if not heavy_cdr1_motif and st.session_state.get("heavy_cdr1_similarity_toggle", False):
+                st.session_state["heavy_cdr1_similarity_toggle"] = False
+            
+            heavy_cdr1_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=not bool(heavy_cdr1_motif),
+                help="Enable similarity-based matching (requires motif input)" if not heavy_cdr1_motif else "Enable similarity-based matching",
+                key="heavy_cdr1_similarity_toggle"
+            )
+        with col_mismatch:
+            if heavy_cdr1_motif and heavy_cdr1_similarity:
+                # Calculate max mismatches based on motif length (all positions can be similar)
+                max_mismatches = len(heavy_cdr1_motif.replace('.', '').replace('*', ''))
+                heavy_cdr1_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key="heavy_cdr1_mismatches_input"
+                )
+            else:
+                heavy_cdr1_mismatches = 0  # Default value when similarity is disabled or no motif
     
     with col2:
         heavy_cdr2_motif_valid = True
@@ -438,16 +464,36 @@ def create_paired_search_form() -> Dict[str, Any]:
             key="heavy_cdr2_motif_input"
         )
         if heavy_cdr2_motif and not validate_motif_input(heavy_cdr2_motif):
-            st.markdown(":red[❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***]")
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***")
             heavy_cdr2_motif_valid = False
+            validation_errors.append("Heavy CDRH2 Motif")
         
-        # Similarity toggle for Heavy CDR2
-        heavy_cdr2_similarity = st.toggle(
-            "Similarity Search",
-            value=False,
-            help="Enable similarity-based matching (allows 1-2 amino acid differences)",
-            key="heavy_cdr2_similarity_toggle"
-        )
+        # Similarity toggle and mismatch threshold for Heavy CDR2
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            # Reset toggle to False if motif is empty
+            if not heavy_cdr2_motif and st.session_state.get("heavy_cdr2_similarity_toggle", False):
+                st.session_state["heavy_cdr2_similarity_toggle"] = False
+            
+            heavy_cdr2_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=not bool(heavy_cdr2_motif),
+                help="Enable similarity-based matching (requires motif input)" if not heavy_cdr2_motif else "Enable similarity-based matching",
+                key="heavy_cdr2_similarity_toggle"
+            )
+        with col_mismatch:
+            if heavy_cdr2_motif and heavy_cdr2_similarity:
+                # Calculate max mismatches based on motif length (all positions can be similar)
+                max_mismatches = len(heavy_cdr2_motif.replace('.', '').replace('*', ''))
+                heavy_cdr2_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key="heavy_cdr2_mismatches_input"
+                )
+            else:
+                heavy_cdr2_mismatches = 0  # Default value when similarity is disabled or no motif
     
     with col3:
         heavy_cdr3_motif_valid = True
@@ -458,16 +504,36 @@ def create_paired_search_form() -> Dict[str, Any]:
             key="heavy_cdr3_motif_input"
         )
         if heavy_cdr3_motif and not validate_motif_input(heavy_cdr3_motif):
-            st.markdown(":red[❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***]")
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***")
             heavy_cdr3_motif_valid = False
+            validation_errors.append("Heavy CDRH3 Motif")
         
-        # Similarity toggle for Heavy CDR3
-        heavy_cdr3_similarity = st.toggle(
-            "Similarity Search",
-            value=False,
-            help="Enable similarity-based matching (allows 1-2 amino acid differences)",
-            key="heavy_cdr3_similarity_toggle"
-        )
+        # Similarity toggle and mismatch threshold for Heavy CDR3
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            # Reset toggle to False if motif is empty
+            if not heavy_cdr3_motif and st.session_state.get("heavy_cdr3_similarity_toggle", False):
+                st.session_state["heavy_cdr3_similarity_toggle"] = False
+            
+            heavy_cdr3_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=not bool(heavy_cdr3_motif),
+                help="Enable similarity-based matching (requires motif input)" if not heavy_cdr3_motif else "Enable similarity-based matching",
+                key="heavy_cdr3_similarity_toggle"
+            )
+        with col_mismatch:
+            if heavy_cdr3_motif and heavy_cdr3_similarity:
+                # Calculate max mismatches based on motif length (all positions can be similar)
+                max_mismatches = len(heavy_cdr3_motif.replace('.', '').replace('*', ''))
+                heavy_cdr3_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key="heavy_cdr3_mismatches_input"
+                )
+            else:
+                heavy_cdr3_mismatches = 0  # Default value when similarity is disabled or no motif
     
     # Light Chain Section
     st.markdown("#### 🔬 Light Chain")
@@ -482,8 +548,9 @@ def create_paired_search_form() -> Dict[str, Any]:
             key="light_v_input"
         )
         if light_v and not validate_gene_input(light_v):
-            st.markdown(":red[❌ Only: numbers, **-** , **|** **\\***]")
+            st.error("❌ Only: numbers, **-** , **|** **\\***")
             light_v_valid = False
+            validation_errors.append("Light IGLV Gene")
     
     with col2:
         light_d_valid = True
@@ -494,8 +561,9 @@ def create_paired_search_form() -> Dict[str, Any]:
             key="light_d_input"
         )
         if light_d and not validate_gene_input(light_d):
-            st.markdown(":red[❌ Only: numbers, **-** , **|** **\\***]")
+            st.error("❌ Only: numbers, **-** , **|** **\\***")
             light_d_valid = False
+            validation_errors.append("Light IGLD Gene")
     
     with col3:
         light_j_valid = True
@@ -506,8 +574,9 @@ def create_paired_search_form() -> Dict[str, Any]:
             key="light_j_input"
         )
         if light_j and not validate_gene_input(light_j):
-            st.markdown(":red[❌ Only: numbers, **-** , **|** **\\***]")
+            st.error("❌ Only: numbers, **-** , **|** **\\***")
             light_j_valid = False
+            validation_errors.append("Light IGLJ Gene")
     
     # Light Chain CDR Lengths
     st.markdown("##### Light Chain CDR Lengths (amino acids)")
@@ -516,7 +585,7 @@ def create_paired_search_form() -> Dict[str, Any]:
     with col1:
         light_cdr1_length = st.number_input(
             "CDRL1 Length",
-            min_value=0, max_value=100, value=None, step=1,
+            min_value=0, max_value=100, value=None, step=1, format="%d",
             help="Length of CDRL1 region (amino acids)",
             placeholder="Optional", key="light_cdr1_length_input"
         )
@@ -524,7 +593,7 @@ def create_paired_search_form() -> Dict[str, Any]:
     with col2:
         light_cdr2_length = st.number_input(
             "CDRL2 Length",
-            min_value=0, max_value=100, value=None, step=1,
+            min_value=0, max_value=100, value=None, step=1, format="%d",
             help="Length of CDRL2 region (amino acids)",
             placeholder="Optional", key="light_cdr2_length_input"
         )
@@ -532,7 +601,7 @@ def create_paired_search_form() -> Dict[str, Any]:
     with col3:
         light_cdr3_length = st.number_input(
             "CDRL3 Length",
-            min_value=0, max_value=100, value=None, step=1,
+            min_value=0, max_value=100, value=None, step=1, format="%d",
             help="Length of CDRL3 region (amino acids)",
             placeholder="Optional", key="light_cdr3_length_input"
         )
@@ -550,16 +619,36 @@ def create_paired_search_form() -> Dict[str, Any]:
             key="light_cdr1_motif_input"
         )
         if light_cdr1_motif and not validate_motif_input(light_cdr1_motif):
-            st.markdown(":red[❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***]")
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***")
             light_cdr1_motif_valid = False
+            validation_errors.append("Light CDRL1 Motif")
         
-        # Similarity toggle for Light CDR1
-        light_cdr1_similarity = st.toggle(
-            "Similarity Search",
-            value=False,
-            help="Enable similarity-based matching (allows 1-2 amino acid differences)",
-            key="light_cdr1_similarity_toggle"
-        )
+        # Similarity toggle and mismatch threshold for Light CDR1
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            # Reset toggle to False if motif is empty
+            if not light_cdr1_motif and st.session_state.get("light_cdr1_similarity_toggle", False):
+                st.session_state["light_cdr1_similarity_toggle"] = False
+            
+            light_cdr1_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=not bool(light_cdr1_motif),
+                help="Enable similarity-based matching (requires motif input)" if not light_cdr1_motif else "Enable similarity-based matching",
+                key="light_cdr1_similarity_toggle"
+            )
+        with col_mismatch:
+            if light_cdr1_motif and light_cdr1_similarity:
+                # Calculate max mismatches based on motif length (all positions can be similar)
+                max_mismatches = len(light_cdr1_motif.replace('.', '').replace('*', ''))
+                light_cdr1_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key="light_cdr1_mismatches_input"
+                )
+            else:
+                light_cdr1_mismatches = 0  # Default value when similarity is disabled or no motif
     
     with col2:
         light_cdr2_motif_valid = True
@@ -570,16 +659,36 @@ def create_paired_search_form() -> Dict[str, Any]:
             key="light_cdr2_motif_input"
         )
         if light_cdr2_motif and not validate_motif_input(light_cdr2_motif):
-            st.markdown(":red[❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***]")
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***")
             light_cdr2_motif_valid = False
+            validation_errors.append("Light CDRL2 Motif")
         
-        # Similarity toggle for Light CDR2
-        light_cdr2_similarity = st.toggle(
-            "Similarity Search",
-            value=False,
-            help="Enable similarity-based matching (allows 1-2 amino acid differences)",
-            key="light_cdr2_similarity_toggle"
-        )
+        # Similarity toggle and mismatch threshold for Light CDR2
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            # Reset toggle to False if motif is empty
+            if not light_cdr2_motif and st.session_state.get("light_cdr2_similarity_toggle", False):
+                st.session_state["light_cdr2_similarity_toggle"] = False
+            
+            light_cdr2_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=not bool(light_cdr2_motif),
+                help="Enable similarity-based matching (requires motif input)" if not light_cdr2_motif else "Enable similarity-based matching",
+                key="light_cdr2_similarity_toggle"
+            )
+        with col_mismatch:
+            if light_cdr2_motif and light_cdr2_similarity:
+                # Calculate max mismatches based on motif length (all positions can be similar)
+                max_mismatches = len(light_cdr2_motif.replace('.', '').replace('*', ''))
+                light_cdr2_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key="light_cdr2_mismatches_input"
+                )
+            else:
+                light_cdr2_mismatches = 0  # Default value when similarity is disabled or no motif
     
     with col3:
         light_cdr3_motif_valid = True
@@ -590,16 +699,36 @@ def create_paired_search_form() -> Dict[str, Any]:
             key="light_cdr3_motif_input"
         )
         if light_cdr3_motif and not validate_motif_input(light_cdr3_motif):
-            st.markdown(":red[❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***]")
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.** and **\\***")
             light_cdr3_motif_valid = False
+            validation_errors.append("Light CDRL3 Motif")
         
-        # Similarity toggle for Light CDR3
-        light_cdr3_similarity = st.toggle(
-            "Similarity Search",
-            value=False,
-            help="Enable similarity-based matching (allows 1-2 amino acid differences)",
-            key="light_cdr3_similarity_toggle"
-        )
+        # Similarity toggle and mismatch threshold for Light CDR3
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            # Reset toggle to False if motif is empty
+            if not light_cdr3_motif and st.session_state.get("light_cdr3_similarity_toggle", False):
+                st.session_state["light_cdr3_similarity_toggle"] = False
+            
+            light_cdr3_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=not bool(light_cdr3_motif),
+                help="Enable similarity-based matching (requires motif input)" if not light_cdr3_motif else "Enable similarity-based matching",
+                key="light_cdr3_similarity_toggle"
+            )
+        with col_mismatch:
+            if light_cdr3_motif and light_cdr3_similarity:
+                # Calculate max mismatches based on motif length (all positions can be similar)
+                max_mismatches = len(light_cdr3_motif.replace('.', '').replace('*', ''))
+                light_cdr3_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key="light_cdr3_mismatches_input"
+                )
+            else:
+                light_cdr3_mismatches = 0  # Default value when similarity is disabled or no motif
     
     return {
         # Heavy chain parameters
@@ -607,14 +736,17 @@ def create_paired_search_form() -> Dict[str, Any]:
         'heavy_cdr1_length': heavy_cdr1_length, 'heavy_cdr2_length': heavy_cdr2_length, 'heavy_cdr3_length': heavy_cdr3_length,
         'heavy_cdr1_motif': heavy_cdr1_motif, 'heavy_cdr2_motif': heavy_cdr2_motif, 'heavy_cdr3_motif': heavy_cdr3_motif,
         'heavy_cdr1_similarity': heavy_cdr1_similarity, 'heavy_cdr2_similarity': heavy_cdr2_similarity, 'heavy_cdr3_similarity': heavy_cdr3_similarity,
+        'heavy_cdr1_mismatches': heavy_cdr1_mismatches, 'heavy_cdr2_mismatches': heavy_cdr2_mismatches, 'heavy_cdr3_mismatches': heavy_cdr3_mismatches,
         # Light chain parameters
         'light_v': light_v, 'light_d': light_d, 'light_j': light_j,
         'light_cdr1_length': light_cdr1_length, 'light_cdr2_length': light_cdr2_length, 'light_cdr3_length': light_cdr3_length,
         'light_cdr1_motif': light_cdr1_motif, 'light_cdr2_motif': light_cdr2_motif, 'light_cdr3_motif': light_cdr3_motif,
         'light_cdr1_similarity': light_cdr1_similarity, 'light_cdr2_similarity': light_cdr2_similarity, 'light_cdr3_similarity': light_cdr3_similarity,
+        'light_cdr1_mismatches': light_cdr1_mismatches, 'light_cdr2_mismatches': light_cdr2_mismatches, 'light_cdr3_mismatches': light_cdr3_mismatches,
         # Validation
         'valid': all([heavy_v_valid, heavy_d_valid, heavy_j_valid, heavy_cdr1_motif_valid, heavy_cdr2_motif_valid, heavy_cdr3_motif_valid,
-                     light_v_valid, light_d_valid, light_j_valid, light_cdr1_motif_valid, light_cdr2_motif_valid, light_cdr3_motif_valid])
+                     light_v_valid, light_d_valid, light_j_valid, light_cdr1_motif_valid, light_cdr2_motif_valid, light_cdr3_motif_valid]),
+        'validation_errors': validation_errors
     }
 
 def display_search_results(sequences_sample_df, statistics, stats_df, sequences_full_df=None):
@@ -706,10 +838,12 @@ def display_search_results(sequences_sample_df, statistics, stats_df, sequences_
         # Download sample sequences as CSV
         if not sequences_sample_df.empty:
             csv_data = sequences_sample_df.to_csv(index=False)
+            # Generate timestamp for filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             st.download_button(
                 label=f"📄 Download Sample Sequences (CSV, {len(sequences_sample_df)} rows)",
                 data=csv_data,
-                file_name=f"abdb_sample_sequences_{statistics['total_hits']}.csv",
+                file_name=f"{timestamp}_ABHunter search.csv",
                 mime="text/csv",
                 width='stretch'
             )
@@ -729,9 +863,9 @@ def display_search_results(sequences_sample_df, statistics, stats_df, sequences_
                             ighv=ighv,
                             ighd=ighd,
                             ighj=ighj if ighj else "",
-                            cdr1_length=cdr1_length if cdr1_length and cdr1_length > 0 else None,
-                            cdr2_length=cdr2_length if cdr2_length and cdr2_length > 0 else None,
-                            cdr3_length=cdr3_length if cdr3_length and cdr3_length > 0 else None,
+                            cdr1_length=cdr1_length if cdr1_length is not None else None,
+                            cdr2_length=cdr2_length if cdr2_length is not None else None,
+                            cdr3_length=cdr3_length if cdr3_length is not None else None,
                             cdr1_motif=cdr1_motif,
                             cdr2_motif=cdr2_motif,
                             cdr3_motif=cdr3_motif,
@@ -815,16 +949,40 @@ def search_page_content():
         )
         # Map the selected label back to the actual database path
         selected_db = existing_databases[database_labels.index(selected_label)]
+    
+    # Get current database from session state
+    current_db = st.session_state.get('current_db', None)
+    
+    # Auto-initialize database if it's not loaded or if database changed
+    if current_db != selected_db:
+        parquet_files = list(Path(selected_db).glob('*.parquet'))
+        metadata_fresh = check_metadata_freshness(selected_db)
+        
+        if parquet_files and metadata_fresh:
+            with st.spinner("Loading database..."):
+                engine = init_search_engine(selected_db)
+                st.session_state['search_engine'] = engine
+                st.session_state['current_db'] = selected_db
+                # Clear cached search results when database changes
+                if 'last_search_results' in st.session_state:
+                    del st.session_state['last_search_results']
+                if 'last_search_params' in st.session_state:
+                    del st.session_state['last_search_params']
+            st.rerun()
+    
+    # Check if metadata needs updating (for later use)
+    metadata_fresh = check_metadata_freshness(selected_db)
+    
     with col2:
         # Show database info if loaded
-        if 'search_engine' in st.session_state and st.session_state.get('current_db') == selected_db:
+        if 'search_engine' in st.session_state and current_db == selected_db:
             engine = st.session_state['search_engine']
             st.metric("Total Sequences", f"{engine.total_sequences:,}")
     
     with col4:
         # Reindex button - only visible in development
         if not is_production():
-            if 'search_engine' not in st.session_state or st.session_state.get('current_db') != selected_db:
+            if current_db != selected_db:
                 # Database not loaded - show load button
                 parquet_files = list(Path(selected_db).glob('*.parquet'))
                 if parquet_files:
@@ -855,49 +1013,22 @@ def search_page_content():
                         st.rerun()
         else:
             # Production mode - show status only
-            if 'search_engine' in st.session_state and st.session_state.get('current_db') == selected_db:
+            if 'search_engine' in st.session_state and current_db == selected_db:
                 st.success("✅ Database Ready")
             else:
                 st.info("🔄 Loading...")
     
-    # Check if metadata needs updating
-    metadata_fresh = check_metadata_freshness(selected_db)
-    
     # Additional sidebar content for database management
     with st.sidebar:
-        # Auto-load database if metadata is fresh and not loaded
-        if 'search_engine' not in st.session_state or st.session_state.get('current_db') != selected_db:
-            parquet_files = list(Path(selected_db).glob('*.parquet'))
-            if parquet_files and metadata_fresh:
-                with st.spinner("Loading database..."):
-                    engine = init_search_engine(selected_db)
-                    st.session_state['search_engine'] = engine
-                    st.session_state['current_db'] = selected_db
-                    # Clear cached search results when database changes
-                    if 'last_search_results' in st.session_state:
-                        del st.session_state['last_search_results']
-                    if 'last_search_params' in st.session_state:
-                        del st.session_state['last_search_params']
-                st.rerun()
-        
+        # TODO Not necessary for Server version
         # Show status messages
-        if 'search_engine' not in st.session_state or st.session_state.get('current_db') != selected_db:
+        if current_db != selected_db:
             parquet_files = list(Path(selected_db).glob('*.parquet'))
             if not parquet_files:
                 st.error("No Parquet files found in this database.")
-        elif not metadata_fresh:
+        elif not check_metadata_freshness(selected_db):
             st.warning("🔄 Database files have been updated!")
         
-
-        # Show environment indicator
-        st.markdown("""### Environment""")
-        if is_production():
-            st.success("🚀 **Production Mode**")
-            st.caption("Database is read-only.")
-        else:
-            st.info("🛠️ **Development Mode**")
-            st.caption("Full database control available.")
-
     # Handle reindex request with progress bar (only in development)
     if st.session_state.get('reindex_requested', False) and not is_production():
         reindex_db = st.session_state.get('reindex_db', selected_db)
@@ -943,7 +1074,7 @@ def search_page_content():
         # Show reindexing message instead of search form
         st.info("🔄 Database is being reindexed. Please wait...")
         return
-    elif 'search_engine' not in st.session_state or st.session_state.get('current_db') != selected_db:
+    elif current_db != selected_db:
         st.error("Please reindex the database first using the 'Reindex Database' button.")
         return
     
@@ -962,28 +1093,29 @@ def search_page_content():
     st.markdown("## 🔍 Search Criteria")
     st.divider()
     
-    # Show database type indicator
+    # Create appropriate search form based on schema (outside form for dynamic behavior)
     if schema['search_type'] == 'paired':
-        st.info("🔗 **Paired Database**: Search heavy and light chains separately")
-    elif schema['search_type'] == 'unpaired':
-        st.info("🧬 **Unpaired Database**: Single chain search")
+        search_params = create_paired_search_form()
     else:
-        st.warning(f"⚠️ **Unknown Database Type**: {schema.get('error', 'Could not detect schema')}")
+        search_params = create_unpaired_search_form()
     
+    # Fixed sample limit for display
+    sample_limit = 100
+    
+    # Search button in form (only the button needs to be in form)
     with st.form("search_form"):
-        # Create appropriate search form based on schema
-        if schema['search_type'] == 'paired':
-            search_params = create_paired_search_form()
-        else:
-            search_params = create_unpaired_search_form()
+        # Check if there are validation errors
+        has_validation_errors = not search_params.get('valid', True)
+        validation_errors = search_params.get('validation_errors', [])
         
-        # Fixed sample limit for display
-        sample_limit = 100
+        # Show validation errors if any
+        if validation_errors:
+            st.error(f"❌ **Please fix the following errors before searching:** {', '.join(validation_errors)}")
         
-        # Form submit button
         search_submitted = st.form_submit_button(
             "🔍 Search Database", 
             type="primary",
+            disabled=has_validation_errors,
             width='content'
         )
     
@@ -1032,10 +1164,12 @@ def search_page_content():
             col1, col2 = st.columns(2)
             with col1:
                 csv_stats = stats_df.to_csv(index=False)
+                # Generate timestamp for filename
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 st.download_button(
                     label="📊 Download Statistics (CSV)",
                     data=csv_stats,
-                    file_name=f"abdb_stats_{ighv}_{ighd}_{ighj}.csv",
+                    file_name=f"{timestamp}_ABHunter search.csv",
                     mime="text/csv",
                     width='stretch'
                 )
@@ -1073,10 +1207,12 @@ def search_page_content():
             with col1:
                 # Download sample sequences (CSV)
                 csv_sample = sequences_display.to_csv(index=False)
+                # Generate timestamp for filename
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 st.download_button(
                     label=f"📋 Download Sample Sequences (CSV, {len(sequences_display)} rows)",
                     data=csv_sample,
-                    file_name=f"abdb_sample_{ighv}_{ighd}_{ighj}.csv",
+                    file_name=f"{timestamp}_ABHunter search.csv",
                     mime="text/csv",
                     width='stretch'
                 )
@@ -1094,9 +1230,9 @@ def search_page_content():
                                     ighv=ighv,
                                     ighd=ighd,
                                     ighj=ighj if ighj else "",
-                                    cdr1_length=cdr1_length if cdr1_length and cdr1_length > 0 else None,
-                                    cdr2_length=cdr2_length if cdr2_length and cdr2_length > 0 else None,
-                                    cdr3_length=cdr3_length if cdr3_length and cdr3_length > 0 else None,
+                                    cdr1_length=cdr1_length if cdr1_length is not None else None,
+                                    cdr2_length=cdr2_length if cdr2_length is not None else None,
+                                    cdr3_length=cdr3_length if cdr3_length is not None else None,
                                     cdr1_motif=cdr1_motif,
                                     cdr2_motif=cdr2_motif,
                                     cdr3_motif=cdr3_motif,
@@ -1189,116 +1325,119 @@ def search_page_content():
             try:
                 # Call search engine with appropriate parameters
                 if schema['search_type'] == 'paired':
-                    # Paired search - apply similarity patterns if enabled
-                    heavy_cdr1_motif = search_params.get('heavy_cdr1_motif', '')
-                    heavy_cdr2_motif = search_params.get('heavy_cdr2_motif', '')
-                    heavy_cdr3_motif = search_params.get('heavy_cdr3_motif', '')
-                    light_cdr1_motif = search_params.get('light_cdr1_motif', '')
-                    light_cdr2_motif = search_params.get('light_cdr2_motif', '')
-                    light_cdr3_motif = search_params.get('light_cdr3_motif', '')
-                    
-                    # Apply similarity patterns if toggles are enabled
-                    if search_params.get('heavy_cdr1_similarity', False) and heavy_cdr1_motif:
-                        heavy_cdr1_motif = generate_similarity_pattern(heavy_cdr1_motif)
-                    if search_params.get('heavy_cdr2_similarity', False) and heavy_cdr2_motif:
-                        heavy_cdr2_motif = generate_similarity_pattern(heavy_cdr2_motif)
-                    if search_params.get('heavy_cdr3_similarity', False) and heavy_cdr3_motif:
-                        heavy_cdr3_motif = generate_similarity_pattern(heavy_cdr3_motif)
-                    if search_params.get('light_cdr1_similarity', False) and light_cdr1_motif:
-                        light_cdr1_motif = generate_similarity_pattern(light_cdr1_motif)
-                    if search_params.get('light_cdr2_similarity', False) and light_cdr2_motif:
-                        light_cdr2_motif = generate_similarity_pattern(light_cdr2_motif)
-                    if search_params.get('light_cdr3_similarity', False) and light_cdr3_motif:
-                        light_cdr3_motif = generate_similarity_pattern(light_cdr3_motif)
-                    
+                    # Paired search - pass similarity parameters directly to search engine
                     sequences_sample_df, statistics = engine.search(
                         # Heavy chain parameters
                         heavy_v=search_params.get('heavy_v', ''),
                         heavy_d=search_params.get('heavy_d', ''),
                         heavy_j=search_params.get('heavy_j', ''),
-                        heavy_cdr1_length=search_params.get('heavy_cdr1_length') if search_params.get('heavy_cdr1_length') and search_params.get('heavy_cdr1_length') > 0 else None,
-                        heavy_cdr2_length=search_params.get('heavy_cdr2_length') if search_params.get('heavy_cdr2_length') and search_params.get('heavy_cdr2_length') > 0 else None,
-                        heavy_cdr3_length=search_params.get('heavy_cdr3_length') if search_params.get('heavy_cdr3_length') and search_params.get('heavy_cdr3_length') > 0 else None,
-                        heavy_cdr1_motif=heavy_cdr1_motif,
-                        heavy_cdr2_motif=heavy_cdr2_motif,
-                        heavy_cdr3_motif=heavy_cdr3_motif,
+                        heavy_cdr1_length=search_params.get('heavy_cdr1_length') if search_params.get('heavy_cdr1_length') is not None else None,
+                        heavy_cdr2_length=search_params.get('heavy_cdr2_length') if search_params.get('heavy_cdr2_length') is not None else None,
+                        heavy_cdr3_length=search_params.get('heavy_cdr3_length') if search_params.get('heavy_cdr3_length') is not None else None,
+                        heavy_cdr1_motif=search_params.get('heavy_cdr1_motif', ''),
+                        heavy_cdr2_motif=search_params.get('heavy_cdr2_motif', ''),
+                        heavy_cdr3_motif=search_params.get('heavy_cdr3_motif', ''),
+                        heavy_cdr1_similarity=search_params.get('heavy_cdr1_similarity', False),
+                        heavy_cdr2_similarity=search_params.get('heavy_cdr2_similarity', False),
+                        heavy_cdr3_similarity=search_params.get('heavy_cdr3_similarity', False),
+                        heavy_cdr1_mismatches=search_params.get('heavy_cdr1_mismatches', 2),
+                        heavy_cdr2_mismatches=search_params.get('heavy_cdr2_mismatches', 2),
+                        heavy_cdr3_mismatches=search_params.get('heavy_cdr3_mismatches', 2),
                         # Light chain parameters
                         light_v=search_params.get('light_v', ''),
                         light_d=search_params.get('light_d', ''),
                         light_j=search_params.get('light_j', ''),
-                        light_cdr1_length=search_params.get('light_cdr1_length') if search_params.get('light_cdr1_length') and search_params.get('light_cdr1_length') > 0 else None,
-                        light_cdr2_length=search_params.get('light_cdr2_length') if search_params.get('light_cdr2_length') and search_params.get('light_cdr2_length') > 0 else None,
-                        light_cdr3_length=search_params.get('light_cdr3_length') if search_params.get('light_cdr3_length') and search_params.get('light_cdr3_length') > 0 else None,
-                        light_cdr1_motif=light_cdr1_motif,
-                        light_cdr2_motif=light_cdr2_motif,
-                        light_cdr3_motif=light_cdr3_motif,
+                        light_cdr1_length=search_params.get('light_cdr1_length') if search_params.get('light_cdr1_length') is not None else None,
+                        light_cdr2_length=search_params.get('light_cdr2_length') if search_params.get('light_cdr2_length') is not None else None,
+                        light_cdr3_length=search_params.get('light_cdr3_length') if search_params.get('light_cdr3_length') is not None else None,
+                        light_cdr1_motif=search_params.get('light_cdr1_motif', ''),
+                        light_cdr2_motif=search_params.get('light_cdr2_motif', ''),
+                        light_cdr3_motif=search_params.get('light_cdr3_motif', ''),
+                        light_cdr1_similarity=search_params.get('light_cdr1_similarity', False),
+                        light_cdr2_similarity=search_params.get('light_cdr2_similarity', False),
+                        light_cdr3_similarity=search_params.get('light_cdr3_similarity', False),
+                        light_cdr1_mismatches=search_params.get('light_cdr1_mismatches', 2),
+                        light_cdr2_mismatches=search_params.get('light_cdr2_mismatches', 2),
+                        light_cdr3_mismatches=search_params.get('light_cdr3_mismatches', 2),
                         full_results=True,
                         limit=sample_limit
                     )
                     
-                    # Get statistics separately (fast) - use same similarity patterns
+                    # Get statistics separately (fast) - use same similarity parameters
                     stats_df, _ = engine.search(
                         # Heavy chain parameters
                         heavy_v=search_params.get('heavy_v', ''),
                         heavy_d=search_params.get('heavy_d', ''),
                         heavy_j=search_params.get('heavy_j', ''),
-                        heavy_cdr1_length=search_params.get('heavy_cdr1_length') if search_params.get('heavy_cdr1_length') and search_params.get('heavy_cdr1_length') > 0 else None,
-                        heavy_cdr2_length=search_params.get('heavy_cdr2_length') if search_params.get('heavy_cdr2_length') and search_params.get('heavy_cdr2_length') > 0 else None,
-                        heavy_cdr3_length=search_params.get('heavy_cdr3_length') if search_params.get('heavy_cdr3_length') and search_params.get('heavy_cdr3_length') > 0 else None,
-                        heavy_cdr1_motif=heavy_cdr1_motif,
-                        heavy_cdr2_motif=heavy_cdr2_motif,
-                        heavy_cdr3_motif=heavy_cdr3_motif,
+                        heavy_cdr1_length=search_params.get('heavy_cdr1_length') if search_params.get('heavy_cdr1_length') is not None else None,
+                        heavy_cdr2_length=search_params.get('heavy_cdr2_length') if search_params.get('heavy_cdr2_length') is not None else None,
+                        heavy_cdr3_length=search_params.get('heavy_cdr3_length') if search_params.get('heavy_cdr3_length') is not None else None,
+                        heavy_cdr1_motif=search_params.get('heavy_cdr1_motif', ''),
+                        heavy_cdr2_motif=search_params.get('heavy_cdr2_motif', ''),
+                        heavy_cdr3_motif=search_params.get('heavy_cdr3_motif', ''),
+                        heavy_cdr1_similarity=search_params.get('heavy_cdr1_similarity', False),
+                        heavy_cdr2_similarity=search_params.get('heavy_cdr2_similarity', False),
+                        heavy_cdr3_similarity=search_params.get('heavy_cdr3_similarity', False),
+                        heavy_cdr1_mismatches=search_params.get('heavy_cdr1_mismatches', 2),
+                        heavy_cdr2_mismatches=search_params.get('heavy_cdr2_mismatches', 2),
+                        heavy_cdr3_mismatches=search_params.get('heavy_cdr3_mismatches', 2),
                         # Light chain parameters
                         light_v=search_params.get('light_v', ''),
                         light_d=search_params.get('light_d', ''),
                         light_j=search_params.get('light_j', ''),
-                        light_cdr1_length=search_params.get('light_cdr1_length') if search_params.get('light_cdr1_length') and search_params.get('light_cdr1_length') > 0 else None,
-                        light_cdr2_length=search_params.get('light_cdr2_length') if search_params.get('light_cdr2_length') and search_params.get('light_cdr2_length') > 0 else None,
-                        light_cdr3_length=search_params.get('light_cdr3_length') if search_params.get('light_cdr3_length') and search_params.get('light_cdr3_length') > 0 else None,
-                        light_cdr1_motif=light_cdr1_motif,
-                        light_cdr2_motif=light_cdr2_motif,
-                        light_cdr3_motif=light_cdr3_motif,
+                        light_cdr1_length=search_params.get('light_cdr1_length') if search_params.get('light_cdr1_length') is not None else None,
+                        light_cdr2_length=search_params.get('light_cdr2_length') if search_params.get('light_cdr2_length') is not None else None,
+                        light_cdr3_length=search_params.get('light_cdr3_length') if search_params.get('light_cdr3_length') is not None else None,
+                        light_cdr1_motif=search_params.get('light_cdr1_motif', ''),
+                        light_cdr2_motif=search_params.get('light_cdr2_motif', ''),
+                        light_cdr3_motif=search_params.get('light_cdr3_motif', ''),
+                        light_cdr1_similarity=search_params.get('light_cdr1_similarity', False),
+                        light_cdr2_similarity=search_params.get('light_cdr2_similarity', False),
+                        light_cdr3_similarity=search_params.get('light_cdr3_similarity', False),
+                        light_cdr1_mismatches=search_params.get('light_cdr1_mismatches', 2),
+                        light_cdr2_mismatches=search_params.get('light_cdr2_mismatches', 2),
+                        light_cdr3_mismatches=search_params.get('light_cdr3_mismatches', 2),
                         full_results=False
                     )
                 else:
-                    # Unpaired search (backward compatibility) - apply similarity patterns if enabled
-                    cdr1_motif = search_params.get('cdr1_motif', '')
-                    cdr2_motif = search_params.get('cdr2_motif', '')
-                    cdr3_motif = search_params.get('cdr3_motif', '')
-                    
-                    # Apply similarity patterns if toggles are enabled
-                    if search_params.get('cdr1_similarity', False) and cdr1_motif:
-                        cdr1_motif = generate_similarity_pattern(cdr1_motif)
-                    if search_params.get('cdr2_similarity', False) and cdr2_motif:
-                        cdr2_motif = generate_similarity_pattern(cdr2_motif)
-                    if search_params.get('cdr3_similarity', False) and cdr3_motif:
-                        cdr3_motif = generate_similarity_pattern(cdr3_motif)
-                    
+                    # Unpaired search (backward compatibility) - pass similarity parameters directly to search engine
                     sequences_sample_df, statistics = engine.search(
                         ighv=search_params.get('ighv', ''),
                         ighd=search_params.get('ighd', ''),
                         ighj=search_params.get('ighj', ''),
-                        cdr1_length=search_params.get('cdr1_length') if search_params.get('cdr1_length') and search_params.get('cdr1_length') > 0 else None,
-                        cdr2_length=search_params.get('cdr2_length') if search_params.get('cdr2_length') and search_params.get('cdr2_length') > 0 else None,
-                        cdr3_length=search_params.get('cdr3_length') if search_params.get('cdr3_length') and search_params.get('cdr3_length') > 0 else None,
-                        cdr1_motif=cdr1_motif,
-                        cdr2_motif=cdr2_motif,
-                        cdr3_motif=cdr3_motif,
+                        cdr1_length=search_params.get('cdr1_length') if search_params.get('cdr1_length') is not None else None,
+                        cdr2_length=search_params.get('cdr2_length') if search_params.get('cdr2_length') is not None else None,
+                        cdr3_length=search_params.get('cdr3_length') if search_params.get('cdr3_length') is not None else None,
+                        cdr1_motif=search_params.get('cdr1_motif', ''),
+                        cdr2_motif=search_params.get('cdr2_motif', ''),
+                        cdr3_motif=search_params.get('cdr3_motif', ''),
+                        cdr1_similarity=search_params.get('cdr1_similarity', False),
+                        cdr2_similarity=search_params.get('cdr2_similarity', False),
+                        cdr3_similarity=search_params.get('cdr3_similarity', False),
+                        cdr1_mismatches=search_params.get('cdr1_mismatches', 2),
+                        cdr2_mismatches=search_params.get('cdr2_mismatches', 2),
+                        cdr3_mismatches=search_params.get('cdr3_mismatches', 2),
                         full_results=True,
                         limit=sample_limit
                     )
                     
-                    # Get statistics separately (fast) - use same similarity patterns
+                    # Get statistics separately (fast) - use same similarity parameters
                     stats_df, _ = engine.search(
                         ighv=search_params.get('ighv', ''),
                         ighd=search_params.get('ighd', ''),
                         ighj=search_params.get('ighj', ''),
-                        cdr1_length=search_params.get('cdr1_length') if search_params.get('cdr1_length') and search_params.get('cdr1_length') > 0 else None,
-                        cdr2_length=search_params.get('cdr2_length') if search_params.get('cdr2_length') and search_params.get('cdr2_length') > 0 else None,
-                        cdr3_length=search_params.get('cdr3_length') if search_params.get('cdr3_length') and search_params.get('cdr3_length') > 0 else None,
-                        cdr1_motif=cdr1_motif,
-                        cdr2_motif=cdr2_motif,
-                        cdr3_motif=cdr3_motif,
+                        cdr1_length=search_params.get('cdr1_length') if search_params.get('cdr1_length') is not None else None,
+                        cdr2_length=search_params.get('cdr2_length') if search_params.get('cdr2_length') is not None else None,
+                        cdr3_length=search_params.get('cdr3_length') if search_params.get('cdr3_length') is not None else None,
+                        cdr1_motif=search_params.get('cdr1_motif', ''),
+                        cdr2_motif=search_params.get('cdr2_motif', ''),
+                        cdr3_motif=search_params.get('cdr3_motif', ''),
+                        cdr1_similarity=search_params.get('cdr1_similarity', False),
+                        cdr2_similarity=search_params.get('cdr2_similarity', False),
+                        cdr3_similarity=search_params.get('cdr3_similarity', False),
+                        cdr1_mismatches=search_params.get('cdr1_mismatches', 2),
+                        cdr2_mismatches=search_params.get('cdr2_mismatches', 2),
+                        cdr3_mismatches=search_params.get('cdr3_mismatches', 2),
                         full_results=False
                     )
                 
@@ -1434,15 +1573,12 @@ def search_page_content():
                 with col1:
                     # Download statistics
                     stats_csv = stats_df.to_csv(index=False)
-                    # Generate filename based on search parameters
-                    if schema['search_type'] == 'paired':
-                        filename = f"abdb_stats_paired.csv"
-                    else:
-                        filename = f"abdb_stats_unpaired.csv"
+                    # Generate timestamp for filename
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                     st.download_button(
                         label="📊 Download Statistics (CSV)",
                         data=stats_csv,
-                        file_name=filename,
+                        file_name=f"{timestamp}_ABHunter search.csv",
                         mime="text/csv",
                         width='stretch'
                     )
@@ -1462,22 +1598,28 @@ def search_page_content():
                                             heavy_v=search_params.get('heavy_v', ''),
                                             heavy_d=search_params.get('heavy_d', ''),
                                             heavy_j=search_params.get('heavy_j', ''),
-                                            heavy_cdr1_length=search_params.get('heavy_cdr1_length') if search_params.get('heavy_cdr1_length') and search_params.get('heavy_cdr1_length') > 0 else None,
-                                            heavy_cdr2_length=search_params.get('heavy_cdr2_length') if search_params.get('heavy_cdr2_length') and search_params.get('heavy_cdr2_length') > 0 else None,
-                                            heavy_cdr3_length=search_params.get('heavy_cdr3_length') if search_params.get('heavy_cdr3_length') and search_params.get('heavy_cdr3_length') > 0 else None,
+                                            heavy_cdr1_length=search_params.get('heavy_cdr1_length') if search_params.get('heavy_cdr1_length') is not None else None,
+                                            heavy_cdr2_length=search_params.get('heavy_cdr2_length') if search_params.get('heavy_cdr2_length') is not None else None,
+                                            heavy_cdr3_length=search_params.get('heavy_cdr3_length') if search_params.get('heavy_cdr3_length') is not None else None,
                                             heavy_cdr1_motif=search_params.get('heavy_cdr1_motif', ''),
                                             heavy_cdr2_motif=search_params.get('heavy_cdr2_motif', ''),
                                             heavy_cdr3_motif=search_params.get('heavy_cdr3_motif', ''),
+                                            heavy_cdr1_similarity=search_params.get('heavy_cdr1_similarity', False),
+                                            heavy_cdr2_similarity=search_params.get('heavy_cdr2_similarity', False),
+                                            heavy_cdr3_similarity=search_params.get('heavy_cdr3_similarity', False),
                                             # Light chain parameters
                                             light_v=search_params.get('light_v', ''),
                                             light_d=search_params.get('light_d', ''),
                                             light_j=search_params.get('light_j', ''),
-                                            light_cdr1_length=search_params.get('light_cdr1_length') if search_params.get('light_cdr1_length') and search_params.get('light_cdr1_length') > 0 else None,
-                                            light_cdr2_length=search_params.get('light_cdr2_length') if search_params.get('light_cdr2_length') and search_params.get('light_cdr2_length') > 0 else None,
-                                            light_cdr3_length=search_params.get('light_cdr3_length') if search_params.get('light_cdr3_length') and search_params.get('light_cdr3_length') > 0 else None,
+                                            light_cdr1_length=search_params.get('light_cdr1_length') if search_params.get('light_cdr1_length') is not None else None,
+                                            light_cdr2_length=search_params.get('light_cdr2_length') if search_params.get('light_cdr2_length') is not None else None,
+                                            light_cdr3_length=search_params.get('light_cdr3_length') if search_params.get('light_cdr3_length') is not None else None,
                                             light_cdr1_motif=search_params.get('light_cdr1_motif', ''),
                                             light_cdr2_motif=search_params.get('light_cdr2_motif', ''),
                                             light_cdr3_motif=search_params.get('light_cdr3_motif', ''),
+                                            light_cdr1_similarity=search_params.get('light_cdr1_similarity', False),
+                                            light_cdr2_similarity=search_params.get('light_cdr2_similarity', False),
+                                            light_cdr3_similarity=search_params.get('light_cdr3_similarity', False),
                                             full_results=True,
                                             limit=None  # No limit - get everything
                                         )
@@ -1486,12 +1628,15 @@ def search_page_content():
                                             ighv=search_params.get('ighv', ''),
                                             ighd=search_params.get('ighd', ''),
                                             ighj=search_params.get('ighj', ''),
-                                            cdr1_length=search_params.get('cdr1_length') if search_params.get('cdr1_length') and search_params.get('cdr1_length') > 0 else None,
-                                            cdr2_length=search_params.get('cdr2_length') if search_params.get('cdr2_length') and search_params.get('cdr2_length') > 0 else None,
-                                            cdr3_length=search_params.get('cdr3_length') if search_params.get('cdr3_length') and search_params.get('cdr3_length') > 0 else None,
+                                            cdr1_length=search_params.get('cdr1_length') if search_params.get('cdr1_length') is not None else None,
+                                            cdr2_length=search_params.get('cdr2_length') if search_params.get('cdr2_length') is not None else None,
+                                            cdr3_length=search_params.get('cdr3_length') if search_params.get('cdr3_length') is not None else None,
                                             cdr1_motif=search_params.get('cdr1_motif', ''),
                                             cdr2_motif=search_params.get('cdr2_motif', ''),
                                             cdr3_motif=search_params.get('cdr3_motif', ''),
+                                            cdr1_similarity=search_params.get('cdr1_similarity', False),
+                                            cdr2_similarity=search_params.get('cdr2_similarity', False),
+                                            cdr3_similarity=search_params.get('cdr3_similarity', False),
                                             full_results=True,
                                             limit=None  # No limit - get everything
                                         )

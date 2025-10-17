@@ -22,7 +22,7 @@ def render_sidebar():
     - [GitHub Repository](https://github.com/VIIC12/antibody_search#)
     - [Documentation API](https://github.com/VIIC12/antibody_search/API/#)
         
-    
+        
     ---
     ### 📄 License & Credits
     **If you use this software, please cite:** Schlegel, de Riz, Riccabona et al. (2025). *XYZ*. [Link](#)
