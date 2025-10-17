@@ -8,6 +8,7 @@ analytical query engine on Parquet files.
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+import re
 
 import duckdb
 import pandas as pd
@@ -180,6 +181,75 @@ class AntibodySearchEngine:
         
         print(f"✓ Registered {len(parquet_files)} Parquet files")
         print(f"✓ Total sequences: {self.total_sequences:,}")
+    
+    def generate_similarity_pattern(self, motif: str, max_mismatches: int = 2) -> str:
+        """
+        Generate a regex pattern for similarity-based motif matching.
+        
+        Args:
+            motif: The motif pattern (e.g., "YY.D.*G")
+            max_mismatches: Maximum number of amino acid mismatches allowed (default: 2)
+        
+        Returns:
+            A regex pattern that matches sequences with up to max_mismatches differences
+        """
+        if not motif:
+            return ""
+        
+        # Define amino acid similarity groups (based on chemical properties)
+        amino_acid_groups = {
+            'A': '[AILV]',  # Aliphatic
+            'C': '[C]',     # Cysteine (unique)
+            'D': '[DE]',    # Acidic
+            'E': '[DE]',    # Acidic
+            'F': '[FWY]',   # Aromatic
+            'G': '[G]',     # Glycine (unique)
+            'H': '[H]',     # Histidine (unique)
+            'I': '[AILV]',  # Aliphatic
+            'K': '[KR]',    # Basic
+            'L': '[AILV]',  # Aliphatic
+            'M': '[M]',     # Methionine (unique)
+            'N': '[NQ]',    # Amide
+            'P': '[P]',     # Proline (unique)
+            'Q': '[NQ]',    # Amide
+            'R': '[KR]',    # Basic
+            'S': '[ST]',    # Hydroxyl
+            'T': '[ST]',    # Hydroxyl
+            'V': '[AILV]',  # Aliphatic
+            'W': '[FWY]',   # Aromatic
+            'Y': '[FWY]',   # Aromatic
+        }
+        
+        # Convert motif to regex pattern
+        regex_pattern = ""
+        i = 0
+        while i < len(motif):
+            char = motif[i].upper()
+            
+            if char == '*':
+                # Wildcard - match any characters
+                regex_pattern += '.*'
+            elif char == '.':
+                # Single character wildcard
+                regex_pattern += '.'
+            elif char in amino_acid_groups:
+                # Amino acid - create similarity group
+                if max_mismatches > 0:
+                    # Allow the original amino acid or similar ones
+                    original = f'[{char}]'
+                    similar = amino_acid_groups[char]
+                    # Create a pattern that matches either the original or similar amino acids
+                    regex_pattern += f'({original}|{similar})'
+                else:
+                    # Exact match only
+                    regex_pattern += f'[{char}]'
+            else:
+                # Other characters (shouldn't happen with validation)
+                regex_pattern += re.escape(char)
+            
+            i += 1
+        
+        return regex_pattern
     
     def _ensure_metadata_up_to_date(self, parquet_files: list, progress_callback=None):
         """
@@ -375,6 +445,12 @@ class AntibodySearchEngine:
         cdr1_motif: str = "",
         cdr2_motif: str = "",
         cdr3_motif: str = "",
+        cdr1_similarity: bool = False,
+        cdr2_similarity: bool = False,
+        cdr3_similarity: bool = False,
+        cdr1_mismatches: int = 2,
+        cdr2_mismatches: int = 2,
+        cdr3_mismatches: int = 2,
         # Paired parameters
         heavy_v: str = "",
         heavy_d: str = "",
@@ -385,6 +461,9 @@ class AntibodySearchEngine:
         heavy_cdr1_motif: str = "",
         heavy_cdr2_motif: str = "",
         heavy_cdr3_motif: str = "",
+        heavy_cdr1_similarity: bool = False,
+        heavy_cdr2_similarity: bool = False,
+        heavy_cdr3_similarity: bool = False,
         light_v: str = "",
         light_d: str = "",
         light_j: str = "",
@@ -394,6 +473,9 @@ class AntibodySearchEngine:
         light_cdr1_motif: str = "",
         light_cdr2_motif: str = "",
         light_cdr3_motif: str = "",
+        light_cdr1_similarity: bool = False,
+        light_cdr2_similarity: bool = False,
+        light_cdr3_similarity: bool = False,
         # Common parameters
         full_results: bool = False,
         limit: Optional[int] = None
@@ -407,14 +489,17 @@ class AntibodySearchEngine:
             ighv, ighd, ighj: V, D, J genes
             cdr1_length, cdr2_length, cdr3_length: CDR lengths
             cdr1_motif, cdr2_motif, cdr3_motif: CDR motifs
+            cdr1_similarity, cdr2_similarity, cdr3_similarity: Enable similarity search for CDR motifs
             
             # Paired parameters
             heavy_v, heavy_d, heavy_j: Heavy chain genes
             heavy_cdr1_length, heavy_cdr2_length, heavy_cdr3_length: Heavy chain CDR lengths
             heavy_cdr1_motif, heavy_cdr2_motif, heavy_cdr3_motif: Heavy chain CDR motifs
+            heavy_cdr1_similarity, heavy_cdr2_similarity, heavy_cdr3_similarity: Enable similarity search for heavy chain CDR motifs
             light_v, light_d, light_j: Light chain genes
             light_cdr1_length, light_cdr2_length, light_cdr3_length: Light chain CDR lengths
             light_cdr1_motif, light_cdr2_motif, light_cdr3_motif: Light chain CDR motifs
+            light_cdr1_similarity, light_cdr2_similarity, light_cdr3_similarity: Enable similarity search for light chain CDR motifs
             
             # Common parameters
             full_results: Return full sequence data (vs statistics only)
@@ -431,9 +516,13 @@ class AntibodySearchEngine:
                 heavy_v, heavy_d, heavy_j,
                 heavy_cdr1_length, heavy_cdr2_length, heavy_cdr3_length,
                 heavy_cdr1_motif, heavy_cdr2_motif, heavy_cdr3_motif,
+                heavy_cdr1_similarity, heavy_cdr2_similarity, heavy_cdr3_similarity,
+                heavy_cdr1_mismatches, heavy_cdr2_mismatches, heavy_cdr3_mismatches,
                 light_v, light_d, light_j,
                 light_cdr1_length, light_cdr2_length, light_cdr3_length,
                 light_cdr1_motif, light_cdr2_motif, light_cdr3_motif,
+                light_cdr1_similarity, light_cdr2_similarity, light_cdr3_similarity,
+                light_cdr1_mismatches, light_cdr2_mismatches, light_cdr3_mismatches,
                 full_results, limit, start_time
             )
         else:
@@ -441,6 +530,8 @@ class AntibodySearchEngine:
                 ighv, ighd, ighj,
                 cdr1_length, cdr2_length, cdr3_length,
                 cdr1_motif, cdr2_motif, cdr3_motif,
+                cdr1_similarity, cdr2_similarity, cdr3_similarity,
+                cdr1_mismatches, cdr2_mismatches, cdr3_mismatches,
                 full_results, limit, start_time
             )
     
@@ -455,6 +546,12 @@ class AntibodySearchEngine:
         cdr1_motif: str = "",
         cdr2_motif: str = "",
         cdr3_motif: str = "",
+        cdr1_similarity: bool = False,
+        cdr2_similarity: bool = False,
+        cdr3_similarity: bool = False,
+        cdr1_mismatches: int = 2,
+        cdr2_mismatches: int = 2,
+        cdr3_mismatches: int = 2,
         full_results: bool = False,
         limit: Optional[int] = None,
         start_time: float = None
@@ -504,7 +601,6 @@ class AntibodySearchEngine:
         def convert_motif_to_regex(motif):
             if not motif:
                 return ""
-            import re
             regex_pattern = motif
             regex_pattern = re.sub(r'(?<!\.)\*(?!\*)', '.*', regex_pattern)
             regex_pattern = re.escape(regex_pattern)
@@ -512,15 +608,24 @@ class AntibodySearchEngine:
             return regex_pattern
         
         if cdr1_motif:
-            regex_pattern = convert_motif_to_regex(cdr1_motif)
+            if cdr1_similarity:
+                regex_pattern = self.generate_similarity_pattern(cdr1_motif, cdr1_mismatches)
+            else:
+                regex_pattern = convert_motif_to_regex(cdr1_motif)
             conditions.append(f"cdr1_aa ~ '{regex_pattern}'")
         
         if cdr2_motif:
-            regex_pattern = convert_motif_to_regex(cdr2_motif)
+            if cdr2_similarity:
+                regex_pattern = self.generate_similarity_pattern(cdr2_motif, cdr2_mismatches)
+            else:
+                regex_pattern = convert_motif_to_regex(cdr2_motif)
             conditions.append(f"cdr2_aa ~ '{regex_pattern}'")
         
         if cdr3_motif:
-            regex_pattern = convert_motif_to_regex(cdr3_motif)
+            if cdr3_similarity:
+                regex_pattern = self.generate_similarity_pattern(cdr3_motif, cdr3_mismatches)
+            else:
+                regex_pattern = convert_motif_to_regex(cdr3_motif)
             conditions.append(f"cdr3_aa ~ '{regex_pattern}'")
         
         where_clause = " AND ".join(conditions) if conditions else "1=1"
@@ -627,7 +732,13 @@ class AntibodySearchEngine:
                 'cdr3_length': cdr3_length,
                 'cdr1_motif': cdr1_motif,
                 'cdr2_motif': cdr2_motif,
-                'cdr3_motif': cdr3_motif
+                'cdr3_motif': cdr3_motif,
+                'cdr1_similarity': cdr1_similarity,
+                'cdr2_similarity': cdr2_similarity,
+                'cdr3_similarity': cdr3_similarity,
+                'cdr1_mismatches': cdr1_mismatches,
+                'cdr2_mismatches': cdr2_mismatches,
+                'cdr3_mismatches': cdr3_mismatches
             }
         }
         
@@ -644,6 +755,12 @@ class AntibodySearchEngine:
         heavy_cdr1_motif: str = "",
         heavy_cdr2_motif: str = "",
         heavy_cdr3_motif: str = "",
+        heavy_cdr1_similarity: bool = False,
+        heavy_cdr2_similarity: bool = False,
+        heavy_cdr3_similarity: bool = False,
+        heavy_cdr1_mismatches: int = 2,
+        heavy_cdr2_mismatches: int = 2,
+        heavy_cdr3_mismatches: int = 2,
         light_v: str = "",
         light_d: str = "",
         light_j: str = "",
@@ -653,6 +770,12 @@ class AntibodySearchEngine:
         light_cdr1_motif: str = "",
         light_cdr2_motif: str = "",
         light_cdr3_motif: str = "",
+        light_cdr1_similarity: bool = False,
+        light_cdr2_similarity: bool = False,
+        light_cdr3_similarity: bool = False,
+        light_cdr1_mismatches: int = 2,
+        light_cdr2_mismatches: int = 2,
+        light_cdr3_mismatches: int = 2,
         full_results: bool = False,
         limit: Optional[int] = None,
         start_time: float = None
@@ -739,19 +862,28 @@ class AntibodySearchEngine:
         
         # Heavy chain CDR motifs
         if heavy_cdr1_motif:
-            regex_pattern = convert_motif_to_regex(heavy_cdr1_motif)
+            if heavy_cdr1_similarity:
+                regex_pattern = self.generate_similarity_pattern(heavy_cdr1_motif, heavy_cdr1_mismatches)
+            else:
+                regex_pattern = convert_motif_to_regex(heavy_cdr1_motif)
             for col in self.schema['chain_columns']['cdr1_aa']:
                 if '_heavy' in col:
                     conditions.append(f"{col} ~ '{regex_pattern}'")
         
         if heavy_cdr2_motif:
-            regex_pattern = convert_motif_to_regex(heavy_cdr2_motif)
+            if heavy_cdr2_similarity:
+                regex_pattern = self.generate_similarity_pattern(heavy_cdr2_motif, heavy_cdr2_mismatches)
+            else:
+                regex_pattern = convert_motif_to_regex(heavy_cdr2_motif)
             for col in self.schema['chain_columns']['cdr2_aa']:
                 if '_heavy' in col:
                     conditions.append(f"{col} ~ '{regex_pattern}'")
         
         if heavy_cdr3_motif:
-            regex_pattern = convert_motif_to_regex(heavy_cdr3_motif)
+            if heavy_cdr3_similarity:
+                regex_pattern = self.generate_similarity_pattern(heavy_cdr3_motif, heavy_cdr3_mismatches)
+            else:
+                regex_pattern = convert_motif_to_regex(heavy_cdr3_motif)
             for col in self.schema['chain_columns']['cdr3_aa']:
                 if '_heavy' in col:
                     conditions.append(f"{col} ~ '{regex_pattern}'")
@@ -821,19 +953,28 @@ class AntibodySearchEngine:
         
         # Light chain CDR motifs
         if light_cdr1_motif:
-            regex_pattern = convert_motif_to_regex(light_cdr1_motif)
+            if light_cdr1_similarity:
+                regex_pattern = self.generate_similarity_pattern(light_cdr1_motif, light_cdr1_mismatches)
+            else:
+                regex_pattern = convert_motif_to_regex(light_cdr1_motif)
             for col in self.schema['chain_columns']['cdr1_aa']:
                 if '_light' in col:
                     conditions.append(f"{col} ~ '{regex_pattern}'")
         
         if light_cdr2_motif:
-            regex_pattern = convert_motif_to_regex(light_cdr2_motif)
+            if light_cdr2_similarity:
+                regex_pattern = self.generate_similarity_pattern(light_cdr2_motif, light_cdr2_mismatches)
+            else:
+                regex_pattern = convert_motif_to_regex(light_cdr2_motif)
             for col in self.schema['chain_columns']['cdr2_aa']:
                 if '_light' in col:
                     conditions.append(f"{col} ~ '{regex_pattern}'")
         
         if light_cdr3_motif:
-            regex_pattern = convert_motif_to_regex(light_cdr3_motif)
+            if light_cdr3_similarity:
+                regex_pattern = self.generate_similarity_pattern(light_cdr3_motif, light_cdr3_mismatches)
+            else:
+                regex_pattern = convert_motif_to_regex(light_cdr3_motif)
             for col in self.schema['chain_columns']['cdr3_aa']:
                 if '_light' in col:
                     conditions.append(f"{col} ~ '{regex_pattern}'")
@@ -938,6 +1079,12 @@ class AntibodySearchEngine:
                 'heavy_cdr1_motif': heavy_cdr1_motif,
                 'heavy_cdr2_motif': heavy_cdr2_motif,
                 'heavy_cdr3_motif': heavy_cdr3_motif,
+                'heavy_cdr1_similarity': heavy_cdr1_similarity,
+                'heavy_cdr2_similarity': heavy_cdr2_similarity,
+                'heavy_cdr3_similarity': heavy_cdr3_similarity,
+                'heavy_cdr1_mismatches': heavy_cdr1_mismatches,
+                'heavy_cdr2_mismatches': heavy_cdr2_mismatches,
+                'heavy_cdr3_mismatches': heavy_cdr3_mismatches,
                 'light_v': light_v,
                 'light_d': light_d,
                 'light_j': light_j,
@@ -946,7 +1093,13 @@ class AntibodySearchEngine:
                 'light_cdr3_length': light_cdr3_length,
                 'light_cdr1_motif': light_cdr1_motif,
                 'light_cdr2_motif': light_cdr2_motif,
-                'light_cdr3_motif': light_cdr3_motif
+                'light_cdr3_motif': light_cdr3_motif,
+                'light_cdr1_similarity': light_cdr1_similarity,
+                'light_cdr2_similarity': light_cdr2_similarity,
+                'light_cdr3_similarity': light_cdr3_similarity,
+                'light_cdr1_mismatches': light_cdr1_mismatches,
+                'light_cdr2_mismatches': light_cdr2_mismatches,
+                'light_cdr3_mismatches': light_cdr3_mismatches
             }
         }
         

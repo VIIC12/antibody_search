@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 def render_sidebar():
     """Render sidebar content (About and License sections)."""
     st.markdown("""
+    **ABHunter** - High-performance OAS antibody database search
     ### About
     Search the [Observed Antibody Space (OAS)](https://opig.stats.ox.ac.uk/webapps/oas/) 
     database for specific antibody sequences.
@@ -20,10 +21,8 @@ def render_sidebar():
     ### Resources
     - [GitHub Repository](https://github.com/VIIC12/antibody_search#)
     - [Documentation API](https://github.com/VIIC12/antibody_search/API/#)
-    """)
+        
     
-    
-    st.markdown("""
     ---
     ### 📄 License & Credits
     **If you use this software, please cite:** Schlegel, de Riz, Riccabona et al. (2025). *XYZ*. [Link](#)
@@ -33,10 +32,10 @@ def render_sidebar():
         - Olsen, T.H., Boyles, F., and Deane C.M. (2021). *Protein Science*. [Link](#)
         - Kovaltsuk, A., Leem, J. et al (2018). *J. Immunol*. [Link](#)
 
-    **ABHunter** - High-performance OAS antibody database search - GNU GPLv3 License
+    This software is licensed under the GNU GPLv3 License.
     """)
     return
-
+    
 def main():
     """Main entrypoint - handles navigation between pages."""
     
@@ -51,6 +50,12 @@ def main():
             'Report a bug': 'https://github.com/VIIC12/antibody_search/issues',
             'About': "ABHunter - High-performance OAS antibody database search"
         }
+    )
+
+    st.logo(
+        image="public/images/logo.png",
+        size="large",
+        link="",
     )
     
     search = st.Page("pages/search.py", title="Database Search", icon=":material/search:", default=True)
