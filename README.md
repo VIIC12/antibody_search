@@ -1,8 +1,20 @@
 GoogleDoc: https://docs.google.com/document/d/1BVCAJVQurnfQZvjDsTJ6hv-I6SYsuBtdR76jlq3Z0-A/edit?tab=t.0
 
-Dev-Server: http://172.22.180.238/
+Dev-Server from IWE: http://172.22.180.238/
 
 ### For local start w/o docker:
+
+```bash
+# Only once for installation:
+# Create virtual environment
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
 
 ```bash
 source venv/bin/activate
@@ -25,7 +37,7 @@ antibody_search/               # Self-contained antibody_search directory
 ├── app.py                     # Streamlit web interface (main entry)
 ├── pages/
 │   ├── search.py              # Search page
-│   ├── imprint.py             # Imprint page
+│   └── imprint.py             # Imprint page
 ├── requirements.txt           # Python dependencies
 ├── Dockerfile                 # Container configuration
 │
