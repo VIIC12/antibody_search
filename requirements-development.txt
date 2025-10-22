@@ -5,6 +5,7 @@ pandas>=2.0.0
 
 # Web Interface
 streamlit>=1.30.0,<=1.60.0
+click>=8.0.0,<9.0.0
 streamlit-aggrid>=0.3.4
 
 # Progress & Utilities
@@ -12,3 +13,16 @@ tqdm>=4.66.0
 ## Coloring terminal output for /scripts, not for web interface
 rich>=13.0.0
 #https://www.youtube.com/watch?v=4zbehnz-8QU
+
+# Testing & Validation
+pytest>=7.4.0
+pytest-benchmark>=4.0.0
+
+
+
+
+# Development
+## Formatting
+black>=23.0.0
+## Find Python Linter error
+ruff>=0.1.0
