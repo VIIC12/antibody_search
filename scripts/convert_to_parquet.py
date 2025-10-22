@@ -43,6 +43,50 @@ def extract_metadata(filepath: Path) -> Dict[str, Any]:
         return {}
 
 
+def calculate_identity_percentage(sequence: str, germline: str) -> float:
+    """
+    Calculate percentage identity between sequence and germline (reference).
+    The germline sequence is the reference (100% identity), any changes represent mutations.
+    
+    Args:
+        sequence: The actual sequence (e.g., v_sequence_alignment_aa)
+        germline: The germline reference sequence (e.g., v_germline_alignment_aa)
+    
+    Returns:
+        Percentage identity (0-100) based on the germline sequence length, rounded to 2 decimal places
+    """
+    # Check if both are empty/NaN - return NaN
+    seq_empty = pd.isna(sequence) or sequence == ""
+    germline_empty = pd.isna(germline) or germline == ""
+    
+    if seq_empty and germline_empty:
+        return float('nan')
+    
+    # Check if only one is empty - this should not happen, return error
+    if seq_empty or germline_empty:
+        raise ValueError(f"Only one sequence is empty: sequence_empty={seq_empty}, germline_empty={germline_empty}")
+    
+    # Remove gaps and convert to uppercase for comparison
+    sequence_clean = sequence.replace('-', '').replace('.', '').upper()
+    germline_clean = germline.replace('-', '').replace('.', '').upper()
+    
+    # If either sequence is empty after cleaning, return 0
+    if len(sequence_clean) == 0 or len(germline_clean) == 0:
+        return 0.0
+    
+    # Use the germline sequence length as the reference (100%)
+    germline_length = len(germline_clean)
+    
+    # Count identical positions up to the germline sequence length
+    # If sequence is shorter, missing positions count as differences
+    identical = sum(1 for i, germline_char in enumerate(germline_clean) 
+                   if i < len(sequence_clean) and sequence_clean[i] == germline_char)
+    
+    # Calculate percentage based on the germline sequence length and round to 2 decimal places
+    percentage = (identical / germline_length) * 100
+    return round(percentage, 2)
+
+
 def get_columns_for_chain(chain_type: str, extraction_level: int = 1) -> list:
     """
     Determine which columns to extract based on chain type from metadata and extraction level.
@@ -68,12 +112,12 @@ def get_columns_for_chain(chain_type: str, extraction_level: int = 1) -> list:
             "v_sequence_alignment_aa_heavy",
             "d_sequence_alignment_aa_heavy",
             "j_sequence_alignment_aa_heavy",
+            "v_germline_alignment_aa_heavy",
+            "d_germline_alignment_aa_heavy",
+            "j_germline_alignment_aa_heavy",
             "cdr1_aa_heavy",
             "cdr2_aa_heavy",
             "cdr3_aa_heavy",
-            "v_identity_heavy",
-            "d_identity_heavy",
-            "j_identity_heavy",
             # Light chain basic columns
             "v_call_light",
             "d_call_light",
@@ -82,12 +126,12 @@ def get_columns_for_chain(chain_type: str, extraction_level: int = 1) -> list:
             "v_sequence_alignment_aa_light",
             "d_sequence_alignment_aa_light",
             "j_sequence_alignment_aa_light",
+            "v_germline_alignment_aa_light",
+            "d_germline_alignment_aa_light",
+            "j_germline_alignment_aa_light",
             "cdr1_aa_light",
             "cdr2_aa_light",
-            "cdr3_aa_light",
-            "v_identity_light",
-            "d_identity_light",
-            "j_identity_light",
+            "cdr3_aa_light"
         ]
 
         additional_columns = [
@@ -99,6 +143,9 @@ def get_columns_for_chain(chain_type: str, extraction_level: int = 1) -> list:
             "cdr1_heavy",
             "cdr2_heavy",
             "cdr3_heavy",
+            "v_identity_heavy", # How sure is the V gene call?
+            "d_identity_heavy", # How sure is the D gene call?
+            "j_identity_heavy", # How sure is the J gene call?
             # Light chain additional columns
             "sequence_alignment_light",
             "v_sequence_alignment_light",
@@ -107,6 +154,9 @@ def get_columns_for_chain(chain_type: str, extraction_level: int = 1) -> list:
             "cdr1_light",
             "cdr2_light",
             "cdr3_light",
+            "v_identity_light",
+            "d_identity_light",
+            "j_identity_light",
         ]
 
         full_columns = [
@@ -162,6 +212,9 @@ def get_columns_for_chain(chain_type: str, extraction_level: int = 1) -> list:
             "v_sequence_alignment_aa",
             "d_sequence_alignment_aa",
             "j_sequence_alignment_aa",
+            "v_germline_alignment_aa",
+            "d_germline_alignment_aa",
+            "j_germline_alignment_aa",
             "cdr1_aa",
             "cdr2_aa",
             "cdr3_aa",
@@ -212,6 +265,9 @@ def get_columns_for_chain(chain_type: str, extraction_level: int = 1) -> list:
             "v_sequence_alignment_aa",
             "d_sequence_alignment_aa",
             "j_sequence_alignment_aa",
+            "v_germline_alignment_aa",
+            "d_germline_alignment_aa",
+            "j_germline_alignment_aa",
             "cdr1_aa",
             "cdr2_aa",
             "cdr3_aa",
@@ -283,6 +339,9 @@ def convert_file(
     if chain_type == "Unknown":
         logger.error(f"No 'Chain' field found in metadata for {input_path}")
         return {"filename": input_path.name, "error": "No Chain field in metadata"}
+    
+    # Convert to lowercase for comparison
+    chain_type_lower = chain_type.lower()
 
     # Determine columns to keep based on chain type and extraction level
     try:
@@ -311,6 +370,116 @@ def convert_file(
             if col.endswith("_aa") and "cdr" in col:
                 length_col = col.replace("_aa", "_length")
                 df[length_col] = df[col].fillna("").str.len()
+
+        # Calculate percentage identity for V, D, J gene alignments (%SHM)
+        if chain_type_lower == "paired":
+            # Paired data: calculate for both heavy and light chains
+            # Heavy chain %SHM calculations
+            try:
+                df["v_%SHM_heavy"] = df.apply(
+                    lambda row: calculate_identity_percentage(
+                        row["v_sequence_alignment_aa_heavy"], 
+                        row["v_germline_alignment_aa_heavy"]
+                    ), axis=1
+                )
+            except ValueError as e:
+                logger.error(f"Error calculating v_%SHM_heavy: {e}")
+                df["v_%SHM_heavy"] = float('nan')
+            
+            try:
+                df["d_%SHM_heavy"] = df.apply(
+                    lambda row: calculate_identity_percentage(
+                        row["d_sequence_alignment_aa_heavy"], 
+                        row["d_germline_alignment_aa_heavy"]
+                    ), axis=1
+                )
+            except ValueError as e:
+                logger.error(f"Error calculating d_%SHM_heavy: {e}")
+                df["d_%SHM_heavy"] = float('nan')
+            
+            try:
+                df["j_%SHM_heavy"] = df.apply(
+                    lambda row: calculate_identity_percentage(
+                        row["j_sequence_alignment_aa_heavy"], 
+                        row["j_germline_alignment_aa_heavy"]
+                    ), axis=1
+                )
+            except ValueError as e:
+                logger.error(f"Error calculating j_%SHM_heavy: {e}")
+                df["j_%SHM_heavy"] = float('nan')
+            
+            # Light chain %SHM calculations
+            try:
+                df["v_%SHM_light"] = df.apply(
+                    lambda row: calculate_identity_percentage(
+                        row["v_sequence_alignment_aa_light"], 
+                        row["v_germline_alignment_aa_light"]
+                    ), axis=1
+                )
+            except ValueError as e:
+                logger.error(f"Error calculating v_%SHM_light: {e}")
+                df["v_%SHM_light"] = float('nan')
+            
+            try:
+                df["d_%SHM_light"] = df.apply(
+                    lambda row: calculate_identity_percentage(
+                        row["d_sequence_alignment_aa_light"], 
+                        row["d_germline_alignment_aa_light"]
+                    ), axis=1
+                )
+            except ValueError as e:
+                logger.error(f"Error calculating d_%SHM_light: {e}")
+                df["d_%SHM_light"] = float('nan')
+            
+            try:
+                df["j_%SHM_light"] = df.apply(
+                    lambda row: calculate_identity_percentage(
+                        row["j_sequence_alignment_aa_light"], 
+                        row["j_germline_alignment_aa_light"]
+                    ), axis=1
+                )
+            except ValueError as e:
+                logger.error(f"Error calculating j_%SHM_light: {e}")
+                df["j_%SHM_light"] = float('nan')
+        
+        elif chain_type_lower in ["heavy", "light"]:
+            # Unpaired data: calculate for single chain (heavy or light)
+            try:
+                df["v_%SHM"] = df.apply(
+                    lambda row: calculate_identity_percentage(
+                        row["v_sequence_alignment_aa"], 
+                        row["v_germline_alignment_aa"]
+                    ), axis=1
+                )
+            except ValueError as e:
+                logger.error(f"Error calculating v_%SHM: {e}")
+                df["v_%SHM"] = float('nan')
+            
+            try:
+                df["d_%SHM"] = df.apply(
+                    lambda row: calculate_identity_percentage(
+                        row["d_sequence_alignment_aa"], 
+                        row["d_germline_alignment_aa"]
+                    ), axis=1
+                )
+            except ValueError as e:
+                logger.error(f"Error calculating d_%SHM: {e}")
+                df["d_%SHM"] = float('nan')
+            
+            try:
+                df["j_%SHM"] = df.apply(
+                    lambda row: calculate_identity_percentage(
+                        row["j_sequence_alignment_aa"], 
+                        row["j_germline_alignment_aa"]
+                    ), axis=1
+                )
+            except ValueError as e:
+                logger.error(f"Error calculating j_%SHM: {e}")
+                df["j_%SHM"] = float('nan')
+        
+        else:
+            # Invalid chain type
+            raise ValueError(f"Invalid chain type: '{chain_type}'. Expected 'Paired', 'Heavy', or 'Light'")
 
         # Add metadata as columns
         df["file_source"] = input_path.stem
