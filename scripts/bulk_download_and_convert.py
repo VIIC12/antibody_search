@@ -20,11 +20,11 @@ from urllib.parse import urlparse
 import logging
 from typing import List, Set
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tqdm import tqdm
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
-
-from convert_to_parquet import convert_file, get_columns_for_chain
+# Import conversion functions from the same directory
+from convert_to_parquet import convert_file, create_metadata_table
 
 # Setup logging
 logging.basicConfig(
@@ -132,37 +132,33 @@ def download_file(url: str, download_dir: Path) -> Path:
         return None
 
 
-def convert_and_cleanup(csv_path: Path, output_dir: Path, temp_dir: Path) -> bool:
+def convert_and_cleanup(csv_path: Path, output_dir: Path, extraction_level: int = 1) -> dict:
     """Convert CSV to Parquet and clean up."""
     try:
-        # Determine output filename
-        parquet_filename = get_parquet_filename(csv_path.name)
-        parquet_path = output_dir / parquet_filename
+        # Convert to Parquet using the proper function signature
+        logger.info(f"Converting: {csv_path.name}")
         
-        # Convert to Parquet
-        logger.info(f"Converting: {csv_path.name} → {parquet_filename}")
-        
-        success = convert_file(
+        stats = convert_file(
             input_path=csv_path,
             output_dir=output_dir,
-            columns=get_columns_for_chain(csv_path.name)
+            extraction_level=extraction_level
         )
         
-        if success:
-            logger.info(f"✓ Converted: {parquet_filename}")
+        if 'error' not in stats:
+            logger.info(f"✓ Converted: {csv_path.name}")
             
             # Delete the CSV.gz file
             csv_path.unlink()
             logger.info(f"✓ Cleaned up: {csv_path.name}")
             
-            return True
+            return stats
         else:
-            logger.error(f"✗ Conversion failed: {csv_path.name}")
-            return False
+            logger.error(f"✗ Conversion failed: {csv_path.name} - {stats['error']}")
+            return stats
             
     except Exception as e:
         logger.error(f"✗ Conversion error: {csv_path.name} - {e}")
-        return False
+        return {'filename': csv_path.name, 'error': str(e)}
 
 
 def main():
@@ -179,7 +175,7 @@ Examples:
     parser.add_argument(
         '--input',
         required=True,
-        help='Path to bulk download script (.sh file with wget commands)'
+        help='Path to bulk download script (OAS bulk download script.sh file with wget commands)'
     )
     
     parser.add_argument(
@@ -193,16 +189,21 @@ Examples:
         help='Temporary download directory (default: <output>/temp_download)'
     )
     
+    
     parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Show what would be downloaded without actually downloading'
+        '--extraction-level',
+        type=int,
+        choices=[1, 2, 3],
+        default=1,
+        help='Extraction level for data: 1=Basic (default), 2=+Additional, 3=+Full'
     )
     
     parser.add_argument(
-        '--max-files',
+        '-j',
+        '--jobs',
         type=int,
-        help='Maximum number of files to process (for testing)'
+        default=min(os.cpu_count(), 4),  # Limit to 4 to avoid overwhelming the server
+        help='Number of parallel downloads (default: min(CPU cores, 4))'
     )
     
     args = parser.parse_args()
@@ -227,10 +228,6 @@ Examples:
         logger.error("No URLs found in download script")
         sys.exit(1)
     
-    # Limit files if specified
-    if args.max_files:
-        urls = urls[:args.max_files]
-        logger.info(f"Limited to {args.max_files} files for testing")
     
     # Check existing Parquet files (including subdirectories by isotype)
     existing_parquet = set()
@@ -239,7 +236,40 @@ Examples:
     
     logger.info(f"Found {len(existing_parquet)} existing Parquet files")
     
-    # Process URLs
+    def process_single_file(url: str) -> dict:
+        """Process a single URL: download and convert."""
+        csv_filename = get_filename_from_url(url)
+        parquet_filename = get_parquet_filename(csv_filename)
+        
+        # Check if Parquet already exists
+        if parquet_filename in existing_parquet:
+            return {'status': 'skipped', 'filename': csv_filename, 'reason': 'Parquet exists'}
+        
+        # Download file
+        csv_path = download_file(url, temp_dir)
+        
+        if csv_path is None:
+            return {'status': 'failed', 'filename': csv_filename, 'reason': 'Download failed'}
+        
+        # Convert to Parquet
+        stats = convert_and_cleanup(csv_path, output_dir, args.extraction_level)
+        
+        if 'error' not in stats:
+            return {'status': 'success', 'filename': csv_filename, 'stats': stats}
+        else:
+            # Clean up failed download file
+            try:
+                if csv_path.exists():
+                    csv_path.unlink()
+                    logger.info(f"✓ Cleaned up failed download: {csv_filename}")
+            except Exception as e:
+                logger.warning(f"⚠️  Could not clean up failed download {csv_filename}: {e}")
+            return {'status': 'failed', 'filename': csv_filename, 'reason': stats['error']}
+    
+    # Process URLs in parallel
+    logger.info(f"Processing {len(urls)} URLs with {args.jobs} parallel workers")
+    logger.info(f"Extraction level: {args.extraction_level}")
+    
     stats = {
         'total': len(urls),
         'skipped': 0,
@@ -248,43 +278,64 @@ Examples:
         'failed': 0
     }
     
+    conversion_stats = []  # Store conversion statistics for metadata creation
+    
     start_time = time.time()
     
-    for i, url in enumerate(urls, 1):
-        logger.info(f"\n[{i}/{len(urls)}] Processing: {url}")
+    # Process files in parallel
+    with ThreadPoolExecutor(max_workers=args.jobs) as executor:
+        # Submit all tasks
+        future_to_url = {
+            executor.submit(process_single_file, url): url
+            for url in urls
+        }
         
-        # Get filenames
-        csv_filename = get_filename_from_url(url)
-        parquet_filename = get_parquet_filename(csv_filename)
-        
-        # Check if Parquet already exists
-        if parquet_filename in existing_parquet:
-            logger.info(f"⏭️  Skipping (Parquet exists): {parquet_filename}")
-            stats['skipped'] += 1
-            continue
-        
-        if args.dry_run:
-            logger.info(f"🔍 Would download: {csv_filename}")
-            stats['downloaded'] += 1
-            continue
-        
-        # Download file
-        csv_path = download_file(url, temp_dir)
-        
-        if csv_path is None:
-            stats['failed'] += 1
-            continue
-        
-        stats['downloaded'] += 1
-        
-        # Convert to Parquet
-        if convert_and_cleanup(csv_path, output_dir, temp_dir):
-            stats['converted'] += 1
-        else:
-            stats['failed'] += 1
+        # Process completed tasks with progress bar
+        for future in tqdm(as_completed(future_to_url), total=len(urls), desc="Processing files"):
+            result = future.result()
+            
+            if result['status'] == 'skipped':
+                stats['skipped'] += 1
+                logger.info(f"⏭️  Skipped: {result['filename']}")
+            elif result['status'] == 'success':
+                stats['downloaded'] += 1
+                stats['converted'] += 1
+                conversion_stats.append(result['stats'])
+                logger.info(f"✓ Processed: {result['filename']}")
+            else:
+                stats['failed'] += 1
+                logger.error(f"✗ Failed: {result['filename']} - {result['reason']}")
+    
+    # Create metadata tables from all converted files
+    if conversion_stats:
+        logger.info("Creating metadata tables...")
+        create_metadata_table(conversion_stats, output_dir)
+    
+    # Clean up temporary download directory
+    if temp_dir.exists() and temp_dir != output_dir:
+        logger.info("Cleaning up temporary download directory...")
+        try:
+            import shutil
+            shutil.rmtree(temp_dir)
+            logger.info(f"✓ Cleaned up: {temp_dir}")
+        except Exception as e:
+            logger.warning(f"⚠️  Could not clean up temp directory {temp_dir}: {e}")
     
     # Summary
     elapsed = time.time() - start_time
+    
+    # Format elapsed time nicely
+    hours = int(elapsed // 3600)
+    minutes = int((elapsed % 3600) // 60)
+    seconds = elapsed % 60
+    
+    if hours > 0:
+        time_str = f"{hours}h {minutes}m {seconds:.1f}s"
+    elif minutes > 0:
+        time_str = f"{minutes}m {seconds:.1f}s"
+    else:
+        time_str = f"{seconds:.1f}s"
+    
     logger.info(f"\n{'='*60}")
     logger.info("SUMMARY")
     logger.info(f"{'='*60}")
@@ -293,7 +344,7 @@ Examples:
     logger.info(f"Downloaded: {stats['downloaded']}")
     logger.info(f"Converted: {stats['converted']}")
     logger.info(f"Failed: {stats['failed']}")
-    logger.info(f"Time elapsed: {elapsed:.1f} seconds")
+    logger.info(f"⏱️  Total time: {time_str}")
     
     if stats['failed'] > 0:
         logger.warning(f"⚠️  {stats['failed']} files failed - check logs for details")
