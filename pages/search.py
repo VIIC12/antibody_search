@@ -1029,6 +1029,7 @@ def search_page_content():
         elif not check_metadata_freshness(selected_db):
             st.warning("🔄 Database files have been updated!")
         
+        
     # Handle reindex request with progress bar (only in development)
     if st.session_state.get('reindex_requested', False) and not is_production():
         reindex_db = st.session_state.get('reindex_db', selected_db)
