@@ -2,8 +2,13 @@ GoogleDoc: https://docs.google.com/document/d/1BVCAJVQurnfQZvjDsTJ6hv-I6SYsuBtdR
 
 Dev-Server from IWE: http://172.22.180.238/
 
-### For local start w/o docker:
+# ABHunter - Optimized Antibody Database Search
 
+High-performance antibody sequence search tool using DuckDB and Parquet
+
+### For local execution w/o docker
+
+#### Installation
 ```bash
 # Only once for installation:
 # Create virtual environment
@@ -12,23 +17,22 @@ python3 -m venv venv
 # Activate virtual environment
 source venv/bin/activate
 
+# clone repository, go into the antibody_search directory
+git clone https://github.com/VIIC12/antibody_search.git
+cd antibody_search
+
 # Install dependencies
 pip install -r requirements.txt
 ```
 
+#### Execution
 ```bash
-source venv/bin/activate
 export ABHUNTER_DB_PATH=./data
 streamlit run app.py
 ```
+then open the link in your browser
 
-
-
-# ABHunter - Optimized Antibody Database Search
-
-High-performance antibody sequence search tool using DuckDB and Parquet
-
-## Overview
+# Overview
 
 ## Architecture
 
