@@ -4,7 +4,7 @@ Dev-Server from IWE: http://172.22.180.238/
 
 # ABHunter - Optimized Antibody Database Search
 
-High-performance antibody sequence search tool using DuckDB and Parquet
+We introduce ABHUNTER, a database search tool that systematically analyzes antibody sequence and population repertoire data to identify individuals possessing the necessary gene segments and paratope features for bnAb development. By quantifying the accessibility of bnAb precursors, ABHUNTER facilitates the prioritization of bnAb lineages with high therapeutic and vaccine potential, enabling rational design of broadly effective germline-targeting interventions.
 
 ### For local execution w/o docker
 
@@ -36,6 +36,7 @@ then open the link in your browser
 
 ## Architecture
 
+High-performance antibody sequence search tool using DuckDB and Parquet
 ```
 antibody_search/               # Self-contained antibody_search directory
 ├── app.py                     # Streamlit web interface (main entry)
