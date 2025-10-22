@@ -6,12 +6,17 @@ analytical query engine on Parquet files.
 """
 
 import time
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import re
 
 import duckdb
 import pandas as pd
+
+# Configuration: Number of threads for DuckDB queries
+# Set to None to use all available cores, or specify a number (e.g., 4)
+DUCKDB_THREADS = None  # Change this to set a specific thread count
 
 class AntibodySearchEngine:
     """High-performance antibody sequence search using DuckDB.
@@ -38,6 +43,15 @@ class AntibodySearchEngine:
         # Connect to DuckDB with the specified database path
         self.conn = duckdb.connect(database=db_path)
         self.db_path = db_path
+
+        # Configure thread count based on global setting
+        if DUCKDB_THREADS is not None:
+            self.conn.execute(f"SET threads = {DUCKDB_THREADS}")
+            print(f"✓ DuckDB configured to use {DUCKDB_THREADS} threads")
+        else:
+            # Use all available cores (DuckDB default)
+            available_cores = os.cpu_count()
+            print(f"✓ DuckDB using all available cores: {available_cores}")
         
         # Detect database schema (paired vs unpaired)
         self.schema = self._detect_schema()
@@ -1147,6 +1161,37 @@ class AntibodySearchEngine:
             'is_memory_db': self.db_path == ":memory:"
         }
     
+    ## Thread configuration starts here ##
+    def get_current_threads(self) -> int:
+        """Get the current number of threads DuckDB is using."""
+        result = self.conn.execute("SELECT current_setting('threads')").fetchone()
+        return int(result[0]) if result else 0
+
+    def print_thread_info(self):
+        """Print current thread configuration."""
+        threads = self.get_current_threads()
+        print(f"Current DuckDB thread count: {threads}")
+
+    def configure_threads(self, num_threads: int):
+        """
+        Configure the number of threads DuckDB uses for query execution.
+        This can be called on an existing connection without reloading the database.
+        
+        Args:
+            num_threads: Number of threads to use (1 to CPU count)
+        """
+        if num_threads < 1:
+            raise ValueError("Number of threads must be at least 1")
+        
+        self.conn.execute(f"SET threads = {num_threads}")
+        print(f"✓ DuckDB reconfigured to use {num_threads} threads")
+        
+        # Verify the setting
+        actual_threads = self.get_current_threads()
+        print(f"✓ Current thread setting: {actual_threads}")
+
+    ## Thread configuration ends here ##
+
     def close(self):
         """Close database connection."""
         self.conn.close()
