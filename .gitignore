@@ -15,7 +15,14 @@ logs/
 ENV/
 
 # Data
-# data/
+data/
+Benchmark*/
+docs/
+*.pages
+test/
+test_large_download.py
+plots/
+scripts/
 # *.parquet
 # *.csv
 # *.csv.gz

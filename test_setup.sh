@@ -78,7 +78,7 @@ try:
     print(f"✓ Total sequences loaded: {engine.total_sequences:,}")
     
     # Quick test search
-    results_df, stats = engine.search(ighv="3-", full_results=False)
+    results_df, stats_df, stats = engine.search(ighv="3-", full_results=False)
     print(f"✓ Test search successful: {stats['total_hits']:,} hits in {stats['search_time']}s")
     
     engine.close()

@@ -365,9 +365,9 @@ def convert_file(
 
         # Calculate CDR lengths from amino acid sequences
         # Handle both unpaired and paired data
-        # -> cdr1_length, cdr1_lengt_hevy, cdr1_length_light
+        # -> cdr1_length, cdr1_length_heavy, cdr1_length_light
         for col in df.columns:
-            if col.endswith("_aa") and "cdr" in col:
+            if "_aa" in col and "cdr" in col:
                 length_col = col.replace("_aa", "_length")
                 df[length_col] = df[col].fillna("").str.len()
 
@@ -534,7 +534,7 @@ def convert_file(
 
 
 def create_metadata_table(stats_list: list, output_dir: Path):
-    """Create metadata tables for each subdirectory containing Parquet files."""
+    """Create or update metadata tables for each subdirectory containing Parquet files."""
     # Group records by chain type and isotype (subdirectory structure)
     grouped_records = {}
 
@@ -552,27 +552,52 @@ def create_metadata_table(stats_list: list, output_dir: Path):
 
             record = {
                 "filename": stats["filename"],
+                "file_path": f"{chain_type}/{isotype}/{stats['filename'].replace('.csv.gz', '.parquet')}",
                 "rows": stats["rows"],
+                "total_sequences": stats["rows"],  # For compatibility with search engine
                 "subject": metadata.get("Subject"),
                 "isotype": metadata.get("Isotype"),
                 "disease": metadata.get("Disease"),
                 "species": metadata.get("Species"),
+                "vaccine": metadata.get("Vaccine"),
+                "chain": metadata.get("Chain"),
                 "unique_sequences": metadata.get("Unique sequences"),
             }
             grouped_records[subdir_key].append(record)
 
-    # Create metadata file in each subdirectory
+    # Create or update metadata file in each subdirectory
     for (chain_type, isotype), records in grouped_records.items():
         if records:
-            metadata_df = pd.DataFrame(records)
-
             # Create metadata file in the same directory as the Parquet files
             subdir = output_dir / chain_type / isotype
             metadata_path = subdir / "metadata.parquet"
-            metadata_df.to_parquet(metadata_path, index=False)
-            logger.info(
-                f"Created metadata table: {metadata_path} ({len(records)} files)"
-            )
+            
+            # Check if metadata file already exists
+            existing_df = None
+            if metadata_path.exists():
+                try:
+                    existing_df = pd.read_parquet(metadata_path)
+                    logger.info(f"Found existing metadata file: {metadata_path} ({len(existing_df)} files)")
+                except Exception as e:
+                    logger.warning(f"Could not read existing metadata file {metadata_path}: {e}")
+                    existing_df = None
+            
+            # Create new records DataFrame
+            new_df = pd.DataFrame(records)
+            
+            if existing_df is not None:
+                # Merge with existing data, removing duplicates based on filename
+                # This handles both new files and updated files
+                combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+                # Remove duplicates, keeping the last occurrence (newest data)
+                combined_df = combined_df.drop_duplicates(subset=['filename'], keep='last')
+                logger.info(f"Updated metadata table: {metadata_path} ({len(combined_df)} total files, {len(records)} new/updated)")
+            else:
+                combined_df = new_df
+                logger.info(f"Created new metadata table: {metadata_path} ({len(records)} files)")
+            
+            # Save the updated metadata
+            combined_df.to_parquet(metadata_path, index=False)
 
 
 def main():
