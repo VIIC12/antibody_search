@@ -29,7 +29,7 @@ from components.test_utils import (
 # Override page title (inherits other settings from app.py)
 st.set_page_config(page_title="ABHunter - Database Search")
 
-# Inject CSS for spinner animation
+# Inject CSS for spinner animation and hide disabled form buttons
 st.markdown("""
 <style>
 @keyframes spin {
@@ -45,6 +45,13 @@ st.markdown("""
     height: 16px;
     animation: spin 1s linear infinite;
     display: inline-block;
+}
+
+/* Hide all disabled form submit buttons globally */
+div[data-testid="stForm"] button[kind="formSubmit"]:disabled,
+button[kind="formSubmit"]:disabled {
+    display: none !important;
+    visibility: hidden !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -533,19 +540,12 @@ def search_page_content():
             )
         elif search_status == "running":
             # Show hidden disabled submit button (required by Streamlit, but we show custom button above)
+            # This button is hidden by global CSS (see top of file)
             search_submitted = st.form_submit_button(
                 "🔍 Search Database",
                 disabled=True,
                 use_container_width=True
             )
-            # Hide this button with CSS since we show custom one above
-            st.markdown("""
-            <style>
-            div[data-testid="stForm"] button[kind="formSubmit"]:disabled {
-                display: none;
-            }
-            </style>
-            """, unsafe_allow_html=True)
         else:
             # For completed/failed, show disabled submit button with status
             result = st.session_state.search_result
@@ -556,11 +556,16 @@ def search_page_content():
             else:
                 button_label = "❌ Search Failed"
             
+            # This button is hidden by global CSS (see top of file)
             search_submitted = st.form_submit_button(
                 button_label,
                 disabled=True,
                 use_container_width=True
             )
+    
+    # Ensure form is completely closed before rendering results
+    # Add a small spacer to separate form from results
+    st.markdown("<br>", unsafe_allow_html=True)
     
     results_container = st.empty()
     
