@@ -786,6 +786,10 @@ def render_search_criteria_display(search_params: Dict[str, Any], is_paired: boo
         search_params: Search parameters dictionary
         is_paired: Whether this is a paired search
     """
+    # Handle None or empty search_params
+    if not search_params:
+        search_params = {}
+    
     # Add divider above
     st.divider()
     
@@ -796,32 +800,33 @@ def render_search_criteria_display(search_params: Dict[str, Any], is_paired: boo
     with st.expander("📋 Last Search Parameters", expanded=True):
         # Show selected databases in a compact format
         selected_databases = st.session_state.get('selected_databases', [])
-    if selected_databases:
-        db_names = []
-        for db_path in selected_databases:
-            db_name = Path(db_path).name
-            parent_name = Path(db_path).parent.name
-            db_names.append(f"{parent_name}/{db_name}")
+        if selected_databases:
+            db_names = []
+            for db_path in selected_databases:
+                db_name = Path(db_path).name
+                parent_name = Path(db_path).parent.name
+                db_names.append(f"{parent_name}/{db_name}")
+            # Display databases once after building the list
             st.markdown(f"**Databases:** {', '.join(db_names)}")
-    
-    if is_paired:
-            # Paired search - show Heavy and Light chain parameters in columns
-        col1, col2 = st.columns(2)
         
-        with col1:
+        if is_paired:
+            # Paired search - show Heavy and Light chain parameters in columns
+            col1, col2 = st.columns(2)
+            
+            with col1:
                 st.markdown("**🧬 Heavy Chain:**")
                 _render_chain_criteria_compact(search_params, "heavy_", chain_type="Heavy")
-        
-        with col2:
+            
+            with col2:
                 st.markdown("**🔬 Light Chain:**")
                 _render_chain_criteria_compact(search_params, "light_", chain_type="Light")
-    else:
-        # Unpaired search - determine chain type from search_params or databases
-        chain_type = _determine_unpaired_chain_type(search_params, selected_databases)
-        display_params = dict(search_params)
-        st.markdown(f"**{'🧬' if chain_type == 'Heavy' else '🔬'} {chain_type} Chain:**")
-        prefix = "heavy_" if chain_type == "Heavy" else "light_"
-        _render_chain_criteria_compact(display_params, prefix, chain_type=chain_type)
+        else:
+            # Unpaired search - determine chain type from search_params or databases
+            chain_type = _determine_unpaired_chain_type(search_params, selected_databases)
+            display_params = dict(search_params)
+            st.markdown(f"**{'🧬' if chain_type == 'Heavy' else '🔬'} {chain_type} Chain:**")
+            prefix = "heavy_" if chain_type == "Heavy" else "light_"
+            _render_chain_criteria_compact(display_params, prefix, chain_type=chain_type)
 
 
 def _render_chain_criteria(search_params: Dict[str, Any], prefix: str, chain_type: str = "Heavy") -> None:
