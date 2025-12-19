@@ -1,0 +1,838 @@
+"""
+Search form components for antibody database search.
+
+This module provides reusable form components for Heavy and Light chain searches,
+eliminating code duplication and improving maintainability.
+"""
+
+import streamlit as st
+from typing import Dict, Any, List, Tuple, Optional
+
+from components.search.styling import render_chain_heading
+
+
+def validate_gene_input(gene_str: str, field_name: str = "") -> bool:
+    """
+    Validate gene input - only allow numbers, dashes, commas, pipes, and asterisks.
+    For light chain fields, also allow L and K prefixes (for Lambda/Kappa).
+    
+    Returns True if valid, False otherwise.
+    """
+    import re
+    if not gene_str:
+        return True
+    
+    # Check if this is a light chain field
+    is_light_chain = 'light' in field_name.lower() or 'igl' in field_name.lower()
+    
+    if is_light_chain:
+        # Allow: digits, dash, comma, pipe, asterisk, whitespace, L, K (for Lambda/Kappa prefixes)
+        pattern = re.compile(r'^[0-9\-,|\*\sLlKk]+$')
+    else:
+        # Only allow: digits, dash, comma, pipe, asterisk, whitespace
+        pattern = re.compile(r'^[0-9\-,|\*\s]+$')
+    
+    return pattern.match(gene_str) is not None
+
+
+def validate_cdr_length_input(length_str: str) -> Tuple[bool, Optional[str]]:
+    """
+    Validate CDR length input - allow fixed values, ranges, and comparisons.
+    
+    Supported formats:
+    - Fixed value: "2" or "10"
+    - Range: "2-5" or "10-20"
+    - Greater than: ">2" or ">=2"
+    - Less than: "<5" or "<=5"
+    - Combined: ">=2" and "<10" (handled separately)
+    
+    Args:
+        length_str: Input string to validate
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    import re
+    if not length_str or not length_str.strip():
+        return True, None
+    
+    length_str = length_str.strip()
+    
+    # Pattern for fixed value: just digits
+    if re.match(r'^\d+$', length_str):
+        return True, None
+    
+    # Pattern for range: digits-digits
+    if re.match(r'^\d+-\d+$', length_str):
+        parts = length_str.split('-')
+        if len(parts) == 2:
+            try:
+                min_val = int(parts[0])
+                max_val = int(parts[1])
+                if min_val > max_val:
+                    return False, "Range minimum must be less than or equal to maximum"
+                return True, None
+            except ValueError:
+                return False, "Range values must be integers"
+        return False, "Invalid range format"
+    
+    # Pattern for comparisons: >, >=, <, <= followed by digits
+    if re.match(r'^[><]=?\d+$', length_str):
+        return True, None
+    
+    return False, "Invalid format. Use: number (e.g., '2'), range (e.g., '2-5'), or comparison (e.g., '>2', '<5', '>=2', '<=10')"
+
+
+def parse_cdr_length_condition(column_name: str, length_str: str) -> Optional[str]:
+    """
+    Parse CDR length string into SQL WHERE clause condition.
+    
+    Args:
+        column_name: Name of the CDR length column (e.g., 'cdr1_length')
+        length_str: Input string (e.g., "2", "2-5", ">2", "<5", ">=2", "<=10")
+        
+    Returns:
+        SQL condition string or None if input is empty/invalid
+    """
+    import re
+    if not length_str or not length_str.strip():
+        return None
+    
+    length_str = length_str.strip()
+    
+    # Fixed value: "2" -> "cdr1_length = 2"
+    if re.match(r'^\d+$', length_str):
+        return f"{column_name} = {int(length_str)}"
+    
+    # Range: "2-5" -> "cdr1_length >= 2 AND cdr1_length <= 5"
+    if re.match(r'^\d+-\d+$', length_str):
+        parts = length_str.split('-')
+        min_val = int(parts[0])
+        max_val = int(parts[1])
+        return f"{column_name} >= {min_val} AND {column_name} <= {max_val}"
+    
+    # Greater than: ">2" -> "cdr1_length > 2"
+    if re.match(r'^>\d+$', length_str):
+        val = int(length_str[1:])
+        return f"{column_name} > {val}"
+    
+    # Greater than or equal: ">=2" -> "cdr1_length >= 2"
+    if re.match(r'^>=\d+$', length_str):
+        val = int(length_str[2:])
+        return f"{column_name} >= {val}"
+    
+    # Less than: "<5" -> "cdr1_length < 5"
+    if re.match(r'^<\d+$', length_str):
+        val = int(length_str[1:])
+        return f"{column_name} < {val}"
+    
+    # Less than or equal: "<=10" -> "cdr1_length <= 10"
+    if re.match(r'^<=\d+$', length_str):
+        val = int(length_str[2:])
+        return f"{column_name} <= {val}"
+    
+    # If we get here, the input was invalid (should have been caught by validation)
+    return None
+
+
+def validate_motif_input(motif_str: str) -> bool:
+    """
+    Validate CDR motif input - allow valid amino acids, dots, asterisks, curly braces for ranges,
+    and square brackets for explicit alternative amino acids.
+    
+    Returns True if valid, False otherwise.
+    """
+    import re
+    if not motif_str:
+        return True
+    
+    # Allow: 20 standard amino acids, dot (.), asterisk (*), curly braces {n} or {n-m},
+    # and square brackets [ABC] for explicit alternatives
+    # Valid amino acids: A C D E F G H I K L M N P Q R S T V W Y
+    # Curly braces: {n} for exactly n chars, or {n-m} for n to m chars range (dash is required for ranges)
+    # Square brackets: [ABC] where A, B, C are amino acids
+    # Note: The dash (-) character is allowed in curly braces for range syntax: {n-m}
+    pattern = re.compile(r'^[ACDEFGHIKLMNPQRSTVWY\.\*\s\{\}\-\[\]0-9]+$', re.IGNORECASE)
+    
+    if not pattern.match(motif_str):
+        return False
+    
+    # Validate curly brace syntax: {n} or {n-m} where n,m are digits
+    # Check for balanced braces and valid range syntax
+    brace_pattern = re.compile(r'\{(\d+)(?:-(\d+))?\}')
+    for match in brace_pattern.finditer(motif_str):
+        start_pos = match.start()
+        end_pos = match.end()
+        # Check that braces are preceded by . or *
+        if start_pos > 0:
+            prev_char = motif_str[start_pos - 1]
+            if prev_char not in ['.', '*']:
+                return False
+    
+    # Validate square bracket syntax: [ABC] where A, B, C are amino acids
+    # Check for balanced brackets and valid amino acids inside
+    bracket_pattern = re.compile(r'\[([^\]]+)\]')
+    bracket_matches = list(bracket_pattern.finditer(motif_str))
+    # Check that all [ and ] are properly matched
+    open_brackets = motif_str.count('[')
+    close_brackets = motif_str.count(']')
+    if open_brackets != close_brackets:
+        return False
+    for match in bracket_matches:
+        content = match.group(1)
+        # Content should only contain valid amino acids
+        if not re.match(r'^[ACDEFGHIKLMNPQRSTVWY]+$', content, re.IGNORECASE):
+            return False
+    
+    return True
+
+
+def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled: bool = False) -> Tuple[Dict[str, Any], List[str], bool]:
+    """
+    Create form fields for Heavy chain search.
+    
+    Args:
+        prefix: Prefix for field keys (e.g., "heavy_" for paired forms, "" for unpaired)
+        show_title: Whether to show the section title
+        disabled: Whether to disable all form fields
+        
+    Returns:
+        Tuple of (params_dict, validation_errors_list, valid_bool)
+    """
+    validation_errors = []
+    
+    if show_title:
+        render_chain_heading("Heavy Chain", "heavy", level=4, icon="🧬")
+    
+    # Gene fields
+    col1, col2, col3 = st.columns(3)
+    
+    v_key = f"{prefix}v_input" if prefix else "ighv_input"
+    d_key = f"{prefix}d_input" if prefix else "ighd_input"
+    j_key = f"{prefix}j_input" if prefix else "ighj_input"
+    
+    with col1:
+        v_valid = True
+        v = st.text_input(
+            "IGHV Gene",
+            placeholder="e.g., 3,4 or 3-23*01",
+            help="Single: 3 or 3-23 | Multiple: 3,4 or 3-20,3-22",
+            key=v_key,
+            disabled=disabled
+        )
+        if v and not validate_gene_input(v):
+            st.error("❌ Only: numbers, **-** , **|** **\\***")
+            v_valid = False
+            validation_errors.append(f"{'Heavy ' if prefix else ''}IGHV Gene")
+    
+    with col2:
+        d_valid = True
+        d = st.text_input(
+            "IGHD Gene",
+            placeholder="e.g., 2-21 or 2",
+            help="Single: 2 or 2-21 | Multiple: 2,3 or 2-15,2-21",
+            key=d_key,
+            disabled=disabled
+        )
+        if d and not validate_gene_input(d):
+            st.error("❌ Only: numbers, **-** , **|** **\\***")
+            d_valid = False
+            validation_errors.append(f"{'Heavy ' if prefix else ''}IGHD Gene")
+    
+    with col3:
+        j_valid = True
+        j = st.text_input(
+            "IGHJ Gene",
+            placeholder="e.g., 4 or J4",
+            help="Single: 4 or J4 | Multiple: 4,5 or J4,J5",
+            key=j_key,
+            disabled=disabled
+        )
+        if j and not validate_gene_input(j):
+            st.error("❌ Only: numbers, **-** , **|** **\\***")
+            j_valid = False
+            validation_errors.append(f"{'Heavy ' if prefix else ''}IGHJ Gene")
+    
+    # CDR Length fields
+    if show_title:
+        render_chain_heading(
+            "Heavy Chain CDR Lengths (amino acids)",
+            "heavy",
+            level=5,
+            margin_top="0.75rem",
+            margin_bottom="0.25rem",
+            use_chain_color=False,
+        )
+    else:
+        render_chain_heading(
+            "CDR Lengths (amino acids)",
+            "heavy",
+            level=5,
+            margin_top="0.75rem",
+            margin_bottom="0.25rem",
+            use_chain_color=False,
+        )
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    cdr1_length_key = f"{prefix}cdr1_length_input" if prefix else "cdr1_length_input"
+    cdr2_length_key = f"{prefix}cdr2_length_input" if prefix else "cdr2_length_input"
+    cdr3_length_key = f"{prefix}cdr3_length_input" if prefix else "cdr3_length_input"
+    
+    with col1:
+        cdr1_length_valid = True
+        cdr1_length = st.text_input(
+            "CDRH1 Length",
+            placeholder="e.g., 2, 2-5, >2, <5, >=2, <=10",
+            help="Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10",
+            key=cdr1_length_key,
+            disabled=disabled
+        )
+        if cdr1_length:
+            is_valid, error_msg = validate_cdr_length_input(cdr1_length)
+            if not is_valid:
+                st.error(f"❌ {error_msg}")
+                cdr1_length_valid = False
+                validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH1 Length")
+            else:
+                cdr1_length = cdr1_length.strip()
+        else:
+            cdr1_length = None
+    
+    with col2:
+        cdr2_length_valid = True
+        cdr2_length = st.text_input(
+            "CDRH2 Length",
+            placeholder="e.g., 2, 2-5, >2, <5, >=2, <=10",
+            help="Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10",
+            key=cdr2_length_key,
+            disabled=disabled
+        )
+        if cdr2_length:
+            is_valid, error_msg = validate_cdr_length_input(cdr2_length)
+            if not is_valid:
+                st.error(f"❌ {error_msg}")
+                cdr2_length_valid = False
+                validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH2 Length")
+            else:
+                cdr2_length = cdr2_length.strip()
+        else:
+            cdr2_length = None
+    
+    with col3:
+        cdr3_length_valid = True
+        cdr3_length = st.text_input(
+            "CDRH3 Length",
+            placeholder="e.g., 2, 2-5, >2, <5, >=2, <=10",
+            help="Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10",
+            key=cdr3_length_key,
+            disabled=disabled
+        )
+        if cdr3_length:
+            is_valid, error_msg = validate_cdr_length_input(cdr3_length)
+            if not is_valid:
+                st.error(f"❌ {error_msg}")
+                cdr3_length_valid = False
+                validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH3 Length")
+            else:
+                cdr3_length = cdr3_length.strip()
+        else:
+            cdr3_length = None
+    
+    # CDR Motif fields
+    if show_title:
+        render_chain_heading(
+            "Heavy Chain CDR Sequence Motifs",
+            "heavy",
+            level=5,
+            margin_top="0.75rem",
+            margin_bottom="0.25rem",
+            use_chain_color=False,
+        )
+    else:
+        render_chain_heading(
+            "CDR Sequence Motifs",
+            "heavy",
+            level=5,
+            margin_top="0.75rem",
+            margin_bottom="0.25rem",
+            use_chain_color=False,
+        )
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    # CDR1 Motif
+    cdr1_motif_key = f"{prefix}cdr1_motif_input" if prefix else "cdr1_motif_input"
+    cdr1_similarity_key = f"{prefix}cdr1_similarity_toggle" if prefix else "cdr1_similarity_toggle"
+    cdr1_mismatches_key = f"{prefix}cdr1_mismatches_input" if prefix else "cdr1_mismatches_input"
+    
+    with col1:
+        cdr1_motif_valid = True
+        cdr1_motif = st.text_input(
+            "CDRH1 Sequence Motif",
+            placeholder="e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT",
+            help='"." for one character, "*" for 0-many, "{n}" for exactly n chars, "{n-m}" for n to m chars, "[ABC]" for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY',
+            key=cdr1_motif_key,
+            disabled=disabled
+        )
+        if cdr1_motif and not validate_motif_input(cdr1_motif):
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.**, **\\***, **{n}**, **{n-m}**, and **[ABC]** for explicit alternatives")
+            cdr1_motif_valid = False
+            validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH1 Motif")
+        
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            if not cdr1_motif and st.session_state.get(cdr1_similarity_key, False):
+                st.session_state[cdr1_similarity_key] = False
+            
+            similarity_help_text = (
+                "Enable similarity-based matching (requires motif input)" if not cdr1_motif else
+                "Enable similarity-based matching. Similar amino acids: A/I/L/V (Aliphatic), D/E (Acidic), F/W/Y (Aromatic), K/R (Basic), N/Q (Amide), S/T (Hydroxyl). Unique: C, G, H, M, P."
+            )
+            cdr1_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=disabled or not bool(cdr1_motif),
+                help=similarity_help_text,
+                key=cdr1_similarity_key
+            )
+        with col_mismatch:
+            if cdr1_motif and cdr1_similarity:
+                max_mismatches = len(cdr1_motif.replace('.', '').replace('*', ''))
+                cdr1_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key=cdr1_mismatches_key,
+                    disabled=disabled
+                )
+            else:
+                cdr1_mismatches = 0
+    
+    # CDR2 Motif
+    cdr2_motif_key = f"{prefix}cdr2_motif_input" if prefix else "cdr2_motif_input"
+    cdr2_similarity_key = f"{prefix}cdr2_similarity_toggle" if prefix else "cdr2_similarity_toggle"
+    cdr2_mismatches_key = f"{prefix}cdr2_mismatches_input" if prefix else "cdr2_mismatches_input"
+    
+    with col2:
+        cdr2_motif_valid = True
+        cdr2_motif = st.text_input(
+            "CDRH2 Sequence Motif",
+            placeholder="e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT",
+            help='"." for one character, "*" for 0-many, "{n}" for exactly n chars, "{n-m}" for n to m chars, "[ABC]" for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY',
+            key=cdr2_motif_key,
+            disabled=disabled
+        )
+        if cdr2_motif and not validate_motif_input(cdr2_motif):
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.**, **\\***, **{n}**, **{n-m}**, and **[ABC]** for explicit alternatives")
+            cdr2_motif_valid = False
+            validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH2 Motif")
+        
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            if not cdr2_motif and st.session_state.get(cdr2_similarity_key, False):
+                st.session_state[cdr2_similarity_key] = False
+            
+            similarity_help_text = (
+                "Enable similarity-based matching (requires motif input)" if not cdr2_motif else
+                "Enable similarity-based matching. Similar amino acids: A/I/L/V (Aliphatic), D/E (Acidic), F/W/Y (Aromatic), K/R (Basic), N/Q (Amide), S/T (Hydroxyl). Unique: C, G, H, M, P."
+            )
+            cdr2_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=disabled or not bool(cdr2_motif),
+                help=similarity_help_text,
+                key=cdr2_similarity_key
+            )
+        with col_mismatch:
+            if cdr2_motif and cdr2_similarity:
+                max_mismatches = len(cdr2_motif.replace('.', '').replace('*', ''))
+                cdr2_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key=cdr2_mismatches_key,
+                    disabled=disabled
+                )
+            else:
+                cdr2_mismatches = 0
+    
+    # CDR3 Motif
+    cdr3_motif_key = f"{prefix}cdr3_motif_input" if prefix else "cdr3_motif_input"
+    cdr3_similarity_key = f"{prefix}cdr3_similarity_toggle" if prefix else "cdr3_similarity_toggle"
+    cdr3_mismatches_key = f"{prefix}cdr3_mismatches_input" if prefix else "cdr3_mismatches_input"
+    
+    with col3:
+        cdr3_motif_valid = True
+        cdr3_motif = st.text_input(
+            "CDRH3 Sequence Motif",
+            placeholder="e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT",
+            help='"." for one character, "*" for 0-many, "{n}" for exactly n chars, "{n-m}" for n to m chars, "[ABC]" for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY',
+            key=cdr3_motif_key,
+            disabled=disabled
+        )
+        if cdr3_motif and not validate_motif_input(cdr3_motif):
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.**, **\\***, **{n}**, **{n-m}**, and **[ABC]** for explicit alternatives")
+            cdr3_motif_valid = False
+            validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH3 Motif")
+        
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            if not cdr3_motif and st.session_state.get(cdr3_similarity_key, False):
+                st.session_state[cdr3_similarity_key] = False
+            
+            similarity_help_text = (
+                "Enable similarity-based matching (requires motif input)" if not cdr3_motif else
+                "Enable similarity-based matching. Similar amino acids: A/I/L/V (Aliphatic), D/E (Acidic), F/W/Y (Aromatic), K/R (Basic), N/Q (Amide), S/T (Hydroxyl). Unique: C, G, H, M, P."
+            )
+            cdr3_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=disabled or not bool(cdr3_motif),
+                help=similarity_help_text,
+                key=cdr3_similarity_key
+            )
+        with col_mismatch:
+            if cdr3_motif and cdr3_similarity:
+                max_mismatches = len(cdr3_motif.replace('.', '').replace('*', ''))
+                cdr3_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key=cdr3_mismatches_key,
+                    disabled=disabled
+                )
+            else:
+                cdr3_mismatches = 0
+    
+    # Build parameters dict
+    params = {
+        f"{prefix}v" if prefix else "ighv": v,
+        f"{prefix}d" if prefix else "ighd": d,
+        f"{prefix}j" if prefix else "ighj": j,
+        f"{prefix}cdr1_length" if prefix else "cdr1_length": cdr1_length,
+        f"{prefix}cdr2_length" if prefix else "cdr2_length": cdr2_length,
+        f"{prefix}cdr3_length" if prefix else "cdr3_length": cdr3_length,
+        f"{prefix}cdr1_motif" if prefix else "cdr1_motif": cdr1_motif,
+        f"{prefix}cdr2_motif" if prefix else "cdr2_motif": cdr2_motif,
+        f"{prefix}cdr3_motif" if prefix else "cdr3_motif": cdr3_motif,
+        f"{prefix}cdr1_similarity" if prefix else "cdr1_similarity": cdr1_similarity,
+        f"{prefix}cdr2_similarity" if prefix else "cdr2_similarity": cdr2_similarity,
+        f"{prefix}cdr3_similarity" if prefix else "cdr3_similarity": cdr3_similarity,
+        f"{prefix}cdr1_mismatches" if prefix else "cdr1_mismatches": cdr1_mismatches,
+        f"{prefix}cdr2_mismatches" if prefix else "cdr2_mismatches": cdr2_mismatches,
+        f"{prefix}cdr3_mismatches" if prefix else "cdr3_mismatches": cdr3_mismatches,
+    }
+    
+    valid = all([v_valid, d_valid, j_valid, cdr1_length_valid, cdr2_length_valid, cdr3_length_valid, cdr1_motif_valid, cdr2_motif_valid, cdr3_motif_valid])
+    
+    return params, validation_errors, valid
+
+
+def create_light_chain_form(prefix: str = "light_", show_title: bool = True, disabled: bool = False) -> Tuple[Dict[str, Any], List[str], bool]:
+    """
+    Create form fields for Light chain search.
+    
+    Args:
+        prefix: Prefix for field keys (default: "light_")
+        show_title: Whether to show the section title
+        disabled: Whether to disable all form fields
+        
+    Returns:
+        Tuple of (params_dict, validation_errors_list, valid_bool)
+    """
+    validation_errors = []
+    
+    if show_title:
+        render_chain_heading("Light Chain", "light", level=4, icon="🔬")
+    
+    # Gene fields (Light chains don't have D genes)
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        light_v_valid = True
+        light_v = st.text_input(
+            "IGLV/KV Gene",
+            placeholder="e.g., 1-2 or 1 or L2 or K2",
+            help="Single: 1 or 1-2 | Multiple: 1,2 or 1-2,1-3 | Use L2 for Lambda only, K2 for Kappa only, or 2 for both",
+            key=f"{prefix}v_input",
+            disabled=disabled
+        )
+        if light_v and not validate_gene_input(light_v, "Light IGLV/KV Gene"):
+            st.error("❌ Only: numbers, **-** , **|** **\\***, and **L/K** for Lambda/Kappa")
+            light_v_valid = False
+            validation_errors.append("Light IGLV/KV Gene")
+    
+    with col2:
+        light_j_valid = True
+        light_j = st.text_input(
+            "IGLJ Gene",
+            placeholder="e.g., 2 or L2 or K2",
+            help="Single: 2 | Multiple: 2,3 | Use L2 for Lambda only, K2 for Kappa only, or 2 for both",
+            key=f"{prefix}j_input",
+            disabled=disabled
+        )
+        if light_j and not validate_gene_input(light_j, "Light IGLJ Gene"):
+            st.error("❌ Only: numbers, **-** , **|** **\\***, and **L/K** for Lambda/Kappa")
+            light_j_valid = False
+            validation_errors.append("Light IGLJ Gene")
+    
+    # CDR Length fields
+    if show_title:
+        render_chain_heading(
+            "Light Chain CDR Lengths (amino acids)",
+            "light",
+            level=5,
+            margin_top="0.75rem",
+            margin_bottom="0.25rem",
+            use_chain_color=False,
+        )
+    else:
+        render_chain_heading(
+            "CDR Lengths (amino acids)",
+            "light",
+            level=5,
+            margin_top="0.75rem",
+            margin_bottom="0.25rem",
+            use_chain_color=False,
+        )
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        light_cdr1_length_valid = True
+        light_cdr1_length = st.text_input(
+            "CDRL1 Length",
+            placeholder="e.g., 2, 2-5, >2, <5, >=2, <=10",
+            help="Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10",
+            key=f"{prefix}cdr1_length_input",
+            disabled=disabled
+        )
+        if light_cdr1_length:
+            is_valid, error_msg = validate_cdr_length_input(light_cdr1_length)
+            if not is_valid:
+                st.error(f"❌ {error_msg}")
+                light_cdr1_length_valid = False
+                validation_errors.append("Light CDRL1 Length")
+            else:
+                light_cdr1_length = light_cdr1_length.strip()
+        else:
+            light_cdr1_length = None
+    
+    with col2:
+        light_cdr2_length_valid = True
+        light_cdr2_length = st.text_input(
+            "CDRL2 Length",
+            placeholder="e.g., 2, 2-5, >2, <5, >=2, <=10",
+            help="Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10",
+            key=f"{prefix}cdr2_length_input",
+            disabled=disabled
+        )
+        if light_cdr2_length:
+            is_valid, error_msg = validate_cdr_length_input(light_cdr2_length)
+            if not is_valid:
+                st.error(f"❌ {error_msg}")
+                light_cdr2_length_valid = False
+                validation_errors.append("Light CDRL2 Length")
+            else:
+                light_cdr2_length = light_cdr2_length.strip()
+        else:
+            light_cdr2_length = None
+    
+    with col3:
+        light_cdr3_length_valid = True
+        light_cdr3_length = st.text_input(
+            "CDRL3 Length",
+            placeholder="e.g., 2, 2-5, >2, <5, >=2, <=10",
+            help="Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10",
+            key=f"{prefix}cdr3_length_input",
+            disabled=disabled
+        )
+        if light_cdr3_length:
+            is_valid, error_msg = validate_cdr_length_input(light_cdr3_length)
+            if not is_valid:
+                st.error(f"❌ {error_msg}")
+                light_cdr3_length_valid = False
+                validation_errors.append("Light CDRL3 Length")
+            else:
+                light_cdr3_length = light_cdr3_length.strip()
+        else:
+            light_cdr3_length = None
+    
+    # CDR Motif fields
+    if show_title:
+        render_chain_heading(
+            "Light Chain CDR Sequence Motifs",
+            "light",
+            level=5,
+            margin_top="0.75rem",
+            margin_bottom="0.25rem",
+            use_chain_color=False,
+        )
+    else:
+        render_chain_heading(
+            "CDR Sequence Motifs",
+            "light",
+            level=5,
+            margin_top="0.75rem",
+            margin_bottom="0.25rem",
+            use_chain_color=False,
+        )
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    # CDR1 Motif
+    with col1:
+        light_cdr1_motif_valid = True
+        light_cdr1_motif = st.text_input(
+            "CDRL1 Sequence Motif",
+            placeholder="e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT",
+            help='"." for one character, "*" for 0-many, "{n}" for exactly n chars, "{n-m}" for n to m chars, "[ABC]" for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY',
+            key=f"{prefix}cdr1_motif_input",
+            disabled=disabled
+        )
+        if light_cdr1_motif and not validate_motif_input(light_cdr1_motif):
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.**, **\\***, **{n}**, **{n-m}**, and **[ABC]** for explicit alternatives")
+            light_cdr1_motif_valid = False
+            validation_errors.append("Light CDRL1 Motif")
+        
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            if not light_cdr1_motif and st.session_state.get(f"{prefix}cdr1_similarity_toggle", False):
+                st.session_state[f"{prefix}cdr1_similarity_toggle"] = False
+            
+            similarity_help_text = (
+                "Enable similarity-based matching (requires motif input)" if not light_cdr1_motif else
+                "Enable similarity-based matching. Similar amino acids: A/I/L/V (Aliphatic), D/E (Acidic), F/W/Y (Aromatic), K/R (Basic), N/Q (Amide), S/T (Hydroxyl). Unique: C, G, H, M, P."
+            )
+            light_cdr1_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=disabled or not bool(light_cdr1_motif),
+                help=similarity_help_text,
+                key=f"{prefix}cdr1_similarity_toggle"
+            )
+        with col_mismatch:
+            if light_cdr1_motif and light_cdr1_similarity:
+                max_mismatches = len(light_cdr1_motif.replace('.', '').replace('*', ''))
+                light_cdr1_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key=f"{prefix}cdr1_mismatches_input",
+                    disabled=disabled
+                )
+            else:
+                light_cdr1_mismatches = 0
+    
+    # CDR2 Motif
+    with col2:
+        light_cdr2_motif_valid = True
+        light_cdr2_motif = st.text_input(
+            "CDRL2 Sequence Motif",
+            placeholder="e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT",
+            help='"." for one character, "*" for 0-many, "{n}" for exactly n chars, "{n-m}" for n to m chars, "[ABC]" for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY',
+            key=f"{prefix}cdr2_motif_input",
+            disabled=disabled
+        )
+        if light_cdr2_motif and not validate_motif_input(light_cdr2_motif):
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.**, **\\***, **{n}**, **{n-m}**, and **[ABC]** for explicit alternatives")
+            light_cdr2_motif_valid = False
+            validation_errors.append("Light CDRL2 Motif")
+        
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            if not light_cdr2_motif and st.session_state.get(f"{prefix}cdr2_similarity_toggle", False):
+                st.session_state[f"{prefix}cdr2_similarity_toggle"] = False
+            
+            similarity_help_text = (
+                "Enable similarity-based matching (requires motif input)" if not light_cdr2_motif else
+                "Enable similarity-based matching. Similar amino acids: A/I/L/V (Aliphatic), D/E (Acidic), F/W/Y (Aromatic), K/R (Basic), N/Q (Amide), S/T (Hydroxyl). Unique: C, G, H, M, P."
+            )
+            light_cdr2_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=disabled or not bool(light_cdr2_motif),
+                help=similarity_help_text,
+                key=f"{prefix}cdr2_similarity_toggle"
+            )
+        with col_mismatch:
+            if light_cdr2_motif and light_cdr2_similarity:
+                max_mismatches = len(light_cdr2_motif.replace('.', '').replace('*', ''))
+                light_cdr2_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key=f"{prefix}cdr2_mismatches_input",
+                    disabled=disabled
+                )
+            else:
+                light_cdr2_mismatches = 0
+    
+    # CDR3 Motif
+    with col3:
+        light_cdr3_motif_valid = True
+        light_cdr3_motif = st.text_input(
+            "CDRL3 Sequence Motif",
+            placeholder="e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT",
+            help='"." for one character, "*" for 0-many, "{n}" for exactly n chars, "{n-m}" for n to m chars, "[ABC]" for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY',
+            key=f"{prefix}cdr3_motif_input",
+            disabled=disabled
+        )
+        if light_cdr3_motif and not validate_motif_input(light_cdr3_motif):
+            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.**, **\\***, **{n}**, **{n-m}**, and **[ABC]** for explicit alternatives")
+            light_cdr3_motif_valid = False
+            validation_errors.append("Light CDRL3 Motif")
+        
+        col_toggle, col_mismatch = st.columns([2, 1])
+        with col_toggle:
+            if not light_cdr3_motif and st.session_state.get(f"{prefix}cdr3_similarity_toggle", False):
+                st.session_state[f"{prefix}cdr3_similarity_toggle"] = False
+            
+            similarity_help_text = (
+                "Enable similarity-based matching (requires motif input)" if not light_cdr3_motif else
+                "Enable similarity-based matching. Similar amino acids: A/I/L/V (Aliphatic), D/E (Acidic), F/W/Y (Aromatic), K/R (Basic), N/Q (Amide), S/T (Hydroxyl). Unique: C, G, H, M, P."
+            )
+            light_cdr3_similarity = st.toggle(
+                "Similarity Search",
+                value=False,
+                disabled=disabled or not bool(light_cdr3_motif),
+                help=similarity_help_text,
+                key=f"{prefix}cdr3_similarity_toggle"
+            )
+        with col_mismatch:
+            if light_cdr3_motif and light_cdr3_similarity:
+                max_mismatches = len(light_cdr3_motif.replace('.', '').replace('*', ''))
+                light_cdr3_mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
+                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
+                    key=f"{prefix}cdr3_mismatches_input",
+                    disabled=disabled
+                )
+            else:
+                light_cdr3_mismatches = 0
+    
+    # Build parameters dict
+    params = {
+        f"{prefix}v": light_v,
+        f"{prefix}j": light_j,
+        f"{prefix}cdr1_length": light_cdr1_length,
+        f"{prefix}cdr2_length": light_cdr2_length,
+        f"{prefix}cdr3_length": light_cdr3_length,
+        f"{prefix}cdr1_motif": light_cdr1_motif,
+        f"{prefix}cdr2_motif": light_cdr2_motif,
+        f"{prefix}cdr3_motif": light_cdr3_motif,
+        f"{prefix}cdr1_similarity": light_cdr1_similarity,
+        f"{prefix}cdr2_similarity": light_cdr2_similarity,
+        f"{prefix}cdr3_similarity": light_cdr3_similarity,
+        f"{prefix}cdr1_mismatches": light_cdr1_mismatches,
+        f"{prefix}cdr2_mismatches": light_cdr2_mismatches,
+        f"{prefix}cdr3_mismatches": light_cdr3_mismatches,
+    }
+    
+    valid = all([light_v_valid, light_j_valid, light_cdr1_length_valid, light_cdr2_length_valid, light_cdr3_length_valid, light_cdr1_motif_valid, light_cdr2_motif_valid, light_cdr3_motif_valid])
+    
+    return params, validation_errors, valid
+
+

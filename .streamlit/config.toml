@@ -1,0 +1,10 @@
+[theme]
+base="dark"
+primaryColor="#483d8b"
+
+[client]
+toolbarMode="minimal"
+
+[theme.sidebar]
+primaryColor="black"
+backgroundColor="black"
