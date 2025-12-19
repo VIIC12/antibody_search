@@ -144,6 +144,9 @@ def get_database_structure() -> dict:
     Scans the data directory for Heavy/, Light/, and Paired/ subdirectories,
     and organizes them by category with metadata about each subdirectory.
     
+    Uses ABHUNTER_DB_PATH environment variable if set, otherwise falls back to
+    project_root / "data" for backward compatibility.
+    
     Returns:
         Dictionary with structure:
         {
@@ -165,11 +168,18 @@ def get_database_structure() -> dict:
         'Paired': {}
     }
     
-    # Use data directory relative to project root
-    # This assumes the function is called from pages/search.py
-    # Adjust path resolution based on where this is called from
-    project_root = Path(__file__).parent.parent.parent
-    data_dir = project_root / "data"
+    # Check for ABHUNTER_DB_PATH environment variable first
+    # If not set, fall back to project_root / "data" for backward compatibility
+    abhunter_db_path = os.getenv("ABHUNTER_DB_PATH")
+    if abhunter_db_path:
+        data_dir = Path(abhunter_db_path)
+        logger.debug(f"Using ABHUNTER_DB_PATH: {data_dir}")
+    else:
+        # Use data directory relative to project root
+        # This assumes the function is called from pages/search.py
+        project_root = Path(__file__).parent.parent.parent
+        data_dir = project_root / "data"
+        logger.debug(f"Using default data directory: {data_dir}")
     
     if not data_dir.exists():
         logger.warning(f"Data directory not found: {data_dir}")
