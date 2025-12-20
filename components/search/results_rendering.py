@@ -181,9 +181,14 @@ def render_subject_statistics(
 
     with content_col:
         if not stats_df.empty:
+            # Sort by percentage descending (high to low)
+            display_df = stats_df.copy()
+            if 'percentage' in display_df.columns:
+                display_df = display_df.sort_values('percentage', ascending=False, na_position='last')
+            
             column_config = get_stats_column_config()
             st.dataframe(
-                stats_df,
+                display_df,
                 width='stretch',
                 height=200,
                 column_config=column_config
