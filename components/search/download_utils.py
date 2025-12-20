@@ -222,32 +222,69 @@ def create_parquet_file(
 def prepare_stats_download(
     stats_df: pd.DataFrame,
     search_params: Dict[str, Any],
-    is_paired: bool
-) -> Tuple[str, str]:
+    is_paired: bool,
+    statistics: Optional[Dict[str, Any]] = None,
+    selected_databases: Optional[List[str]] = None
+) -> Tuple[bytes, str]:
     """
-    Prepare statistics CSV for download.
+    Prepare statistics CSV for download as a ZIP file with search parameters.
     
     Args:
         stats_df: Statistics dataframe
         search_params: Search parameters dictionary (including metadata)
         is_paired: Whether the search is paired
+        statistics: Optional statistics dictionary for metadata
+        selected_databases: Optional list of selected database paths
         
     Returns:
-        Tuple of (CSV content as string, filename)
+        Tuple of (ZIP file content as bytes, filename)
     """
+    from datetime import datetime
+    
     # Convert dataframe to CSV string
     csv_buffer = io.StringIO()
     stats_df.to_csv(csv_buffer, index=False)
     csv_content = csv_buffer.getvalue()
+    
+    # Build search metadata similar to plots download
+    selected_databases = selected_databases or []
+    statistics = statistics or {}
+    
+    metadata: Dict[str, Any] = {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "is_paired": is_paired,
+        "search_params": search_params,
+        "selected_databases": selected_databases,
+        "statistics_summary": {
+            "total_hits": statistics.get("total_hits"),
+            "total_sequences": statistics.get("total_sequences"),
+            "percentage": statistics.get("percentage"),
+            "per_million": statistics.get("per_million"),
+            "search_time": statistics.get("search_time"),
+        },
+    }
+    
+    # Create ZIP file in memory
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        # Add CSV file
+        zip_file.writestr("statistics.csv", csv_content.encode('utf-8'))
+        
+        # Add search parameters JSON file
+        metadata_json = json.dumps(metadata, indent=2, sort_keys=True, default=str)
+        zip_file.writestr("search_parameters.json", metadata_json.encode('utf-8'))
+    
+    zip_buffer.seek(0)
+    zip_data = zip_buffer.getvalue()
     
     # Generate filename
     identifier = _build_search_identifier({
         "search_params": search_params,
         "is_paired": is_paired
     })
-    filename = f"ABHunter_statistics_{identifier}.csv"
+    filename = f"ABHunter_statistics_{identifier}.zip"
     
-    return csv_content, filename
+    return zip_data, filename
 
 
 def prepare_full_results_download_background(

@@ -245,32 +245,38 @@ def render_sequences_table(
 def render_stats_download_button(
     stats_df: pd.DataFrame,
     search_params: Dict[str, Any],
-    is_paired: bool
+    is_paired: bool,
+    statistics: Optional[Dict[str, Any]] = None
 ) -> None:
     """
-    Render download button for statistics CSV.
+    Render download button for statistics CSV (as ZIP with search parameters).
     
     Args:
         stats_df: Statistics dataframe
         search_params: Search parameters dictionary (including metadata)
         is_paired: Whether the search is paired
+        statistics: Optional statistics dictionary for metadata
     """
     if stats_df.empty:
         st.button(
-            "📊 Download Statistics (CSV)",
+            "📊 Download Statistics (ZIP)",
             disabled=True,
             use_container_width=True,
             type="primary"
         )
         return
     
-    stats_csv, filename = prepare_stats_download(stats_df, search_params, is_paired)
+    # Get selected databases from session state
+    selected_databases = st.session_state.get("selected_databases", [])
+    stats_zip, filename = prepare_stats_download(
+        stats_df, search_params, is_paired, statistics, selected_databases
+    )
     
     st.download_button(
-        label="⬇ Download Statistics (CSV)",
-        data=stats_csv,
+        label="⬇ Download Statistics (ZIP)",
+        data=stats_zip,
         file_name=filename,
-        mime="text/csv",
+        mime="application/zip",
         use_container_width=True
     )
 
@@ -546,7 +552,7 @@ def render_full_download_button(
         
         # Statistics CSV download button (left column)
         with col_stats:
-            render_stats_download_button(stats_df, search_params, is_paired)
+            render_stats_download_button(stats_df, search_params, is_paired, statistics)
         
         # Full Results download button (middle column)
         with col_full:
