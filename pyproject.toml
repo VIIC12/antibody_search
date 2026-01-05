@@ -14,6 +14,7 @@ dependencies = [
     # Web Interface
     "streamlit>=1.52.2",
     "streamlit-aggrid>=0.3.4",
+    "streamlit-autorefresh>=0.0.6",
     # Progress & Utilities
     "tqdm>=4.66.0",
     "rich>=13.0.0",

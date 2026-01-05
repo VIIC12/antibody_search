@@ -4,9 +4,21 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies if needed
+# Install system and chrome dependencies in a single layer
 RUN apt-get update && apt-get install -y \
     build-essential \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libxkbcommon0 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy project files
@@ -21,8 +33,8 @@ COPY public/ ./public/
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir .
 
-# Expose Streamlit port
-EXPOSE 8501
+# get chrome
+RUN python -c "import plotly.io; plotly.io.get_chrome()"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
