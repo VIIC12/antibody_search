@@ -102,11 +102,18 @@ def create_file_reader_callable(file_path: str, cleanup: bool = True):
             
             # Verify file exists and is readable
             if not os.path.exists(abs_file_path):
-                raise FileNotFoundError(f"Download file not found: {abs_file_path}")
+                raise FileNotFoundError(
+                    f"Download file not found: {abs_file_path}\n"
+                    f"The file may have been cleaned up or the background process may not have completed successfully."
+                )
             
             # Additional check: ensure file is not empty and is readable
-            if os.path.getsize(abs_file_path) == 0:
-                raise FileNotFoundError(f"Download file is empty: {abs_file_path}")
+            file_size = os.path.getsize(abs_file_path)
+            if file_size == 0:
+                raise FileNotFoundError(
+                    f"Download file is empty: {abs_file_path}\n"
+                    f"The file exists but contains no data. The background process may not have completed successfully."
+                )
             
             # Read file with retry logic
             data = None

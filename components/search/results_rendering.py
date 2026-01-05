@@ -304,9 +304,7 @@ def _render_loading_button(phase: str) -> None:
 
 def _render_download_button(result: dict, label_prefix: str = "⬇ Download", mime_type: str = "application/octet-stream") -> None:
     """Render download button with file info using deferred generation."""
-    import os
     import hashlib
-    import time
     
     file_path = result.get('file_path')
     file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
@@ -314,27 +312,13 @@ def _render_download_button(result: dict, label_prefix: str = "⬇ Download", mi
     filename = result.get('filename', 'download')
     
     # Use deferred callable if file path exists
-    # Add retry logic for race conditions (file might be created in background process)
+    # The background process has completed, so the file should be ready.
+    # The create_file_reader_callable will handle any race conditions or delays
+    # when the download button is actually clicked (lazy evaluation).
     if file_path:
-        # Wait briefly for file to appear (handles race conditions)
-        max_wait = 2.0
-        wait_interval = 0.1
-        waited = 0.0
-        file_exists = os.path.exists(file_path)
-        
-        while not file_exists and waited < max_wait:
-            time.sleep(wait_interval)
-            waited += wait_interval
-            file_exists = os.path.exists(file_path)
-        
-        if file_exists:
-            # File exists, create callable (which will handle additional retries)
-            download_callable = create_file_reader_callable(file_path, cleanup=True)
-        else:
-            # File doesn't exist after waiting - show error but still allow download attempt
-            # (the callable will retry when actually called)
-            st.warning(f"⚠️ File may still be preparing: {file_path}")
-            download_callable = create_file_reader_callable(file_path, cleanup=True)
+        # Create callable that will read from disk when download is initiated
+        # This defers file access until the user clicks, avoiding blocking during rendering
+        download_callable = create_file_reader_callable(file_path, cleanup=True)
     else:
         # Fallback for backward compatibility (in-memory data)
         data = result.get('data') or result.get('parquet_data') or result.get('zip_data', b'')
