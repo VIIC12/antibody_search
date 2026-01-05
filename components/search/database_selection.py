@@ -368,7 +368,12 @@ def initialize_database(
                 return False
 
         with st.spinner("Loading database..."):
-            engine = init_search_engine(loadable_databases, verbose=False)
+            # Use the first database directory (or primary_db if available)
+            db_to_load = primary_db if primary_db else (loadable_databases[0] if loadable_databases else None)
+            if not db_to_load:
+                st.error("No database directory available to load.")
+                return False
+            engine = init_search_engine(db_to_load, verbose=False)
             st.session_state['search_engine'] = engine
             st.session_state['current_db'] = primary_db
             st.session_state['loadable_databases_active'] = loadable_databases

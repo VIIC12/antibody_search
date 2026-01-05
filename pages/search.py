@@ -516,7 +516,7 @@ def search_page_content():
             """, unsafe_allow_html=True)
         
         with col_cancel:
-            if st.button("Cancel Search", use_container_width=True):
+            if st.button("Cancel Search", width='stretch'):
                 if st.session_state.search_future is not None:
                     st.session_state.search_future.cancel()
                     st.session_state.search_future = None
@@ -536,7 +536,7 @@ def search_page_content():
                 "🔍 Search Database",
                 type="primary",
                 disabled=has_validation_errors,
-                use_container_width=True
+                width='stretch'
             )
         elif search_status == "running":
             # Show hidden disabled submit button (required by Streamlit, but we show custom button above)
@@ -544,7 +544,7 @@ def search_page_content():
             search_submitted = st.form_submit_button(
                 "🔍 Search Database",
                 disabled=True,
-                use_container_width=True
+                width='stretch'
             )
         else:
             # For completed/failed, show disabled submit button with status
@@ -560,7 +560,7 @@ def search_page_content():
             search_submitted = st.form_submit_button(
                 button_label,
                 disabled=True,
-                use_container_width=True
+                width='stretch'
             )
     
     # Ensure form is completely closed before rendering results

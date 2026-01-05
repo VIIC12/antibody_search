@@ -67,6 +67,59 @@ def _build_search_identifier(search_params: Dict[str, Any]) -> str:
     return digest
 
 
+def create_file_reader_callable(file_path: str, cleanup: bool = True):
+    """
+    Create a callable that reads a file from disk and returns its contents.
+    
+    This is designed for use with st.download_button's data parameter.
+    The callable streams data from disk instead of loading everything into memory.
+    
+    Args:
+        file_path: Path to the file to read (will be converted to absolute path)
+        cleanup: Whether to delete the file after reading (default: True)
+        
+    Returns:
+        A callable that returns file contents as bytes
+    """
+    import os
+    from pathlib import Path
+    
+    # Convert to absolute path to ensure we can find it
+    abs_file_path = os.path.abspath(file_path)
+    
+    def read_file():
+        """Read file from disk and optionally clean it up."""
+        try:
+            # Verify file exists before trying to read
+            if not os.path.exists(abs_file_path):
+                raise FileNotFoundError(f"Download file not found: {abs_file_path}")
+            
+            with open(abs_file_path, 'rb') as f:
+                data = f.read()
+            
+            if cleanup:
+                try:
+                    if os.path.exists(abs_file_path):
+                        os.unlink(abs_file_path)
+                except OSError:
+                    pass  # Ignore cleanup errors
+            return data
+        except FileNotFoundError:
+            # Re-raise file not found errors with more context
+            raise
+        except Exception as e:
+            # If read fails, try to clean up anyway
+            if cleanup:
+                try:
+                    if os.path.exists(abs_file_path):
+                        os.unlink(abs_file_path)
+                except OSError:
+                    pass
+            raise FileNotFoundError(f"Error reading download file {abs_file_path}: {str(e)}") from e
+    
+    return read_file
+
+
 def _build_where_clause_from_params(
     engine,
     search_params: Dict[str, Any],
@@ -297,7 +350,7 @@ def prepare_full_results_download_background(
     Prepare full results table download (Parquet file) in a background process.
     
     This function performs a full search (no limit) and creates a Parquet file
-    for download. This is a heavy operation that should run in the background.
+    on disk for download. This is a heavy operation that should run in the background.
     
     Args:
         database_paths: List of database directory paths
@@ -308,7 +361,7 @@ def prepare_full_results_download_background(
     Returns:
         Dictionary with keys:
         - 'success': Boolean indicating if operation succeeded
-        - 'parquet_data': Parquet file content as bytes
+        - 'file_path': Path to temporary Parquet file on disk
         - 'filename': Suggested filename for download
         - 'file_size_bytes': Size of Parquet file in bytes
         - 'sequence_count': Number of sequences in file
@@ -319,6 +372,7 @@ def prepare_full_results_download_background(
         import sys
         import warnings
         import logging
+        import os
         from pathlib import Path
         project_root = Path(__file__).parent.parent.parent
         sys.path.insert(0, str(project_root))
@@ -340,8 +394,14 @@ def prepare_full_results_download_background(
         )
         
         # Create a new search engine instance in the worker process
+        # Use the first database directory
+        if not database_paths:
+            return {
+                'success': False,
+                'error': 'No database paths provided.'
+            }
         engine = init_search_engine(
-            data_dir=database_paths,
+            data_dir=database_paths[0],
             verbose=False,
             db_path=":memory:"
         )
@@ -367,7 +427,8 @@ def prepare_full_results_download_background(
         
         # Get total count first (for progress tracking)
         count_query = f"SELECT COUNT(*) as cnt FROM {table_name} WHERE {where_clause}"
-        total_count = engine.conn.execute(count_query).fetchone()[0]
+        count_result = engine.conn.execute(count_query).fetchone()
+        total_count = count_result[0] if count_result else 0
         
         if total_count == 0:
             return {
@@ -375,108 +436,157 @@ def prepare_full_results_download_background(
                 'error': 'No sequences found to download.'
             }
         
-        # Process in chunks to avoid memory issues
-        CHUNK_SIZE = 100000  # Process 100k rows at a time
-        parquet_buffer = io.BytesIO()
-        
-        # Get schema from a larger sample to properly infer nullability
-        # Use a sample of 1000 rows to better detect nullable columns
-        sample_query = f"SELECT * FROM {table_name} WHERE {where_clause} LIMIT 1000"
-        sample_df = engine.conn.execute(sample_query).df()
-        
-        if sample_df.empty:
+        # Create temporary file on disk instead of using BytesIO
+        # Use absolute path to ensure it's accessible from main process
+        temp_file_path = None
+        try:
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.parquet')
+            temp_file_path = os.path.abspath(temp_file.name)
+            temp_file.close()
+            
+            # Verify the file was created
+            if not os.path.exists(temp_file_path):
+                if temp_file_path:
+                    try:
+                        os.unlink(temp_file_path)
+                    except OSError:
+                        pass
+                return {
+                    'success': False,
+                    'error': f'Failed to create temp file: {temp_file_path}'
+                }
+        except Exception as e:
+            if temp_file_path:
+                try:
+                    if os.path.exists(temp_file_path):
+                        os.unlink(temp_file_path)
+                except OSError:
+                    pass
             return {
                 'success': False,
-                'error': 'No sequences found to download.'
+                'error': f'Failed to create temp file: {str(e)}'
             }
         
-        # Prepare sample for download format
-        sample_formatted = prepare_download_data(sample_df, is_paired)
-        sample_table = pa.Table.from_pandas(sample_formatted)
-        
-        # Make all columns nullable to handle nulls in later chunks
-        # This is safer when processing large datasets where different chunks may have different null patterns
-        schema = sample_table.schema
-        fields = []
-        for field in schema:
-            # Ensure all fields are nullable
-            fields.append(pa.field(field.name, field.type, nullable=True))
-        schema = pa.schema(fields)
-        
-        # Initialize Parquet writer
-        writer = pq.ParquetWriter(parquet_buffer, schema, compression='zstd')
-        sequence_count = 0
-        
-        # Process in chunks using LIMIT/OFFSET
-        # Use a simple approach: fetch chunks sequentially
-        offset = 0
-        while offset < total_count:
-            chunk_query = f"""
-                SELECT * FROM {table_name} 
-                WHERE {where_clause}
-                LIMIT {CHUNK_SIZE} OFFSET {offset}
-            """
-            chunk_df = engine.conn.execute(chunk_query).df()
+        try:
+            # Process in chunks to avoid memory issues
+            CHUNK_SIZE = 100000  # Process 100k rows at a time
             
-            if chunk_df.empty:
-                break
+            # Get schema from a larger sample to properly infer nullability
+            # Use a sample of 1000 rows to better detect nullable columns
+            sample_query = f"SELECT * FROM {table_name} WHERE {where_clause} LIMIT 1000"
+            sample_df = engine.conn.execute(sample_query).df()
             
-            # Format chunk for download
-            chunk_formatted = prepare_download_data(chunk_df, is_paired)
+            if sample_df.empty:
+                os.unlink(temp_file_path)
+                return {
+                    'success': False,
+                    'error': 'No sequences found to download.'
+                }
             
-            # Convert to PyArrow table
-            chunk_table = pa.Table.from_pandas(chunk_formatted)
+            # Prepare sample for download format
+            sample_formatted = prepare_download_data(sample_df, is_paired)
+            sample_table = pa.Table.from_pandas(sample_formatted)
             
-            # Cast to match schema (ensures all columns are nullable as per schema)
-            # This handles cases where chunks have different null patterns
-            try:
-                chunk_table = chunk_table.cast(schema)
-            except Exception as e:
-                # If cast fails due to schema differences, unify schemas
-                unified_schema = pa.unify_schemas([schema, chunk_table.schema])
-                chunk_table = chunk_table.cast(unified_schema)
-                # Note: We can't change writer schema mid-stream, so we'll use the unified schema
-                # This should work as long as we made all fields nullable in the initial schema
+            # Make all columns nullable to handle nulls in later chunks
+            # This is safer when processing large datasets where different chunks may have different null patterns
+            schema = sample_table.schema
+            fields = []
+            for field in schema:
+                # Ensure all fields are nullable
+                fields.append(pa.field(field.name, field.type, nullable=True))
+            schema = pa.schema(fields)
             
-            writer.write_table(chunk_table)
+            # Initialize Parquet writer to write directly to disk
+            with open(temp_file_path, 'wb') as f:
+                writer = pq.ParquetWriter(f, schema, compression='zstd')
+                sequence_count = 0
+                
+                # Process in chunks using LIMIT/OFFSET
+                # Use a simple approach: fetch chunks sequentially
+                offset = 0
+                while offset < total_count:
+                    chunk_query = f"""
+                        SELECT * FROM {table_name} 
+                        WHERE {where_clause}
+                        LIMIT {CHUNK_SIZE} OFFSET {offset}
+                    """
+                    chunk_df = engine.conn.execute(chunk_query).df()
+                    
+                    if chunk_df.empty:
+                        break
+                    
+                    # Format chunk for download
+                    chunk_formatted = prepare_download_data(chunk_df, is_paired)
+                    
+                    # Convert to PyArrow table
+                    chunk_table = pa.Table.from_pandas(chunk_formatted)
+                    
+                    # Cast to match schema (ensures all columns are nullable as per schema)
+                    # This handles cases where chunks have different null patterns
+                    try:
+                        chunk_table = chunk_table.cast(schema)
+                    except Exception:
+                        # If cast fails due to schema differences, unify schemas
+                        unified_schema = pa.unify_schemas([schema, chunk_table.schema])
+                        chunk_table = chunk_table.cast(unified_schema)
+                        # Note: We can't change writer schema mid-stream, so we'll use the unified schema
+                        # This should work as long as we made all fields nullable in the initial schema
+                    
+                    writer.write_table(chunk_table)
+                    
+                    sequence_count += len(chunk_df)
+                    offset += CHUNK_SIZE
+                    
+                    # Safety check: if chunk is smaller than expected, we're done
+                    if len(chunk_df) < CHUNK_SIZE:
+                        break
+                
+                writer.close()
             
-            sequence_count += len(chunk_df)
-            offset += CHUNK_SIZE
+            # Get file size
+            file_size_bytes = os.path.getsize(temp_file_path)
             
-            # Safety check: if chunk is smaller than expected, we're done
-            if len(chunk_df) < CHUNK_SIZE:
-                break
+            # Prepare search params with metadata for filename
+            search_params_with_metadata = dict(search_params)
+            
+            # Generate filename
+            identifier = _build_search_identifier({
+                "search_params": search_params_with_metadata,
+                "chain_label": chain_label,
+                "is_paired": is_paired
+            })
+            parquet_filename = f"ABHunter_sequences_{chain_label}_{identifier}.parquet"
+            
+            # Close the engine connection
+            if hasattr(engine, 'conn'):
+                engine.conn.close()
+            
+            return {
+                'success': True,
+                'file_path': temp_file_path,
+                'filename': parquet_filename,
+                'file_size_bytes': file_size_bytes,
+                'sequence_count': sequence_count
+            }
         
-        writer.close()
-        parquet_buffer.seek(0)
-        parquet_data = parquet_buffer.getvalue()
-        
-        # Prepare search params with metadata for filename
-        search_params_with_metadata = dict(search_params)
-        
-        # Generate filename
-        identifier = _build_search_identifier({
-            "search_params": search_params_with_metadata,
-            "chain_label": chain_label,
-            "is_paired": is_paired
-        })
-        parquet_filename = f"ABHunter_sequences_{chain_label}_{identifier}.parquet"
-        
-        file_size_bytes = len(parquet_data)
-        
-        # Close the engine connection
-        if hasattr(engine, 'conn'):
-            engine.conn.close()
-        
-        return {
-            'success': True,
-            'parquet_data': parquet_data,
-            'filename': parquet_filename,
-            'file_size_bytes': file_size_bytes,
-            'sequence_count': sequence_count
-        }
+        except Exception:
+            # Clean up temp file on error
+            if 'temp_file_path' in locals() and temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except OSError:
+                    pass
+            raise
         
     except Exception as e:
+        # Clean up temp file on error (outer exception handler)
+        import os
+        if 'temp_file_path' in locals() and temp_file_path:
+            try:
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+            except OSError:
+                pass
         return {
             'success': False,
             'error': str(e),
@@ -634,7 +744,7 @@ def prepare_fasta_download_background(
     database_paths: List[str],
     search_params: Dict[str, Any],
     is_paired: bool,
-    chain_label: str = None
+    chain_label: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Prepare FASTA file download in a background process.
@@ -678,8 +788,14 @@ def prepare_fasta_download_background(
         from components.search.download_utils import _build_search_identifier
         
         # Create a new search engine instance in the worker process
+        # Use the first database directory
+        if not database_paths:
+            return {
+                'success': False,
+                'error': 'No database paths provided.'
+            }
         engine = init_search_engine(
-            data_dir=database_paths,
+            data_dir=database_paths[0],
             verbose=False,
             db_path=":memory:"
         )
@@ -713,7 +829,8 @@ def prepare_fasta_download_background(
         
         # Get total count first
         count_query = f"SELECT COUNT(*) as cnt FROM {table_name} WHERE {where_clause}"
-        total_count = engine.conn.execute(count_query).fetchone()[0]
+        count_result = engine.conn.execute(count_query).fetchone()
+        total_count = count_result[0] if count_result else 0
         
         if total_count == 0:
             return {
@@ -755,6 +872,7 @@ def prepare_fasta_download_background(
         # Create temporary files for FASTA content (to avoid memory issues)
         fasta_files = {}
         temp_files = {}
+        zip_temp_file_path = None
         
         try:
             # Create temporary files for each FASTA file
@@ -828,39 +946,58 @@ def prepare_fasta_download_background(
                 if len(chunk_df) < CHUNK_SIZE:
                     break
             
-            # Close temp files and read content
+            # Close temp files (keep them on disk for ZIP creation)
             for key, temp_file in temp_files.items():
                 temp_file.close()
-                with open(temp_file.name, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    if content.strip():
-                        fasta_files[key] = content
-                # Clean up temp file
-                import os
-                os.unlink(temp_file.name)
             
-            if not fasta_files:
+            # Check if we have any valid FASTA files
+            import os
+            valid_fasta_files = {}
+            for key, temp_file in temp_files.items():
+                if os.path.exists(temp_file.name) and os.path.getsize(temp_file.name) > 0:
+                    valid_fasta_files[key] = temp_file.name
+            
+            if not valid_fasta_files:
+                # Clean up temp files
+                for temp_file in temp_files.values():
+                    try:
+                        if os.path.exists(temp_file.name):
+                            os.unlink(temp_file.name)
+                    except:
+                        pass
                 return {
                     'success': False,
                     'error': 'No sequences available for selected chain types.'
                 }
             
-            # Create ZIP file in memory
-            zip_buffer = io.BytesIO()
+            # Create ZIP file on disk instead of in memory
+            # Use absolute path to ensure it's accessible from main process
+            zip_temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.zip')
+            zip_temp_file_path = os.path.abspath(zip_temp_file.name)
+            zip_temp_file.close()
             
-            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                # Add FASTA files
-                for chain_type, fasta_content in fasta_files.items():
+            # Verify the file was created
+            if not os.path.exists(zip_temp_file_path):
+                raise FileNotFoundError(f"Failed to create ZIP temp file: {zip_temp_file_path}")
+            
+            with zipfile.ZipFile(zip_temp_file_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                # Add FASTA files from disk
+                for chain_type, fasta_file_path in valid_fasta_files.items():
                     filename = f"sequences_{chain_type}.fasta"
-                    zip_file.writestr(filename, fasta_content.encode('utf-8'))
+                    zip_file.write(fasta_file_path, filename)
                 
                 # Add search parameters JSON file
                 search_params_with_metadata = dict(search_params)
                 search_params_json = json.dumps(search_params_with_metadata, indent=2, sort_keys=True, default=str)
                 zip_file.writestr("search_parameters.json", search_params_json.encode('utf-8'))
             
-            zip_buffer.seek(0)
-            zip_data = zip_buffer.getvalue()
+            # Clean up individual FASTA temp files
+            for temp_file in temp_files.values():
+                try:
+                    if os.path.exists(temp_file.name):
+                        os.unlink(temp_file.name)
+                except:
+                    pass
             
             # Generate filename
             identifier = _build_search_identifier({
@@ -870,15 +1007,19 @@ def prepare_fasta_download_background(
                 "selected_databases": sorted(selected_databases_formatted),
             })
             
-            if len(fasta_files) > 1:
+            if len(valid_fasta_files) > 1:
                 filename = f"ABHunter_FASTA_{identifier}.zip"
             else:
-                chain_name = list(fasta_files.keys())[0]
+                chain_name = list(valid_fasta_files.keys())[0]
                 filename = f"ABHunter_FASTA_{chain_name}_{identifier}.zip"
             
-            # Count total sequences
-            total_sequences = sum(content.count('>') for content in fasta_files.values())
-            file_size_bytes = len(zip_data)
+            # Count total sequences by reading FASTA files
+            total_sequences = 0
+            for fasta_file_path in valid_fasta_files.values():
+                with open(fasta_file_path, 'r', encoding='utf-8') as f:
+                    total_sequences += f.read().count('>')
+            
+            file_size_bytes = os.path.getsize(zip_temp_file_path)
             
         except Exception as e:
             # Clean up temp files on error
@@ -898,13 +1039,27 @@ def prepare_fasta_download_background(
         
         return {
             'success': True,
-            'data': zip_data,
+            'file_path': zip_temp_file_path,
             'filename': filename,
             'file_size_bytes': file_size_bytes,
             'sequence_count': total_sequences
         }
         
     except Exception as e:
+        # Clean up temp files on error
+        import os
+        if 'temp_files' in locals():
+            for temp_file in temp_files.values():
+                try:
+                    if os.path.exists(temp_file.name):
+                        os.unlink(temp_file.name)
+                except OSError:
+                    pass
+        if 'zip_temp_file_path' in locals() and zip_temp_file_path and os.path.exists(zip_temp_file_path):
+            try:
+                os.unlink(zip_temp_file_path)
+            except OSError:
+                pass
         return {
             'success': False,
             'error': str(e),

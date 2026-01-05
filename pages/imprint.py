@@ -17,7 +17,7 @@ Liebigstraße 19
 04103 Leipzig, Germany
 
 **Contact:**  
-Email: [abhunter\@medizin.uni-leipzig.de](mailto:abhunter@medizin.uni-leipzig.de)  
+Email: [abhunter@medizin.uni-leipzig.de](mailto:abhunter@medizin.uni-leipzig.de)  
 Phone: On Request
 
 

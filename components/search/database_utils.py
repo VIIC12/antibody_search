@@ -45,15 +45,17 @@ def init_search_engine(
     try:
         # Handle both single directory and list of directories
         if isinstance(data_dir, list):
+            # Ensure all items in the list are strings
+            data_dirs_list = [str(d) for d in data_dir]
             engine = AntibodySearchEngine(
-                data_dirs=data_dir,
+                data_dirs=data_dirs_list,
                 progress_callback=progress_callback,
                 db_path=db_path,
                 verbose=verbose
             )
         else:
             engine = AntibodySearchEngine(
-                data_dir=data_dir,
+                data_dir=str(data_dir),
                 progress_callback=progress_callback,
                 db_path=db_path,
                 verbose=verbose

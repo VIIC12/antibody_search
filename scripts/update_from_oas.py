@@ -1344,8 +1344,6 @@ def download_and_convert_study_files(matching_studies: List, tmp_dir: Path, outp
     return successful_conversions > 0 or skipped_files > 0
 
 
-
-
 def convert_to_parquet(downloaded_files: List[Path], output_dir: Path) -> bool:
     """
     Convert downloaded CSV.gz files to Parquet format using convert_to_parquet.py.

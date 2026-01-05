@@ -7,7 +7,7 @@ statistics, sequences table, and download options.
 
 import streamlit as st
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional, List
 from textwrap import dedent
 import pandas as pd
 
@@ -17,25 +17,22 @@ from components.search.results_display import (
     get_stats_column_config
 )
 from components.search.download_utils import (
-    create_parquet_file,
-    generate_filename_base,
     prepare_stats_download,
     prepare_full_results_download_background,
-    prepare_fasta_download_background
+    prepare_fasta_download_background,
+    create_file_reader_callable
 )
-from components.search.search_execution import execute_search
 from components.search.results_plotting import (
     render_results_plots,
     render_subject_hits_boxplot,
 )
 from src.search_engine import AntibodySearchEngine
 from components.search.styling import render_chain_heading
+from components.search.download_manager import DownloadManager
 
 
-
-
-# Inject CSS for spinner animation
-st.markdown("""
+# Consolidated CSS for download buttons (injected once at module level)
+DOWNLOAD_BUTTON_CSS = """
 <style>
 @keyframes spin {
     0% { transform: rotate(0deg); }
@@ -51,8 +48,39 @@ st.markdown("""
     animation: spin 1s linear infinite;
     display: inline-block;
 }
+
+/* Ensure consistent button heights across all states */
+.download-button-container {
+    width: 100%;
+    min-height: 38.4px;
+    display: flex;
+    align-items: center;
+}
+
+.download-button-container button {
+    min-height: 38.4px;
+    box-sizing: border-box;
+}
+
+/* Ensure column containers maintain consistent heights for button alignment */
+div[data-testid="column"] {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Target Streamlit button wrapper divs to maintain consistent height */
+div[data-testid="column"] > div > button[kind="secondary"],
+div[data-testid="column"] > div > button[kind="primary"],
+div[data-testid="column"] > div > button[data-testid="baseButton-secondary"],
+div[data-testid="column"] > div > button[data-testid="baseButton-primary"] {
+    min-height: 38.4px;
+    box-sizing: border-box;
+}
 </style>
-""", unsafe_allow_html=True)
+"""
+
+# Inject CSS once at module level
+st.markdown(DOWNLOAD_BUTTON_CSS, unsafe_allow_html=True)
 
 RESULTS_HEADING_SVG = dedent("""
 <svg width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -204,8 +232,8 @@ def render_sequences_table(
     sequences_sample_df: pd.DataFrame,
     statistics: Dict[str, Any],
     is_paired: bool,
-    search_params: Dict[str, Any] = None,
-    engine: AntibodySearchEngine = None,
+    search_params: Optional[Dict[str, Any]] = None,
+    engine: Optional[AntibodySearchEngine] = None,
     stats_df: Optional[pd.DataFrame] = None
 ) -> None:
     """
@@ -247,27 +275,121 @@ def render_sequences_table(
             st.info("No sequence data available.")
 
 
+def _render_loading_button(phase: str) -> None:
+    """Render loading button with spinner."""
+    st.markdown(f"""
+    <div style="width: 100%; min-height: 38.4px; display: flex; align-items: center;">
+        <button disabled style="
+            width: 100%;
+            padding: 0.5rem 1rem;
+            background-color: rgb(49, 51, 63);
+            color: rgb(250, 250, 250);
+            border: 1px solid rgb(49, 51, 63);
+            border-radius: 0.25rem;
+            cursor: not-allowed;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 0.875rem;
+            min-height: 38.4px;
+            box-sizing: border-box;
+        ">
+            <div class="spinner-dark"></div>
+            <span>{phase}</span>
+        </button>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def _render_download_button(result: dict, label_prefix: str = "⬇ Download", mime_type: str = "application/octet-stream") -> None:
+    """Render download button with file info using deferred generation."""
+    import os
+    import hashlib
+    
+    file_path = result.get('file_path')
+    file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
+    sequence_count = result.get('sequence_count', 0)
+    filename = result.get('filename', 'download')
+    
+    # Use deferred callable if file path exists
+    if file_path and os.path.exists(file_path):
+        download_callable = create_file_reader_callable(file_path, cleanup=True)
+    elif file_path:
+        # File doesn't exist - show error
+        st.error(f"❌ Download file not found: {file_path}")
+        st.button("❌ File Not Found", disabled=True, width='stretch')
+        return
+    else:
+        # Fallback for backward compatibility (in-memory data)
+        data = result.get('data') or result.get('parquet_data') or result.get('zip_data', b'')
+        def download_callable():
+            return data
+    
+    # Generate unique key
+    file_key_hash = hashlib.md5(str(file_path or filename).encode()).hexdigest()[:8]
+    unique_key = f"download_{file_key_hash}"
+    
+    # Build label
+    if file_size_mb > 0:
+        label = f"{label_prefix} ({file_size_mb:.2f} MB)"
+    elif sequence_count > 0:
+        label = f"{label_prefix} ({sequence_count:,} seq)"
+    else:
+        label = label_prefix
+    
+    st.download_button(
+        label=label,
+        data=download_callable,  # type: ignore[arg-type]  # Callable is supported by Streamlit
+        file_name=filename,
+        mime=mime_type,
+        width='stretch',
+        type="primary",
+        key=unique_key
+    )
+
+
+def _render_error_button(error: str, download_id: str, retry_callback=None) -> None:
+    """Render error state with retry option."""
+    st.error(f"❌ {error}")
+    if st.button("🔄 Retry", key=f"{download_id}_retry", width='stretch'):
+        if retry_callback:
+            retry_callback()
+        else:
+            DownloadManager.reset(download_id)
+        st.rerun()
+
+
 def render_stats_download_button(
     stats_df: pd.DataFrame,
     search_params: Dict[str, Any],
     is_paired: bool,
-    statistics: Optional[Dict[str, Any]] = None
+    statistics: Optional[Dict[str, Any]] = None,
+    key_suffix: str = ""
 ) -> None:
     """
     Render download button for statistics CSV (as ZIP with search parameters).
+    
+    Note: Statistics download is synchronous (no background processing needed).
     
     Args:
         stats_df: Statistics dataframe
         search_params: Search parameters dictionary (including metadata)
         is_paired: Whether the search is paired
         statistics: Optional statistics dictionary for metadata
+        key_suffix: Optional suffix to add to the key for uniqueness
     """
     if stats_df.empty:
+        # Generate unique key even for disabled button
+        download_id = DownloadManager.generate_download_id(
+            search_params, "stats", is_paired, key_suffix=key_suffix
+        )
         st.button(
             "📊 Download Statistics (ZIP)",
             disabled=True,
-            use_container_width=True,
-            type="primary"
+            width='stretch',
+            type="primary",
+            key=f"{download_id}_disabled"
         )
         return
     
@@ -277,13 +399,89 @@ def render_stats_download_button(
         stats_df, search_params, is_paired, statistics, selected_databases
     )
     
+    # Generate unique key for statistics download button
+    # Include statistics in the seed to ensure uniqueness
+    import hashlib
+    stats_seed = {
+        "search_params": search_params,
+        "is_paired": is_paired,
+        "total_hits": statistics.get("total_hits", 0) if statistics else 0,
+        "key_suffix": key_suffix
+    }
+    stats_hash = hashlib.md5(str(sorted(stats_seed.items())).encode()).hexdigest()[:12]
+    unique_key = f"download_stats_{stats_hash}"
+    if key_suffix:
+        suffix_hash = hashlib.md5(str(key_suffix).encode()).hexdigest()[:8]
+        unique_key = f"{unique_key}_{suffix_hash}"
+    
     st.download_button(
         label="⬇ Download Statistics (ZIP)",
         data=stats_zip,
         file_name=filename,
         mime="application/zip",
-        use_container_width=True
+        width='stretch',
+        key=unique_key
     )
+
+
+def _determine_chain_label(search_params: Dict[str, Any], selected_databases_formatted: List[str], is_paired: bool) -> str:
+    """Determine chain label for download filename."""
+    if is_paired:
+        return "paired"
+    else:
+        chain_label = "heavy"
+        if any("Light" in db for db in selected_databases_formatted):
+            chain_label = "light"
+        else:
+            light_keys = [key for key in search_params.keys() if key.startswith("light_")]
+            if any(light_keys):
+                chain_label = "light"
+        return chain_label
+
+
+@st.fragment(run_every=2.0)
+def _render_download_button_fragment(
+    download_id: str,
+    download_type: str,
+    label: str,
+    task_func,
+    task_args: tuple,
+    task_kwargs: dict,
+    mime_type: str = "application/octet-stream",
+    label_prefix: str = "⬇ Download"
+) -> None:
+    """
+    Isolated fragment for download button - prevents full app rerun.
+    
+    Args:
+        download_id: Unique download ID
+        download_type: Type of download for phase estimation
+        label: Button label
+        task_func: Background task function
+        task_args: Positional arguments for task function
+        task_kwargs: Keyword arguments for task function
+        mime_type: MIME type for download
+        label_prefix: Prefix for download button label
+    """
+    state = DownloadManager.get_state(download_id)
+    
+    if state.status == "idle":
+        if st.button(label, width='stretch', key=f"{download_id}_btn"):
+            DownloadManager.submit_task(download_id, task_func, *task_args, **task_kwargs)
+            st.rerun()  # Only reruns this fragment
+    elif state.status == "running":
+        phase = DownloadManager.get_phase_estimate(download_id, download_type)
+        _render_loading_button(phase)
+        # Fragment will auto-refresh via run_every parameter
+    elif state.status == "completed":
+        if state.result and state.result.get('success'):
+            _render_download_button(state.result, label_prefix, mime_type)
+        else:
+            error_msg = state.result.get('error', 'Unknown error') if state.result else 'Unknown error'
+            st.button("❌ Generation Failed", disabled=True, key=f"{download_id}_failed", width='stretch')
+            st.error(f"❌ {error_msg}")
+    elif state.status == "failed":
+        _render_error_button(state.error or "Unknown error", download_id)
 
 
 def render_full_download_button(
@@ -308,58 +506,6 @@ def render_full_download_button(
         stats_df: Statistics dataframe for CSV download
         key_suffix: Optional suffix for session state keys
     """
-    import concurrent.futures
-    import time
-    from streamlit_autorefresh import st_autorefresh
-    
-    # Inject CSS for spinner animation and consistent button heights
-    st.markdown("""
-    <style>
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-
-    .spinner-dark {
-        border: 2px solid rgba(255, 255, 255, 0.2);
-        border-top: 2px solid #ffffff;
-        border-radius: 50%;
-        width: 16px;
-        height: 16px;
-        animation: spin 1s linear infinite;
-        display: inline-block;
-    }
-    
-    /* Ensure consistent button heights across all states */
-    .download-button-container {
-        width: 100%;
-        min-height: 38.4px;
-        display: flex;
-        align-items: center;
-    }
-    
-    .download-button-container button {
-        min-height: 38.4px;
-        box-sizing: border-box;
-    }
-    
-    /* Ensure column containers maintain consistent heights for button alignment */
-    div[data-testid="column"] {
-        display: flex;
-        flex-direction: column;
-    }
-    
-    /* Target Streamlit button wrapper divs to maintain consistent height */
-    div[data-testid="column"] > div > button[kind="secondary"],
-    div[data-testid="column"] > div > button[kind="primary"],
-    div[data-testid="column"] > div > button[data-testid="baseButton-secondary"],
-    div[data-testid="column"] > div > button[data-testid="baseButton-primary"] {
-        min-height: 38.4px;
-        box-sizing: border-box;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
     if not sequences_sample_df.empty:
         base_search_params = dict(search_params or {})
         selected_databases_formatted = []
@@ -377,416 +523,50 @@ def render_full_download_button(
         search_params_with_metadata = dict(base_search_params)
         search_params_with_metadata["selected_databases"] = selected_databases_formatted
 
-        if is_paired:
-            chain_label = "paired"
-        else:
-            chain_label = "heavy"
-            if any("Light" in db for db in selected_databases_formatted):
-                chain_label = "light"
-            else:
-                light_keys = [key for key in base_search_params.keys() if key.startswith("light_")]
-                if any(light_keys):
-                    chain_label = "light"
+        chain_label = _determine_chain_label(base_search_params, selected_databases_formatted, is_paired)
 
-        download_key_seed = {
-            "search_params": base_search_params,
-            "selected_databases": selected_databases_formatted,
-            "is_paired": is_paired,
-            "chain_label": chain_label
-        }
-        suffix = f"{key_suffix}_" if key_suffix else ""
-        download_key = f"{suffix}full_results_{statistics['total_hits']}_{hash(str(download_key_seed))}"
+        # Generate download IDs
+        full_results_id = DownloadManager.generate_download_id(
+            base_search_params, "full_results", is_paired, chain_label, key_suffix=key_suffix
+        )
+        fasta_id = DownloadManager.generate_download_id(
+            base_search_params, "fasta", is_paired, chain_label, key_suffix=key_suffix
+        )
         
-        # Session state keys for async full results download
-        full_future_key = f"{download_key}_future"
-        full_status_key = f"{download_key}_status"
-        full_result_key = f"{download_key}_result"
-        full_start_time_key = f"{download_key}_start_time"
-        
-        # Initialize session state
-        if full_status_key not in st.session_state:
-            st.session_state[full_status_key] = "idle"  # idle, running, completed, failed
-        if full_result_key not in st.session_state:
-            st.session_state[full_result_key] = None
-        if full_start_time_key not in st.session_state:
-            st.session_state[full_start_time_key] = None
-        
-        # Get or create executor (recreate if broken)
-        executor_key = f"{download_key}_executor"
-        
-        def get_or_create_executor():
-            executor = st.session_state.get(executor_key)
-            if executor is None:
-                executor = concurrent.futures.ProcessPoolExecutor(max_workers=2)
-                st.session_state[executor_key] = executor
-            return executor
-        
-        executor = get_or_create_executor()
-        
-        # Check task status (non-blocking)
-        def check_full_results_status():
-            future = st.session_state.get(full_future_key)
-            if future is not None and future.done():
-                try:
-                    result = future.result()
-                    st.session_state[full_future_key] = None
-                    st.session_state[full_result_key] = result
-                    if result.get('success'):
-                        st.session_state[full_status_key] = "completed"
-                        st.toast("Full results table is ready for download!", icon="⬇")
-                    else:
-                        st.session_state[full_status_key] = "failed"
-                    return result
-                except (concurrent.futures.process.BrokenProcessPool, Exception) as e:
-                    # Clear broken executor
-                    if executor_key in st.session_state:
-                        try:
-                            executor = st.session_state[executor_key]
-                            executor.shutdown(wait=False)
-                        except:
-                            pass
-                        del st.session_state[executor_key]
-                    st.session_state[full_future_key] = None
-                    st.session_state[full_status_key] = "failed"
-                    st.session_state[full_result_key] = {'success': False, 'error': str(e)}
-            return None
-        
-        # Check status on every run
-        check_full_results_status()
-        
-        # Auto-refresh when generation is running
-        if st.session_state[full_status_key] == "running":
-            st_autorefresh(interval=2000, key=f"full_results_refresh_{download_key}")
-        
-        status = st.session_state[full_status_key]
-        
-        # Estimate phase based on elapsed time
-        def estimate_phase(elapsed: float) -> str:
-            if elapsed < 3:
-                return "Initializing..."
-            elif elapsed < 10:
-                return "Searching database..."
-            elif elapsed < 30:
-                return "Processing results..."
-            elif elapsed < 60:
-                return "Creating Parquet file..."
-            else:
-                return "Finalizing..."
-        
-        # Button labels
-        button_label = "⬇ Download Full Results Table"
-        new_button_label = "⬇ Download FASTA"
-        
-        # Session state keys for async new download (FASTA)
-        new_download_key = f"{suffix}new_download_{statistics['total_hits']}_{hash(str(download_key_seed))}"
-        new_future_key = f"{new_download_key}_future"
-        new_status_key = f"{new_download_key}_status"
-        new_result_key = f"{new_download_key}_result"
-        new_start_time_key = f"{new_download_key}_start_time"
-        
-        # Initialize session state for FASTA download
-        if new_status_key not in st.session_state:
-            st.session_state[new_status_key] = "idle"  # idle, running, completed, failed
-        if new_result_key not in st.session_state:
-            st.session_state[new_result_key] = None
-        if new_start_time_key not in st.session_state:
-            st.session_state[new_start_time_key] = None
-        
-        # Get or create executor for FASTA (recreate if broken)
-        fasta_executor_key = f"{new_download_key}_executor"
-        
-        def get_or_create_fasta_executor():
-            executor = st.session_state.get(fasta_executor_key)
-            if executor is None:
-                executor = concurrent.futures.ProcessPoolExecutor(max_workers=2)
-                st.session_state[fasta_executor_key] = executor
-            return executor
-        
-        # Check task status for FASTA download (non-blocking)
-        def check_new_download_status():
-            future = st.session_state.get(new_future_key)
-            if future is not None and future.done():
-                try:
-                    result = future.result()
-                    st.session_state[new_future_key] = None
-                    st.session_state[new_result_key] = result
-                    if result.get('success'):
-                        st.session_state[new_status_key] = "completed"
-                        st.toast("New download is ready!", icon="⬇")
-                    else:
-                        st.session_state[new_status_key] = "failed"
-                    return result
-                except (concurrent.futures.process.BrokenProcessPool, Exception) as e:
-                    # Clear broken executor
-                    if fasta_executor_key in st.session_state:
-                        try:
-                            executor = st.session_state[fasta_executor_key]
-                            executor.shutdown(wait=False)
-                        except:
-                            pass
-                        del st.session_state[fasta_executor_key]
-                    st.session_state[new_future_key] = None
-                    st.session_state[new_status_key] = "failed"
-                    st.session_state[new_result_key] = {'success': False, 'error': str(e)}
-            return None
-        
-        # Check status on every run
-        check_new_download_status()
-        
-        # Auto-refresh when FASTA generation is running
-        if st.session_state[new_status_key] == "running":
-            st_autorefresh(interval=2000, key=f"new_download_refresh_{new_download_key}")
-        
-        new_status = st.session_state[new_status_key]
-        
-        # Estimate phase based on elapsed time for FASTA
-        def estimate_new_phase(elapsed: float) -> str:
-            if elapsed < 3:
-                return "Initializing..."
-            elif elapsed < 10:
-                return "Processing..."
-            elif elapsed < 30:
-                return "Generating..."
-            elif elapsed < 60:
-                return "Finalizing..."
-            else:
-                return "Almost done..."
-        
-        # Use column layout to place Statistics CSV, Full Results, and new button side by side
+        # Use column layout to place Statistics CSV, Full Results, and FASTA buttons side by side
         col_stats, col_full, col_new, _spacer = st.columns([1.5, 1.5, 1.5, 5.5])
         
-        # Statistics CSV download button (left column)
+        # Statistics CSV download button (left column) - synchronous, no fragment needed
         with col_stats:
-            render_stats_download_button(stats_df, search_params, is_paired, statistics)
+            if stats_df is not None:
+                location_suffix = f"{full_results_id}_col_stats"
+                render_stats_download_button(stats_df, search_params, is_paired, statistics, key_suffix=location_suffix)
         
-        # Full Results download button (middle column)
+        # Full Results download button (middle column) - async with fragment
         with col_full:
-            if status == "idle":
-                if st.button(
-                    button_label,
-                    use_container_width=True,
-                    key=f"{download_key}_button"
-                ):
-                    # Get fresh executor (in case previous one was broken)
-                    executor = get_or_create_executor()
-                    try:
-                        # Submit background task (pass search_params with metadata)
-                        future = executor.submit(
-                            prepare_full_results_download_background,
-                            loadable_databases,
-                            search_params_with_metadata,  # Includes selected_databases
-                            is_paired,
-                            chain_label
-                        )
-                        st.session_state[full_future_key] = future
-                        st.session_state[full_start_time_key] = time.time()
-                        st.session_state[full_status_key] = "running"
-                        st.rerun()
-                    except concurrent.futures.process.BrokenProcessPool:
-                        # Recreate executor and retry
-                        if executor_key in st.session_state:
-                            try:
-                                old_executor = st.session_state[executor_key]
-                                old_executor.shutdown(wait=False)
-                            except:
-                                pass
-                            del st.session_state[executor_key]
-                        executor = get_or_create_executor()
-                        future = executor.submit(
-                            prepare_full_results_download_background,
-                            loadable_databases,
-                            search_params_with_metadata,
-                            is_paired,
-                            chain_label
-                        )
-                        st.session_state[full_future_key] = future
-                        st.session_state[full_start_time_key] = time.time()
-                        st.session_state[full_status_key] = "running"
-                        st.rerun()
-            
-            elif status == "running":
-                elapsed = time.time() - st.session_state[full_start_time_key] if st.session_state[full_start_time_key] else 0
-                phase = estimate_phase(elapsed)
-                
-                # Custom button with CSS spinner
-                st.markdown(f"""
-                <div style="width: 100%; min-height: 38.4px; display: flex; align-items: center;">
-                    <button disabled style="
-                        width: 100%;
-                        padding: 0.5rem 1rem;
-                        background-color: rgb(49, 51, 63);
-                        color: rgb(250, 250, 250);
-                        border: 1px solid rgb(49, 51, 63);
-                        border-radius: 0.25rem;
-                        cursor: not-allowed;
-                        display: inline-flex;
-                        align-items: center;
-                        justify-content: center;
-                        gap: 8px;
-                        font-size: 0.875rem;
-                        min-height: 38.4px;
-                        box-sizing: border-box;
-                    ">
-                        <div class="spinner-dark"></div>
-                        <span>{phase}</span>
-                    </button>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            elif status == "completed":
-                result = st.session_state[full_result_key]
-                if result and result.get('success'):
-                    file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
-                    
-                    # The original button becomes the download button
-                    st.download_button(
-                        label=f"⬇ Download Full Results ({file_size_mb:.2f} MB)",
-                        data=result.get('parquet_data', b''),
-                        file_name=result.get('filename', 'sequences.parquet'),
-                        mime="application/octet-stream",
-                        use_container_width=True,
-                        type="primary",
-                        key=f"download_{download_key}"
-                    )
-                else:
-                    st.button("❌ Generation Failed", disabled=True, key=f"{download_key}_failed", use_container_width=True)
-                    error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-                    st.error(f"❌ {error_msg}")
-            
-            elif status == "failed":
-                result = st.session_state[full_result_key]
-                error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-                if st.button("🔄 Retry", key=f"{download_key}_retry", use_container_width=True):
-                    # Clear broken executor if it exists
-                    if executor_key in st.session_state:
-                        try:
-                            old_executor = st.session_state[executor_key]
-                            old_executor.shutdown(wait=False)
-                        except:
-                            pass
-                        del st.session_state[executor_key]
-                    st.session_state[full_status_key] = "idle"
-                    st.session_state[full_result_key] = None
-                    st.session_state[full_start_time_key] = None
-                    st.session_state[full_future_key] = None
-                    st.rerun()
-                else:
-                    st.error(f"❌ {error_msg}")
+            _render_download_button_fragment(
+                download_id=full_results_id,
+                download_type="full_results",
+                label="⬇ Download Full Results Table",
+                task_func=prepare_full_results_download_background,
+                task_args=(loadable_databases, search_params_with_metadata, is_paired, chain_label),
+                task_kwargs={},
+                mime_type="application/octet-stream",
+                label_prefix="⬇ Download Full Results"
+            )
         
-        # FASTA download button (right column)
+        # FASTA download button (right column) - async with fragment
         with col_new:
-            if new_status == "idle":
-                if st.button(
-                    new_button_label,
-                    use_container_width=True,
-                    key=f"{new_download_key}_button"
-                ):
-                    # Get fresh executor (in case previous one was broken)
-                    fasta_executor = get_or_create_fasta_executor()
-                    try:
-                        # Submit background task
-                        future = fasta_executor.submit(
-                            prepare_fasta_download_background,
-                            loadable_databases,
-                            search_params_with_metadata,
-                            is_paired,
-                            chain_label
-                        )
-                        st.session_state[new_future_key] = future
-                        st.session_state[new_start_time_key] = time.time()
-                        st.session_state[new_status_key] = "running"
-                        st.rerun()
-                    except concurrent.futures.process.BrokenProcessPool:
-                        # Recreate executor and retry
-                        if fasta_executor_key in st.session_state:
-                            try:
-                                old_executor = st.session_state[fasta_executor_key]
-                                old_executor.shutdown(wait=False)
-                            except:
-                                pass
-                            del st.session_state[fasta_executor_key]
-                        fasta_executor = get_or_create_fasta_executor()
-                        future = fasta_executor.submit(
-                            prepare_fasta_download_background,
-                            loadable_databases,
-                            search_params_with_metadata,
-                            is_paired,
-                            chain_label
-                        )
-                        st.session_state[new_future_key] = future
-                        st.session_state[new_start_time_key] = time.time()
-                        st.session_state[new_status_key] = "running"
-                        st.rerun()
-            
-            elif new_status == "running":
-                elapsed = time.time() - st.session_state[new_start_time_key] if st.session_state[new_start_time_key] else 0
-                phase = estimate_new_phase(elapsed)
-                
-                # Custom button with CSS spinner
-                st.markdown(f"""
-                <div style="width: 100%; min-height: 38.4px; display: flex; align-items: center;">
-                    <button disabled style="
-                        width: 100%;
-                        padding: 0.5rem 1rem;
-                        background-color: rgb(49, 51, 63);
-                        color: rgb(250, 250, 250);
-                        border: 1px solid rgb(49, 51, 63);
-                        border-radius: 0.25rem;
-                        cursor: not-allowed;
-                        display: inline-flex;
-                        align-items: center;
-                        justify-content: center;
-                        gap: 8px;
-                        font-size: 0.875rem;
-                        min-height: 38.4px;
-                        box-sizing: border-box;
-                    ">
-                        <div class="spinner-dark"></div>
-                        <span>{phase}</span>
-                    </button>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            elif new_status == "completed":
-                result = st.session_state[new_result_key]
-                if result and result.get('success'):
-                    file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
-                    sequence_count = result.get('sequence_count', 0)
-                    
-                    # The original button becomes the download button
-                    st.download_button(
-                        label=f"⬇ Download FASTA ({file_size_mb:.2f} MB" if file_size_mb > 0 else f"⬇ Download FASTA ({sequence_count:,} seq)",
-                        data=result.get('data', b''),
-                        file_name=result.get('filename', 'sequences.fasta.zip'),
-                        mime="application/zip",
-                        use_container_width=True,
-                        type="primary",
-                        key=f"download_{new_download_key}"
-                    )
-                else:
-                    st.button("❌ Generation Failed", disabled=True, key=f"{new_download_key}_failed", use_container_width=True)
-                    error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-                    st.error(f"❌ {error_msg}")
-            
-            elif new_status == "failed":
-                result = st.session_state[new_result_key]
-                error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-                if st.button("🔄 Retry", key=f"{new_download_key}_retry", use_container_width=True):
-                    # Clear broken executor if it exists
-                    if fasta_executor_key in st.session_state:
-                        try:
-                            old_executor = st.session_state[fasta_executor_key]
-                            old_executor.shutdown(wait=False)
-                        except:
-                            pass
-                        del st.session_state[fasta_executor_key]
-                    st.session_state[new_status_key] = "idle"
-                    st.session_state[new_result_key] = None
-                    st.session_state[new_start_time_key] = None
-                    st.session_state[new_future_key] = None
-                    st.rerun()
-                else:
-                    st.error(f"❌ {error_msg}")
+            _render_download_button_fragment(
+                download_id=fasta_id,
+                download_type="fasta",
+                label="⬇ Download FASTA",
+                task_func=prepare_fasta_download_background,
+                task_args=(loadable_databases, search_params_with_metadata, is_paired, chain_label),
+                task_kwargs={},
+                mime_type="application/zip",
+                label_prefix="⬇ Download FASTA"
+            )
 
 
 def render_search_criteria_display(search_params: Dict[str, Any], is_paired: bool) -> None:

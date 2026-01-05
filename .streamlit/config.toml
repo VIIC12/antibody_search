@@ -8,3 +8,6 @@ toolbarMode="minimal"
 [theme.sidebar]
 primaryColor="black"
 backgroundColor="black"
+
+[server]
+fileWatcherType="auto" 
