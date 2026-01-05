@@ -82,6 +82,7 @@ def create_file_reader_callable(file_path: str, cleanup: bool = True):
         A callable that returns file contents as bytes
     """
     import os
+    import time
     from pathlib import Path
     
     # Convert to absolute path to ensure we can find it
@@ -90,12 +91,40 @@ def create_file_reader_callable(file_path: str, cleanup: bool = True):
     def read_file():
         """Read file from disk and optionally clean it up."""
         try:
-            # Verify file exists before trying to read
+            # Wait for file to be available (handle race conditions from background processes)
+            max_wait = 5.0  # Maximum wait time in seconds
+            wait_interval = 0.1  # Check every 100ms
+            waited = 0.0
+            
+            while not os.path.exists(abs_file_path) and waited < max_wait:
+                time.sleep(wait_interval)
+                waited += wait_interval
+            
+            # Verify file exists and is readable
             if not os.path.exists(abs_file_path):
                 raise FileNotFoundError(f"Download file not found: {abs_file_path}")
             
-            with open(abs_file_path, 'rb') as f:
-                data = f.read()
+            # Additional check: ensure file is not empty and is readable
+            if os.path.getsize(abs_file_path) == 0:
+                raise FileNotFoundError(f"Download file is empty: {abs_file_path}")
+            
+            # Read file with retry logic
+            data = None
+            max_read_attempts = 3
+            for attempt in range(max_read_attempts):
+                try:
+                    with open(abs_file_path, 'rb') as f:
+                        data = f.read()
+                    break  # Success, exit retry loop
+                except (OSError, IOError) as e:
+                    if attempt == max_read_attempts - 1:
+                        raise
+                    # Wait a bit before retrying (file might still be writing)
+                    time.sleep(0.2)
+            
+            # Ensure data was successfully read
+            if data is None:
+                raise IOError(f"Failed to read file after {max_read_attempts} attempts: {abs_file_path}")
             
             if cleanup:
                 try:
@@ -383,13 +412,10 @@ def prepare_full_results_download_background(
         logging.getLogger("streamlit.runtime.caching.cache_data_api").setLevel(logging.ERROR)
         
         from components.search.database_utils import init_search_engine
-        from components.search.search_execution import execute_search
         import json
         
         # Import functions from this module
         from components.search.download_utils import (
-            create_parquet_file,
-            generate_filename_base,
             _build_search_identifier
         )
         
@@ -437,14 +463,15 @@ def prepare_full_results_download_background(
             }
         
         # Create temporary file on disk instead of using BytesIO
-        # Use absolute path to ensure it's accessible from main process
+        # Use mkstemp to ensure file is accessible across processes
+        # This is more reliable than NamedTemporaryFile for multiprocessing scenarios
         temp_file_path = None
         try:
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.parquet')
-            temp_file_path = os.path.abspath(temp_file.name)
-            temp_file.close()
+            fd, temp_file_path = tempfile.mkstemp(suffix='.parquet')
+            os.close(fd)  # Close the file descriptor, we'll open it with ParquetWriter
+            temp_file_path = os.path.abspath(temp_file_path)
             
-            # Verify the file was created
+            # Verify the file was created and is writable
             if not os.path.exists(temp_file_path):
                 if temp_file_path:
                     try:
@@ -454,6 +481,17 @@ def prepare_full_results_download_background(
                 return {
                     'success': False,
                     'error': f'Failed to create temp file: {temp_file_path}'
+                }
+            
+            # Ensure we have write permissions
+            if not os.access(temp_file_path, os.W_OK):
+                try:
+                    os.unlink(temp_file_path)
+                except OSError:
+                    pass
+                return {
+                    'success': False,
+                    'error': f'No write permission for temp file: {temp_file_path}'
                 }
         except Exception as e:
             if temp_file_path:
@@ -543,8 +581,52 @@ def prepare_full_results_download_background(
                 
                 writer.close()
             
-            # Get file size
+            # Ensure file is fully written and flushed to disk
+            # Explicitly sync the file system to ensure all data is written
+            # This is critical when the file is created in a background process
+            try:
+                # Flush any pending writes
+                import sys
+                if hasattr(os, 'sync'):
+                    try:
+                        os.sync()
+                    except (OSError, AttributeError):
+                        pass  # os.sync() may not be available on all systems
+                
+                # Force a sync of the specific file's directory
+                parquet_dir = os.path.dirname(temp_file_path)
+                if hasattr(os, 'sync'):
+                    try:
+                        # On Linux, we can sync the directory
+                        dir_fd = os.open(parquet_dir, os.O_RDONLY)
+                        try:
+                            os.fsync(dir_fd)
+                        finally:
+                            os.close(dir_fd)
+                    except (OSError, AttributeError):
+                        pass
+            except Exception:
+                # If sync fails, continue anyway - the file should still be written
+                pass
+            
+            # Verify file exists and has content before returning
+            if not os.path.exists(temp_file_path):
+                raise FileNotFoundError(f"Parquet file was not created: {temp_file_path}")
+            
             file_size_bytes = os.path.getsize(temp_file_path)
+            if file_size_bytes == 0:
+                raise ValueError(f"Parquet file is empty: {temp_file_path}")
+            
+            # Verify file is readable (critical for cross-process access)
+            if not os.access(temp_file_path, os.R_OK):
+                raise PermissionError(f"Parquet file is not readable: {temp_file_path}")
+            
+            # Try to open the file to ensure it's readable
+            try:
+                with open(temp_file_path, 'rb') as test_file:
+                    test_file.read(1)  # Read one byte to verify file is readable
+            except (OSError, IOError) as e:
+                raise IOError(f"Parquet file is not readable: {temp_file_path} - {str(e)}")
             
             # Prepare search params with metadata for filename
             search_params_with_metadata = dict(search_params)
@@ -581,10 +663,11 @@ def prepare_full_results_download_background(
     except Exception as e:
         # Clean up temp file on error (outer exception handler)
         import os
-        if 'temp_file_path' in locals() and temp_file_path:
+        # Safely check for temp_file_path - it might not exist if exception occurred early
+        temp_file_path_local = locals().get('temp_file_path')
+        if temp_file_path_local and os.path.exists(temp_file_path_local):
             try:
-                if os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
+                os.unlink(temp_file_path_local)
             except OSError:
                 pass
         return {
@@ -873,6 +956,9 @@ def prepare_fasta_download_background(
         fasta_files = {}
         temp_files = {}
         zip_temp_file_path = None
+        filename = None
+        file_size_bytes = 0
+        total_sequences = 0
         
         try:
             # Create temporary files for each FASTA file
@@ -971,14 +1057,19 @@ def prepare_fasta_download_background(
                 }
             
             # Create ZIP file on disk instead of in memory
-            # Use absolute path to ensure it's accessible from main process
-            zip_temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.zip')
-            zip_temp_file_path = os.path.abspath(zip_temp_file.name)
-            zip_temp_file.close()
+            # Use mkstemp to ensure file is accessible across processes
+            # This is more reliable than NamedTemporaryFile for multiprocessing scenarios
+            fd, zip_temp_file_path = tempfile.mkstemp(suffix='.zip')
+            os.close(fd)  # Close the file descriptor, we'll open it with ZipFile
+            zip_temp_file_path = os.path.abspath(zip_temp_file_path)
             
-            # Verify the file was created
+            # Verify the file was created and is writable
             if not os.path.exists(zip_temp_file_path):
                 raise FileNotFoundError(f"Failed to create ZIP temp file: {zip_temp_file_path}")
+            
+            # Ensure we have write permissions
+            if not os.access(zip_temp_file_path, os.W_OK):
+                raise PermissionError(f"No write permission for ZIP temp file: {zip_temp_file_path}")
             
             with zipfile.ZipFile(zip_temp_file_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                 # Add FASTA files from disk
@@ -991,7 +1082,57 @@ def prepare_fasta_download_background(
                 search_params_json = json.dumps(search_params_with_metadata, indent=2, sort_keys=True, default=str)
                 zip_file.writestr("search_parameters.json", search_params_json.encode('utf-8'))
             
-            # Clean up individual FASTA temp files
+            # Ensure ZIP file is fully written and flushed to disk
+            # Explicitly sync the file system to ensure all data is written
+            # This is critical when the file is created in a background process
+            try:
+                # Flush any pending writes
+                import sys
+                if hasattr(os, 'sync'):
+                    try:
+                        os.sync()
+                    except (OSError, AttributeError):
+                        pass  # os.sync() may not be available on all systems
+                
+                # Force a sync of the specific file's directory
+                zip_dir = os.path.dirname(zip_temp_file_path)
+                if hasattr(os, 'sync'):
+                    try:
+                        # On Linux, we can sync the directory
+                        dir_fd = os.open(zip_dir, os.O_RDONLY)
+                        try:
+                            os.fsync(dir_fd)
+                        finally:
+                            os.close(dir_fd)
+                    except (OSError, AttributeError):
+                        pass
+            except Exception:
+                # If sync fails, continue anyway - the file should still be written
+                pass
+            
+            # Verify ZIP file exists and has content before returning
+            if not os.path.exists(zip_temp_file_path):
+                raise FileNotFoundError(f"ZIP file was not created: {zip_temp_file_path}")
+            
+            file_size_bytes = os.path.getsize(zip_temp_file_path)
+            if file_size_bytes == 0:
+                raise ValueError(f"ZIP file is empty: {zip_temp_file_path}")
+            
+            # Verify file is readable (critical for cross-process access)
+            if not os.access(zip_temp_file_path, os.R_OK):
+                raise PermissionError(f"ZIP file is not readable: {zip_temp_file_path}")
+            
+            # Count total sequences by reading FASTA files BEFORE cleaning them up
+            total_sequences = 0
+            for fasta_file_path in valid_fasta_files.values():
+                try:
+                    with open(fasta_file_path, 'r', encoding='utf-8') as f:
+                        total_sequences += f.read().count('>')
+                except (FileNotFoundError, OSError):
+                    # If file was already deleted or inaccessible, skip it
+                    pass
+            
+            # Clean up individual FASTA temp files (after counting sequences)
             for temp_file in temp_files.values():
                 try:
                     if os.path.exists(temp_file.name):
@@ -1013,23 +1154,52 @@ def prepare_fasta_download_background(
                 chain_name = list(valid_fasta_files.keys())[0]
                 filename = f"ABHunter_FASTA_{chain_name}_{identifier}.zip"
             
-            # Count total sequences by reading FASTA files
-            total_sequences = 0
-            for fasta_file_path in valid_fasta_files.values():
-                with open(fasta_file_path, 'r', encoding='utf-8') as f:
-                    total_sequences += f.read().count('>')
-            
+            # Re-verify file size after all operations
             file_size_bytes = os.path.getsize(zip_temp_file_path)
+            
+            # Final verification: ensure ZIP file is accessible and readable
+            if not os.path.exists(zip_temp_file_path):
+                raise FileNotFoundError(f"ZIP file not accessible: {zip_temp_file_path}")
+            
+            # Read the entire ZIP file into memory before cleaning up
+            # This ensures the data is available in the main process even if the temp file is deleted
+            zip_data = None
+            try:
+                with open(zip_temp_file_path, 'rb') as zip_file:
+                    zip_data = zip_file.read()
+            except (OSError, IOError) as e:
+                raise IOError(f"Failed to read ZIP file: {zip_temp_file_path} - {str(e)}")
+            
+            # Verify we read the expected amount of data
+            if len(zip_data) != file_size_bytes:
+                raise IOError(f"ZIP file size mismatch: expected {file_size_bytes} bytes, got {len(zip_data)} bytes")
+            
+            # Clean up ZIP temp file (we have the data in memory now)
+            try:
+                if os.path.exists(zip_temp_file_path):
+                    os.unlink(zip_temp_file_path)
+            except:
+                pass
             
         except Exception as e:
             # Clean up temp files on error
-            for temp_file in temp_files.values():
+            import os
+            temp_files_local = locals().get('temp_files', {})
+            if temp_files_local:
+                for temp_file in temp_files_local.values():
+                    try:
+                        if hasattr(temp_file, 'close'):
+                            temp_file.close()
+                        if hasattr(temp_file, 'name') and os.path.exists(temp_file.name):
+                            os.unlink(temp_file.name)
+                    except (OSError, AttributeError):
+                        pass
+            # Also clean up ZIP file if it was created
+            zip_temp_file_path_local = locals().get('zip_temp_file_path')
+            if zip_temp_file_path_local and os.path.exists(zip_temp_file_path_local):
                 try:
-                    temp_file.close()
-                    import os
-                    if os.path.exists(temp_file.name):
-                        os.unlink(temp_file.name)
-                except:
+                    os.unlink(zip_temp_file_path_local)
+                except OSError:
                     pass
             raise  # Re-raise to be caught by outer except
         
@@ -1039,7 +1209,7 @@ def prepare_fasta_download_background(
         
         return {
             'success': True,
-            'file_path': zip_temp_file_path,
+            'data': zip_data,  # Return data as bytes instead of file path
             'filename': filename,
             'file_size_bytes': file_size_bytes,
             'sequence_count': total_sequences
@@ -1048,16 +1218,20 @@ def prepare_fasta_download_background(
     except Exception as e:
         # Clean up temp files on error
         import os
-        if 'temp_files' in locals():
-            for temp_file in temp_files.values():
+        # Safely clean up temp_files if they exist
+        temp_files_local = locals().get('temp_files', {})
+        if temp_files_local:
+            for temp_file in temp_files_local.values():
                 try:
-                    if os.path.exists(temp_file.name):
+                    if hasattr(temp_file, 'name') and os.path.exists(temp_file.name):
                         os.unlink(temp_file.name)
-                except OSError:
+                except (OSError, AttributeError):
                     pass
-        if 'zip_temp_file_path' in locals() and zip_temp_file_path and os.path.exists(zip_temp_file_path):
+        # Safely clean up ZIP file if it exists
+        zip_temp_file_path_local = locals().get('zip_temp_file_path')
+        if zip_temp_file_path_local and os.path.exists(zip_temp_file_path_local):
             try:
-                os.unlink(zip_temp_file_path)
+                os.unlink(zip_temp_file_path_local)
             except OSError:
                 pass
         return {

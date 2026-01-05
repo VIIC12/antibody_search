@@ -1045,7 +1045,7 @@ def render_inferred_pairing_plots(
                         yaxis=dict(autorange="reversed"),
                         coloraxis_colorbar=dict(title="Probability (%)")
                     )
-                    st.plotly_chart(fig, use_container_width=True, config={}, key=f"inferred_{chain_type.lower()}_v_plot")
+                    st.plotly_chart(fig, width='stretch', config={}, key=f"inferred_{chain_type.lower()}_v_plot")
             elif gene_type == 'J':
                 with cols[2]:  # Match IGHJ plot width
                     fig = px.imshow(
@@ -1061,7 +1061,7 @@ def render_inferred_pairing_plots(
                         yaxis=dict(autorange="reversed"),
                         coloraxis_colorbar=dict(title="Probability (%)")
                     )
-                    st.plotly_chart(fig, use_container_width=True, config={}, key=f"inferred_{chain_type.lower()}_j_plot")
+                    st.plotly_chart(fig, width='stretch', config={}, key=f"inferred_{chain_type.lower()}_j_plot")
     else:
         # Light chain: V, J gene plots (2 columns)
         # V inferred plot in column 0, J inferred plot in column 1
@@ -1083,7 +1083,7 @@ def render_inferred_pairing_plots(
                     yaxis=dict(autorange="reversed"),
                     coloraxis_colorbar=dict(title="Probability (%)")
                 )
-                st.plotly_chart(fig, use_container_width=True, config={}, key=f"inferred_light_{gene_type.lower()}_plot_{i}")
+                st.plotly_chart(fig, width='stretch', config={}, key=f"inferred_light_{gene_type.lower()}_plot_{i}")
 
     # Add to collector if provided
     if collector is not None:
@@ -1216,7 +1216,7 @@ def render_paired_v_gene_heatmap(
     )
 
     st.markdown("#### 🧬 Heavy × Light V Gene Pairing")
-    st.plotly_chart(fig, use_container_width=True, config={})
+    st.plotly_chart(fig, width='stretch', config={})
 
     if collector is not None:
         heatmap_melt = heatmap_df.reset_index().melt(
@@ -1309,7 +1309,7 @@ def render_paired_j_gene_heatmap(
     )
 
     st.markdown("#### 🔬 Heavy × Light J Gene Pairing")
-    st.plotly_chart(fig, use_container_width=True, config={})
+    st.plotly_chart(fig, width='stretch', config={})
 
     if collector is not None:
         heatmap_melt = heatmap_df.reset_index().melt(
@@ -1754,7 +1754,7 @@ def plot_cdr_length_distribution(
     
     fig.update_coloraxes(colorscale=color_scale, showscale=False)
 
-    st.plotly_chart(fig, use_container_width=True, config={})
+    st.plotly_chart(fig, width='stretch', config={})
 
     if collector is not None:
         export_df = length_counts.reset_index()
@@ -1837,7 +1837,7 @@ def plot_gene_distribution(
     
     fig.update_coloraxes(colorscale=color_scale, showscale=False)
 
-    st.plotly_chart(fig, use_container_width=True, config={})
+    st.plotly_chart(fig, width='stretch', config={})
 
     if collector is not None:
         export_df = gene_counts.reset_index()
@@ -2008,7 +2008,7 @@ def render_subject_hits_boxplot(
         ),
     )
 
-    st.plotly_chart(fig, use_container_width=True, config={})
+    st.plotly_chart(fig, width='stretch', config={})
 
     export_df = filtered_df[["subject", "total_sequences", "hits", "hits_per_million"]].copy()
     export_df["hits_per_million_millions"] = export_df["hits_per_million"] / 1_000_000

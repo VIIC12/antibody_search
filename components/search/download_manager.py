@@ -27,7 +27,7 @@ class DownloadManager:
     """Manages async download tasks with simplified state management."""
     
     _EXECUTOR_KEY = "_download_manager_executor"
-    _MAX_WORKERS = 2
+    _MAX_WORKERS = 4
     
     @staticmethod
     def _get_executor() -> concurrent.futures.ProcessPoolExecutor:
