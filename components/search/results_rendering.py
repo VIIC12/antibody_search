@@ -1101,6 +1101,16 @@ def render_dual_unpaired_results(
     # Heavy section
     render_chain_heading("Heavy Chain Results", "heavy", level=3, icon="🧬")
     render_statistics_metrics(heavy_result['statistics'])
+    # Download buttons (Statistics CSV and Full Results) - above Sample Sequences
+    render_full_download_button(
+        heavy_result['sequences_sample_df'],
+        heavy_result['statistics'],
+        is_paired=False,
+        search_params=heavy_result['search_params'],
+        engine=engine,
+        stats_df=heavy_result['stats_df'],
+        key_suffix="heavy"
+    )
     render_sequences_table(
         heavy_result['sequences_sample_df'],
         heavy_result['statistics'],
@@ -1122,6 +1132,16 @@ def render_dual_unpaired_results(
     # Light section
     render_chain_heading("Light Chain Results", "light", level=3, icon="🔬")
     render_statistics_metrics(light_result['statistics'])
+    # Download buttons (Statistics CSV and Full Results) - above Sample Sequences
+    render_full_download_button(
+        light_result['sequences_sample_df'],
+        light_result['statistics'],
+        is_paired=False,
+        search_params=light_result['search_params'],
+        engine=engine,
+        stats_df=light_result['stats_df'],
+        key_suffix="light"
+    )
     render_sequences_table(
         light_result['sequences_sample_df'],
         light_result['statistics'],
