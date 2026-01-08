@@ -18,12 +18,25 @@ import pandas as pd
 # Set to None to use all available cores, or specify a number (e.g., 4)
 DUCKDB_THREADS = None  # Change this to set a specific thread count
 
+# Configuration: Verbose output control via environment variable
+# Set ABHUNTER_VERBOSE=true to enable verbose output (default: false)
+def _get_verbose_default() -> bool:
+    """Get verbose setting from environment variable, defaulting to False.
+    
+    Only accepts 'true' or 'false' (case-insensitive). Any other value defaults to False.
+    
+    Returns:
+        True if ABHUNTER_VERBOSE is set to 'true', False otherwise
+    """
+    verbose_env = os.getenv('ABHUNTER_VERBOSE', '').lower().strip()
+    return verbose_env == 'true'
+
 class AntibodySearchEngine:
     """High-performance antibody sequence search using DuckDB.
     Supports both paired and unpaired antibody data.
     """
     
-    def __init__(self, data_dir: str = "data/parquet", progress_callback=None, db_path: str = ":memory:", verbose: bool = True, data_dirs: Optional[List[str]] = None):
+    def __init__(self, data_dir: str = "data/parquet", progress_callback=None, db_path: str = ":memory:", verbose: Optional[bool] = None, data_dirs: Optional[List[str]] = None):
         """
         Initialize search engine.
         
@@ -32,9 +45,13 @@ class AntibodySearchEngine:
                      Used if data_dirs is None
             progress_callback: Optional callback function(progress, status) for progress updates
             db_path: DuckDB database path (default: ":memory:" for in-memory database)
-            verbose: Whether to print initialization messages (default: True)
+            verbose: Whether to print initialization messages. If None, uses ABHUNTER_VERBOSE
+                    environment variable (defaults to False if not set). Only accepts True/False.
             data_dirs: Optional list of directories to search (takes precedence over data_dir)
         """
+        # Use environment variable default if verbose not explicitly provided
+        if verbose is None:
+            verbose = _get_verbose_default()
         # Handle multiple directories if provided
         if data_dirs:
             # Handle relative paths from V3.0 directory
@@ -94,12 +111,12 @@ class AntibodySearchEngine:
         if DUCKDB_THREADS is not None:
             self.conn.execute(f"SET threads = {DUCKDB_THREADS}")
             if verbose:
-                print(f"✓ DuckDB configured to use {DUCKDB_THREADS} threads")
+                print(f"DuckDB configured to use {DUCKDB_THREADS} threads")
         else:
             # Use all available cores (DuckDB default)
             available_cores = os.cpu_count()
             if verbose:
-                print(f"✓ DuckDB using all available cores: {available_cores}")
+                print(f"DuckDB using all available cores: {available_cores}")
         
         # Detect database schema (paired vs unpaired)
         self.schema = self._detect_schema()
@@ -354,8 +371,8 @@ class AntibodySearchEngine:
             progress_callback(1.0, "Search engine ready!")
         
         if verbose:
-            print(f"✓ Registered {len(parquet_files)} Parquet files")
-            print(f"✓ Total sequences: {self.total_sequences:,}")
+            print(f"Registered {len(parquet_files)} Parquet files")
+            print(f"Total sequences: {self.total_sequences:,}")
 
     def _reset_inferred_lookup(self) -> None:
         """Clear any cached inferred pairing data."""
@@ -2110,7 +2127,7 @@ class AntibodySearchEngine:
         result_type = "full sequences" if full_results else "statistics"
         limit_str = f" (limited to {limit:,})" if limit else ""
         
-        print(f"✓ {mode_str} search completed: {hits_str} hits found ({percentage:.2f}%, {per_million:.0f} per million)")
+        print(f"{mode_str} search completed: {hits_str} hits found ({percentage:.2f}%, {per_million:.0f} per million)")
         print(f"  Returned {result_type}{limit_str} | Search time: {time_str}")
     
     def get_available_genes(self) -> Dict[str, List[str]]:
@@ -2229,7 +2246,8 @@ class AntibodySearchEngine:
         Not used by the Streamlit web interface (metadata is auto-rebuilt on reload).
         """
         self.schema = self._detect_schema()
-        self._register_data(progress_callback=None, verbose=False)
+        verbose = _get_verbose_default()
+        self._register_data(progress_callback=None, verbose=verbose)
 
     ## Thread configuration utility methods end here ##
 

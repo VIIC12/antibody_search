@@ -21,11 +21,23 @@ def is_production() -> bool:
     return os.getenv('STREAMLIT_ENV') == 'production'
 
 
+def _get_verbose_default() -> bool:
+    """Get verbose setting from environment variable, defaulting to False.
+    
+    Only accepts 'true' or 'false' (case-insensitive). Any other value defaults to False.
+    
+    Returns:
+        True if ABHUNTER_VERBOSE is set to 'true', False otherwise
+    """
+    verbose_env = os.getenv('ABHUNTER_VERBOSE', '').lower().strip()
+    return verbose_env == 'true'
+
+
 def init_search_engine(
     data_dir: Union[str, List[str]],
     progress_callback=None,
     db_path: str = ":memory:",
-    verbose: bool = True
+    verbose: Optional[bool] = None
 ) -> AntibodySearchEngine:
     """
     Initialize search engine for a given data directory or directories.
@@ -34,7 +46,8 @@ def init_search_engine(
         data_dir: Directory containing Parquet files, or list of directories
         progress_callback: Optional callback function(progress, status) for progress updates
         db_path: DuckDB database path (default: ":memory:" for in-memory database)
-        verbose: Whether to print initialization messages (default: True)
+        verbose: Whether to print initialization messages. If None, uses ABHUNTER_VERBOSE
+                environment variable (defaults to False if not set). Only accepts True/False.
         
     Returns:
         Initialized AntibodySearchEngine instance
@@ -42,6 +55,10 @@ def init_search_engine(
     Raises:
         SystemExit: If initialization fails (via st.stop())
     """
+    # Use environment variable default if verbose not explicitly provided
+    if verbose is None:
+        verbose = _get_verbose_default()
+    
     try:
         # Handle both single directory and list of directories
         if isinstance(data_dir, list):

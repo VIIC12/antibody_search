@@ -368,7 +368,7 @@ def initialize_database(
                 return False
 
         with st.spinner("Loading database..."):
-            engine = init_search_engine(loadable_databases, verbose=False)
+            engine = init_search_engine(loadable_databases)
             st.session_state['search_engine'] = engine
             st.session_state['current_db'] = primary_db
             st.session_state['loadable_databases_active'] = loadable_databases

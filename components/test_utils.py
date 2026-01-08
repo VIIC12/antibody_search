@@ -58,7 +58,6 @@ def perform_heavy_chain_search(
         # This is necessary because DuckDB connections can't be pickled
         engine = init_search_engine(
             data_dir=database_paths,
-            verbose=False,
             db_path=":memory:"
         )
         
@@ -147,7 +146,6 @@ def perform_database_search_background(
         # Create a new search engine instance in the worker process
         engine = init_search_engine(
             data_dir=database_paths,
-            verbose=False,
             db_path=":memory:"
         )
         
@@ -209,7 +207,6 @@ def perform_dual_unpaired_search_background(
         # Create a new search engine instance in the worker process
         engine = init_search_engine(
             data_dir=database_paths,
-            verbose=False,
             db_path=":memory:"
         )
         
@@ -297,7 +294,6 @@ def prepare_fasta_download_background(
         # Create a new search engine instance in the worker process
         engine = init_search_engine(
             data_dir=database_paths,
-            verbose=False,
             db_path=":memory:"
         )
         

@@ -342,7 +342,6 @@ def prepare_full_results_download_background(
         # Create a new search engine instance in the worker process
         engine = init_search_engine(
             data_dir=database_paths,
-            verbose=False,
             db_path=":memory:"
         )
         
@@ -680,7 +679,6 @@ def prepare_fasta_download_background(
         # Create a new search engine instance in the worker process
         engine = init_search_engine(
             data_dir=database_paths,
-            verbose=False,
             db_path=":memory:"
         )
         
