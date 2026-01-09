@@ -305,13 +305,14 @@ class AntibodySearchEngine:
         
         # Create joined view with subject and other metadata
         # Need to match filename to file_path
-        # filename is like '/path/to/V3.0/data/Heavy/Bulk/file.parquet'
+        # filename is like '/path/to/V3.0/data/Heavy/Bulk/file.parquet' or '/path/to/data_test/Heavy/Bulk/file.parquet'
         # file_path is like 'Heavy/Bulk/file.parquet'
+        # Extract path starting from Heavy/, Light/, or Paired/ to handle any database directory name
         self.conn.execute("""
             CREATE OR REPLACE VIEW antibodies AS
             SELECT a.*, m.subject, m.chain, m.isotype, m.species, m.disease, m.vaccine
             FROM antibodies_base a
-            LEFT JOIN metadata m ON m.file_path = regexp_replace(a.source_file, '.*data/', '')
+            LEFT JOIN metadata m ON m.file_path = regexp_replace(a.source_file, '.*/(Heavy|Light|Paired)/(.*)', '\\1/\\2')
         """)
 
         # Update available columns to include metadata fields exposed through the joined view
@@ -360,7 +361,7 @@ class AntibodySearchEngine:
                 CREATE OR REPLACE VIEW {view_name} AS
                 SELECT a.*, m.subject, m.chain, m.isotype, m.species, m.disease, m.vaccine
                 FROM {base_view_name} a
-                LEFT JOIN metadata m ON m.file_path = regexp_replace(a.source_file, '.*data/', '')
+                LEFT JOIN metadata m ON m.file_path = regexp_replace(a.source_file, '.*/(Heavy|Light|Paired)/(.*)', '\\1/\\2')
             """)
             self.chain_views[chain_name] = view_name
 
