@@ -1,6 +1,8 @@
 import streamlit as st
 import concurrent.futures
 import time
+import os
+from pathlib import Path
 from typing import Dict, Any, Optional
 from streamlit_autorefresh import st_autorefresh
 
@@ -296,10 +298,39 @@ def search_page_content():
     st.markdown("# :blue[🔬 AntibodyHunter]")
     st.markdown("#### :grey[High-Performance Antibody Database Search]")
     
+    # Print database path once when server starts (only on first call)
+    if 'db_path_printed' not in st.session_state:
+        abhunter_db_path = os.getenv("ABHUNTER_DB_PATH")
+        if abhunter_db_path:
+            db_path = Path(abhunter_db_path).absolute()
+            print(f"Database path: {db_path}")
+        else:
+            project_root = Path(__file__).parent.parent.parent
+            db_path = (project_root / "data").absolute()
+            print(f"Database path: {db_path} (default)")
+        st.session_state['db_path_printed'] = True
+    
     db_structure = get_database_structure()
     total_databases = sum(len(category) for category in db_structure.values())
     if total_databases == 0:
-        st.error("No databases found! Please run the data conversion script first.")
+        # Determine which path was checked
+        abhunter_db_path = os.getenv("ABHUNTER_DB_PATH")
+        if abhunter_db_path:
+            checked_path = Path(abhunter_db_path).absolute()
+        else:
+            # Match the logic in get_database_structure()
+            project_root = Path(__file__).parent.parent.parent
+            checked_path = (project_root / "data").absolute()
+        
+        st.error(
+            f"**Database directory not found!**\n\n"
+            f"Checked path: `{checked_path}`\n\n"
+            f"To set a custom database path, use the `ABHUNTER_DB_PATH` environment variable:\n"
+            f"```bash\n"
+            f"export ABHUNTER_DB_PATH=\"/path/to/your/database\"\n"
+            f"```\n\n"
+            f"For more information, please refer to the documentation."
+        )
         st.stop()
     
     selected_databases, selected_db, is_ready = render_database_selection(db_structure)
