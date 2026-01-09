@@ -261,7 +261,7 @@ def render_stats_download_button(
         st.button(
             "📊 Download Statistics (ZIP)",
             disabled=True,
-            use_container_width=True,
+            width='stretch',
             type="primary"
         )
         return
@@ -277,7 +277,7 @@ def render_stats_download_button(
         data=stats_zip,
         file_name=filename,
         mime="application/zip",
-        use_container_width=True
+        width='stretch'
     )
 
 
@@ -559,7 +559,7 @@ def render_full_download_button(
             if status == "idle":
                 if st.button(
                     button_label,
-                    use_container_width=True,
+                    width='stretch',
                     key=f"{download_key}_button"
                 ):
                     # Get fresh executor (in case previous one was broken)
@@ -639,19 +639,19 @@ def render_full_download_button(
                         data=result.get('parquet_data', b''),
                         file_name=result.get('filename', 'sequences.parquet'),
                         mime="application/octet-stream",
-                        use_container_width=True,
+                        width='stretch',
                         type="primary",
                         key=f"download_{download_key}"
                     )
                 else:
-                    st.button("❌ Generation Failed", disabled=True, key=f"{download_key}_failed", use_container_width=True)
+                    st.button("❌ Generation Failed", disabled=True, key=f"{download_key}_failed", width='stretch')
                     error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
                     st.error(f"❌ {error_msg}")
             
             elif status == "failed":
                 result = st.session_state[full_result_key]
                 error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-                if st.button("🔄 Retry", key=f"{download_key}_retry", use_container_width=True):
+                if st.button("🔄 Retry", key=f"{download_key}_retry", width='stretch'):
                     # Clear broken executor if it exists
                     if executor_key in st.session_state:
                         try:
@@ -673,7 +673,7 @@ def render_full_download_button(
             if new_status == "idle":
                 if st.button(
                     new_button_label,
-                    use_container_width=True,
+                    width='stretch',
                     key=f"{new_download_key}_button"
                 ):
                     # Get fresh executor (in case previous one was broken)
@@ -754,19 +754,19 @@ def render_full_download_button(
                         data=result.get('data', b''),
                         file_name=result.get('filename', 'sequences.fasta.zip'),
                         mime="application/zip",
-                        use_container_width=True,
+                        width='stretch',
                         type="primary",
                         key=f"download_{new_download_key}"
                     )
                 else:
-                    st.button("❌ Generation Failed", disabled=True, key=f"{new_download_key}_failed", use_container_width=True)
+                    st.button("❌ Generation Failed", disabled=True, key=f"{new_download_key}_failed", width='stretch')
                     error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
                     st.error(f"❌ {error_msg}")
             
             elif new_status == "failed":
                 result = st.session_state[new_result_key]
                 error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-                if st.button("🔄 Retry", key=f"{new_download_key}_retry", use_container_width=True):
+                if st.button("🔄 Retry", key=f"{new_download_key}_retry", width='stretch'):
                     # Clear broken executor if it exists
                     if fasta_executor_key in st.session_state:
                         try:
