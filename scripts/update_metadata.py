@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 def extract_metadata_from_parquet(parquet_path: Path) -> Dict[str, Any]:
     """
-    Extract metadata from a parquet file by reading the first row.
+    Extract metadata from a parquet file by reading schema metadata.
     
     Args:
         parquet_path: Path to the parquet file
@@ -37,15 +37,26 @@ def extract_metadata_from_parquet(parquet_path: Path) -> Dict[str, Any]:
         Dictionary with metadata fields
     """
     try:
-        # Read just the first row to get metadata columns
+        import pyarrow.parquet as pq
+        
+        # Read parquet file to get row count
         df = pd.read_parquet(parquet_path)
         
         if len(df) == 0:
             logger.warning(f"Empty parquet file: {parquet_path}")
             return {}
         
-        # Get the first row to extract metadata fields
-        first_row = df.iloc[0]
+        # Read metadata from parquet file schema metadata (not from data rows)
+        pf = pq.ParquetFile(parquet_path)
+        schema_metadata = {}
+        if pf.metadata and pf.metadata.metadata:
+            for key, value in pf.metadata.metadata.items():
+                # Decode bytes keys/values to strings
+                key_str = key.decode() if isinstance(key, bytes) else key
+                value_str = value.decode() if isinstance(value, bytes) else value
+                # Skip ARROW schema metadata
+                if key_str != 'ARROW:schema':
+                    schema_metadata[key_str] = value_str
         
         # Try to get path relative to data directory (might be 2 or 3 levels deep)
         try:
@@ -60,28 +71,31 @@ def extract_metadata_from_parquet(parquet_path: Path) -> Dict[str, Any]:
                 file_path = parquet_path.name
         
         # Safely extract metadata with fallback values
-        # Handle both NaN values and missing keys
-        def safe_get(row, key, default='Unknown'):
-            try:
-                value = row.get(key, default)
-                if pd.isna(value):
-                    return default
-                return value
-            except (KeyError, AttributeError):
+        def safe_get(metadata_dict, key, default='Unknown'):
+            value = metadata_dict.get(key, default)
+            if value is None or (isinstance(value, str) and value.strip() == ''):
                 return default
+            return value
         
+        # Get total_sequences from schema metadata if available, otherwise use row count
+        total_sequences = safe_get(schema_metadata, 'total_sequences', str(len(df)))
+        try:
+            total_sequences = int(total_sequences)
+        except (ValueError, TypeError):
+            total_sequences = len(df)
+        
+        # Match the exact format used in data/ metadata files:
+        # file_path, chain, file_source, species, subject, disease, vaccine, isotype, total_sequences
         metadata = {
-            'filename': parquet_path.name,
             'file_path': file_path,
-            'rows': len(df),
-            'total_sequences': len(df),
-            'subject': safe_get(first_row, 'subject', 'Unknown'),
-            'isotype': safe_get(first_row, 'isotype', 'Unknown'),
-            'disease': safe_get(first_row, 'disease', 'Unknown'),
-            'species': safe_get(first_row, 'species', 'Unknown'),
-            'vaccine': safe_get(first_row, 'vaccine', 'Unknown'),
-            'chain': safe_get(first_row, 'chain', 'Unknown'),
-            'unique_sequences': safe_get(first_row, 'unqiue_sequences', 'Unknown'),  # Note: typo preserved for compatibility
+            'chain': safe_get(schema_metadata, 'chain', 'Unknown'),
+            'file_source': safe_get(schema_metadata, 'file_source', parquet_path.name.replace('.parquet', '.csv')),
+            'species': safe_get(schema_metadata, 'species', 'Unknown'),
+            'subject': safe_get(schema_metadata, 'subject', 'Unknown'),
+            'disease': safe_get(schema_metadata, 'disease', 'Unknown'),
+            'vaccine': safe_get(schema_metadata, 'vaccine', 'Unknown'),
+            'isotype': safe_get(schema_metadata, 'isotype', 'Unknown'),
+            'total_sequences': total_sequences,
         }
         
         return metadata
@@ -154,16 +168,37 @@ def update_metadata_for_subdirectory(subdir: Path, parquet_files: List[Path]) ->
     # Create DataFrame from metadata records
     new_df = pd.DataFrame(metadata_records)
     
+    # Ensure correct column order to match data/ format:
+    # file_path, chain, file_source, species, subject, disease, vaccine, isotype, total_sequences
+    expected_columns = ['file_path', 'chain', 'file_source', 'species', 'subject', 'disease', 'vaccine', 'isotype', 'total_sequences']
+    # Only include columns that exist in the DataFrame
+    column_order = [col for col in expected_columns if col in new_df.columns]
+    # Add any remaining columns that weren't in the expected list
+    remaining_cols = [col for col in new_df.columns if col not in column_order]
+    new_df = new_df[column_order + remaining_cols]
+    
+    # Ensure total_sequences is integer type (matching data/ format)
+    if 'total_sequences' in new_df.columns:
+        new_df['total_sequences'] = pd.to_numeric(new_df['total_sequences'], errors='coerce').fillna(0).astype('int64')
+    
     # Load existing metadata if it exists
     if metadata_path.exists():
         try:
             existing_df = pd.read_parquet(metadata_path)
             logger.info(f"  📂 Found existing metadata file with {len(existing_df)} entries")
             
-            # Merge with existing data, removing duplicates based on filename
-            combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-            # Remove duplicates, keeping the last occurrence (most recent data)
-            combined_df = combined_df.drop_duplicates(subset=['filename'], keep='last')
+            # Ensure existing_df has the same column order
+            if set(existing_df.columns) == set(new_df.columns):
+                # Merge with existing data, removing duplicates based on file_path
+                combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+                # Remove duplicates, keeping the last occurrence (most recent data)
+                combined_df = combined_df.drop_duplicates(subset=['file_path'], keep='last')
+                # Reorder columns to match expected format
+                combined_df = combined_df[column_order + [col for col in combined_df.columns if col not in column_order]]
+            else:
+                # If column structure differs, use new_df structure
+                logger.warning(f"  ⚠️  Column structure differs, using new structure")
+                combined_df = new_df
             
             # Check how many files were added
             new_files = len(new_df) - len(existing_df) + len(combined_df) - len(new_df)
@@ -226,7 +261,9 @@ def inspect_metadata_files(data_dir: Path, max_rows: int = 10) -> None:
             total_entries += len(df)
             
             # Count unique files referenced
-            if 'filename' in df.columns:
+            if 'file_path' in df.columns:
+                total_files_referenced += len(df['file_path'].unique())
+            elif 'filename' in df.columns:
                 total_files_referenced += len(df['filename'].unique())
             
             logger.info("="*80)
