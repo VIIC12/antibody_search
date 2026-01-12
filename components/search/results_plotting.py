@@ -331,16 +331,28 @@ def _render_plot_download_buttons(
                 file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
                 plot_count = result.get('plot_count', 0)
                 
-                # The original button becomes the download button
-                st.download_button(
-                    label=f"✅ Download Figures ({file_size_mb:.2f} MB)",
-                    data=result.get('zip_data', b''),
-                    file_name=result.get('filename', 'plots.zip'),
-                    mime="application/zip",
-                    width='stretch',
-                    type="primary",
-                    key=f"download_{download_key}_figures"
-                )
+                # Check if this is a large file with download URL
+                if result.get('download_url'):
+                    # Large file: redirect to static download link
+                    download_url = result.get('download_url')
+                    st.markdown(
+                        f'<a href="{download_url}" target="_blank" style="text-decoration: none;">'
+                        f'<button style="width: 100%; padding: 0.5rem 1rem; background-color: rgb(19, 124, 189); '
+                        f'color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.875rem;">'
+                        f'✅ Download Figures ({file_size_mb:.2f} MB) - Opens in new tab</button></a>',
+                        unsafe_allow_html=True
+                    )
+                else:
+                    # Small file: use direct download button
+                    st.download_button(
+                        label=f"✅ Download Figures ({file_size_mb:.2f} MB)",
+                        data=result.get('zip_data', b''),
+                        file_name=result.get('filename', 'plots.zip'),
+                        mime="application/zip",
+                        width='stretch',
+                        type="primary",
+                        key=f"download_{download_key}_figures"
+                    )
             else:
                 st.button("❌ Generation Failed", disabled=True, key=f"{download_key}_failed_figures", width='stretch')
                 error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
@@ -438,16 +450,28 @@ def _render_plot_download_buttons(
                 file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
                 plot_count = result.get('plot_count', 0)
                 
-                # The original button becomes the download button
-                st.download_button(
-                    label=f"✅ Download Figures + Raw Data ({file_size_mb:.2f} MB)",
-                    data=result.get('zip_data', b''),
-                    file_name=result.get('filename', 'plots_raw.zip'),
-                    mime="application/zip",
-                    width='stretch',
-                    type="primary",
-                    key=f"download_{download_key}_raw"
-                )
+                # Check if this is a large file with download URL
+                if result.get('download_url'):
+                    # Large file: redirect to static download link
+                    download_url = result.get('download_url')
+                    st.markdown(
+                        f'<a href="{download_url}" target="_blank" style="text-decoration: none;">'
+                        f'<button style="width: 100%; padding: 0.5rem 1rem; background-color: rgb(19, 124, 189); '
+                        f'color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.875rem;">'
+                        f'✅ Download Figures + Raw Data ({file_size_mb:.2f} MB) - Opens in new tab</button></a>',
+                        unsafe_allow_html=True
+                    )
+                else:
+                    # Small file: use direct download button
+                    st.download_button(
+                        label=f"✅ Download Figures + Raw Data ({file_size_mb:.2f} MB)",
+                        data=result.get('zip_data', b''),
+                        file_name=result.get('filename', 'plots_raw.zip'),
+                        mime="application/zip",
+                        width='stretch',
+                        type="primary",
+                        key=f"download_{download_key}_raw"
+                    )
             else:
                 st.button("❌ Generation Failed", disabled=True, key=f"{download_key}_failed_raw", width='stretch')
                 error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'

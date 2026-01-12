@@ -16,11 +16,16 @@ services:
       - ${ABHUNTER_DB_PATH}:/app/data/abhunter
       # Mount logs directory if needed
       - ./logs:/app/logs
+      # Mount download directory for large file storage
+      - ${ABHUNTER_DOWNLOAD_DIR:-./downloads}:/app/downloads
     environment:
       - PYTHONPATH=/app
       - STREAMLIT_SERVER_PORT=8501
       - STREAMLIT_SERVER_ADDRESS=0.0.0.0
       - ABHUNTER_DB_PATH=/app/data/abhunter
+      - ABHUNTER_DOWNLOAD_DIR=/app/downloads
+    profiles:
+      - prod
     logging:
       driver: "json-file"
       options:
@@ -48,7 +53,6 @@ services:
     networks:
       - antibody-search-network
       - monitoring-network
-
   # Development service with hot reloading, and mounted volume for development
   antibody-search-dev:
     build:
@@ -63,6 +67,8 @@ services:
       # Mount data directory for persistence
       - ${ABHUNTER_DB_PATH}:/app/data/abhunter
       - ./logs:/app/logs
+      # Mount download directory for large file storage
+      - ${ABHUNTER_DOWNLOAD_DIR:-./downloads}:/app/downloads
     environment:
       - PYTHONPATH=/app
       - STREAMLIT_SERVER_PORT=8502
@@ -75,6 +81,7 @@ services:
       - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
       - STREAMLIT_LOG_LEVEL=debug
       - ABHUNTER_DB_PATH=/app/data/abhunter
+      - ABHUNTER_DOWNLOAD_DIR=/app/downloads
     command: ["streamlit", "run", "app.py", "--logger.level", "debug"]
     logging:
       driver: "json-file"
@@ -108,6 +115,59 @@ services:
     networks:
       - antibody-search-network
       - monitoring-network
+
+  # nginx service for serving large file downloads
+  nginx-downloads:
+    image: nginx:alpine
+    container_name: nginx-downloads-antibody-search
+    volumes:
+      - ${ABHUNTER_DOWNLOAD_DIR:-./downloads}:/usr/share/nginx/html/downloads:ro
+      - ./nginx-downloads.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./logs:/var/log/nginx
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nginx-downloads.rule=(Host(`172.22.180.238`) || Host(`antibody.localhost`) || Host(`localhost`)) && PathPrefix(`/downloads`)"
+      - "traefik.http.routers.nginx-downloads.entrypoints=web"
+      - "traefik.http.routers.nginx-downloads.service=nginx-downloads"
+      - "traefik.http.services.nginx-downloads.loadbalancer.server.port=80"
+      - "traefik.http.routers.nginx-downloads.priority=5"
+    networks:
+      - antibody-search-network
+    restart: unless-stopped
+    depends_on:
+      - antibody-search-prod
+
+  # Download callback service - receives HTTP callbacks from nginx when downloads complete
+  download-callback:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: download-callback-antibody-search
+    command: ["python3", "scripts/download_callback_service.py", "--port", "8888", "--host", "0.0.0.0"]
+    volumes:
+      - ${ABHUNTER_DOWNLOAD_DIR:-./downloads}:/app/downloads
+    environment:
+      - ABHUNTER_DOWNLOAD_DIR=/app/downloads
+      - PYTHONPATH=/app
+    restart: unless-stopped
+    networks:
+      - antibody-search-network
+
+  # Cleanup service for removing downloaded files after they've been marked
+  download-cleanup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: download-cleanup-antibody-search
+    command: ["python3", "scripts/cleanup_downloads.py", "--interval", "300"]
+    volumes:
+      - ${ABHUNTER_DOWNLOAD_DIR:-./downloads}:/app/downloads
+    environment:
+      - ABHUNTER_DOWNLOAD_DIR=/app/downloads
+      - PYTHONPATH=/app
+    restart: unless-stopped
+    depends_on:
+      - download-callback
 
   # OpenTelemetry Collector for traces only
   # Logs are collected by Alloy (in server/docker-compose.yml) and sent to Loki

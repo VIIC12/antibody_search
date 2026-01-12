@@ -633,16 +633,28 @@ def render_full_download_button(
                 if result and result.get('success'):
                     file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
                     
-                    # The original button becomes the download button
-                    st.download_button(
-                        label=f"⬇ Download Full Results ({file_size_mb:.2f} MB)",
-                        data=result.get('parquet_data', b''),
-                        file_name=result.get('filename', 'sequences.parquet'),
-                        mime="application/octet-stream",
-                        width='stretch',
-                        type="primary",
-                        key=f"download_{download_key}"
-                    )
+                    # Check if this is a large file with download URL
+                    if result.get('download_url'):
+                        # Large file: redirect to static download link
+                        download_url = result.get('download_url')
+                        st.markdown(
+                            f'<a href="{download_url}" target="_blank" style="text-decoration: none;">'
+                            f'<button style="width: 100%; padding: 0.5rem 1rem; background-color: rgb(19, 124, 189); '
+                            f'color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.875rem;">'
+                            f'⬇ Download Full Results ({file_size_mb:.2f} MB) - Opens in new tab</button></a>',
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        # Small file: use direct download button
+                        st.download_button(
+                            label=f"⬇ Download Full Results ({file_size_mb:.2f} MB)",
+                            data=result.get('parquet_data', b''),
+                            file_name=result.get('filename', 'sequences.parquet'),
+                            mime="application/octet-stream",
+                            width='stretch',
+                            type="primary",
+                            key=f"download_{download_key}"
+                        )
                 else:
                     st.button("❌ Generation Failed", disabled=True, key=f"{download_key}_failed", width='stretch')
                     error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
@@ -748,16 +760,30 @@ def render_full_download_button(
                     file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
                     sequence_count = result.get('sequence_count', 0)
                     
-                    # The original button becomes the download button
-                    st.download_button(
-                        label=f"⬇ Download FASTA ({file_size_mb:.2f} MB" if file_size_mb > 0 else f"⬇ Download FASTA ({sequence_count:,} seq)",
-                        data=result.get('data', b''),
-                        file_name=result.get('filename', 'sequences.fasta.zip'),
-                        mime="application/zip",
-                        width='stretch',
-                        type="primary",
-                        key=f"download_{new_download_key}"
-                    )
+                    # Check if this is a large file with download URL
+                    if result.get('download_url'):
+                        # Large file: redirect to static download link
+                        download_url = result.get('download_url')
+                        label = f"⬇ Download FASTA ({file_size_mb:.2f} MB)" if file_size_mb > 0 else f"⬇ Download FASTA ({sequence_count:,} seq)"
+                        st.markdown(
+                            f'<a href="{download_url}" target="_blank" style="text-decoration: none;">'
+                            f'<button style="width: 100%; padding: 0.5rem 1rem; background-color: rgb(19, 124, 189); '
+                            f'color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.875rem;">'
+                            f'{label} - Opens in new tab</button></a>',
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        # Small file: use direct download button
+                        label = f"⬇ Download FASTA ({file_size_mb:.2f} MB)" if file_size_mb > 0 else f"⬇ Download FASTA ({sequence_count:,} seq)"
+                        st.download_button(
+                            label=label,
+                            data=result.get('data', b''),
+                            file_name=result.get('filename', 'sequences.fasta.zip'),
+                            mime="application/zip",
+                            width='stretch',
+                            type="primary",
+                            key=f"download_{new_download_key}"
+                        )
                 else:
                     st.button("❌ Generation Failed", disabled=True, key=f"{new_download_key}_failed", width='stretch')
                     error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'

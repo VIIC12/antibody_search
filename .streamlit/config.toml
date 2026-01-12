@@ -11,4 +11,5 @@ backgroundColor="black"
 
 [server]
 enableCORS=false
+enableXsrfProtection=false
 headless=true

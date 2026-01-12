@@ -10,6 +10,9 @@ import json
 import hashlib
 import zipfile
 import tempfile
+import os
+import uuid
+from pathlib import Path
 from typing import Optional, Tuple, Dict, Any, List
 import pandas as pd
 import pyarrow as pa
@@ -22,6 +25,9 @@ from components.search.results_display import (
 from components.search.search_execution import execute_search
 from components.search.results_plotting import build_plotting_where_clause
 from src.search_engine import AntibodySearchEngine
+
+# Threshold for large files (5MB)
+LARGE_FILE_THRESHOLD = 5 * 1024 * 1024  # 5MB in bytes
 
 
 def generate_filename_base(is_paired: bool) -> str:
@@ -65,6 +71,70 @@ def _build_search_identifier(search_params: Dict[str, Any]) -> str:
     serialized = _serialize_search_params(search_params)
     digest = hashlib.md5(serialized.encode()).hexdigest()[:12]
     return digest
+
+
+def _get_download_directory() -> Path:
+    """
+    Get the download directory path from environment variable or use default.
+    
+    Returns:
+        Path object for the download directory
+    """
+    download_dir = os.getenv("ABHUNTER_DOWNLOAD_DIR", "./downloads")
+    download_path = Path(download_dir)
+    return download_path
+
+
+def _generate_download_token() -> str:
+    """
+    Generate a unique token for file downloads.
+    
+    Returns:
+        Unique token string (UUID hex)
+    """
+    return uuid.uuid4().hex
+
+
+def _get_download_path(
+    original_filename: str,
+    file_type: str = "parquet"
+) -> Tuple[str, Path, str]:
+    """
+    Generate download path and URL for streaming file writes.
+    
+    Args:
+        original_filename: Original filename for the file
+        file_type: Type of file (parquet, zip, etc.)
+        
+    Returns:
+        Tuple of (token, file_path, download_url)
+        
+    Raises:
+        OSError: If directory cannot be created
+    """
+    download_dir = _get_download_directory()
+    
+    # Create directory if it doesn't exist
+    download_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate unique token
+    token = _generate_download_token()
+    
+    # Determine file extension from original filename or file_type
+    if original_filename and '.' in original_filename:
+        ext = original_filename.split('.')[-1]
+    else:
+        ext = file_type
+    
+    # Generate filename with token
+    filename = f"{token}.{ext}"
+    file_path = download_dir / filename
+    
+    # Generate download URL
+    # Use relative path that nginx will serve
+    download_url = f"/downloads/{filename}"
+    
+    return token, file_path, download_url
 
 
 def _build_where_clause_from_params(
@@ -336,7 +406,9 @@ def prepare_full_results_download_background(
         from components.search.download_utils import (
             create_parquet_file,
             generate_filename_base,
-            _build_search_identifier
+            _build_search_identifier,
+            LARGE_FILE_THRESHOLD,
+            _get_download_path
         )
         
         # Create a new search engine instance in the worker process
@@ -374,11 +446,22 @@ def prepare_full_results_download_background(
                 'error': 'No sequences found to download.'
             }
         
-        # Process in chunks to avoid memory issues
-        CHUNK_SIZE = 100000  # Process 100k rows at a time
-        parquet_buffer = io.BytesIO()
+        # Generate token and file path BEFORE starting query (for streaming to disk)
+        search_params_with_metadata = dict(search_params)
+        identifier = _build_search_identifier({
+            "search_params": search_params_with_metadata,
+            "chain_label": chain_label,
+            "is_paired": is_paired
+        })
+        parquet_filename = f"ABHunter_sequences_{chain_label}_{identifier}.parquet"
         
-        # Get schema from a larger sample to properly infer nullability
+        # Get download path for streaming write
+        token, file_path, download_url = _get_download_path(parquet_filename, "parquet")
+        
+        # Process in chunks to avoid memory issues - stream directly to disk
+        CHUNK_SIZE = 100000  # Process 100k rows at a time
+        
+        # Get schema from a sample to properly infer nullability
         # Use a sample of 1000 rows to better detect nullable columns
         sample_query = f"SELECT * FROM {table_name} WHERE {where_clause} LIMIT 1000"
         sample_df = engine.conn.execute(sample_query).df()
@@ -402,12 +485,11 @@ def prepare_full_results_download_background(
             fields.append(pa.field(field.name, field.type, nullable=True))
         schema = pa.schema(fields)
         
-        # Initialize Parquet writer
-        writer = pq.ParquetWriter(parquet_buffer, schema, compression='zstd')
+        # Initialize Parquet writer - writes directly to disk file
+        writer = pq.ParquetWriter(file_path, schema, compression='zstd')
         sequence_count = 0
         
-        # Process in chunks using LIMIT/OFFSET
-        # Use a simple approach: fetch chunks sequentially
+        # Process in chunks using LIMIT/OFFSET - single query pass, stream to disk
         offset = 0
         while offset < total_count:
             chunk_query = f"""
@@ -437,6 +519,7 @@ def prepare_full_results_download_background(
                 # Note: We can't change writer schema mid-stream, so we'll use the unified schema
                 # This should work as long as we made all fields nullable in the initial schema
             
+            # Write chunk directly to disk file (no memory accumulation)
             writer.write_table(chunk_table)
             
             sequence_count += len(chunk_df)
@@ -446,34 +529,52 @@ def prepare_full_results_download_background(
             if len(chunk_df) < CHUNK_SIZE:
                 break
         
+        # Close writer - file is now complete on disk
         writer.close()
-        parquet_buffer.seek(0)
-        parquet_data = parquet_buffer.getvalue()
         
-        # Prepare search params with metadata for filename
-        search_params_with_metadata = dict(search_params)
+        # Set file permissions to be readable by nginx
+        os.chmod(file_path, 0o644)
         
-        # Generate filename
-        identifier = _build_search_identifier({
-            "search_params": search_params_with_metadata,
-            "chain_label": chain_label,
-            "is_paired": is_paired
-        })
-        parquet_filename = f"ABHunter_sequences_{chain_label}_{identifier}.parquet"
-        
-        file_size_bytes = len(parquet_data)
+        # Get file size from disk
+        file_size_bytes = file_path.stat().st_size
         
         # Close the engine connection
         if hasattr(engine, 'conn'):
             engine.conn.close()
         
-        return {
-            'success': True,
-            'parquet_data': parquet_data,
-            'filename': parquet_filename,
-            'file_size_bytes': file_size_bytes,
-            'sequence_count': sequence_count
-        }
+        # Check if file is too large for direct download
+        if file_size_bytes > LARGE_FILE_THRESHOLD:
+            # File already on disk, return URL
+            return {
+                'success': True,
+                'download_url': download_url,
+                'filename': parquet_filename,
+                'file_size_bytes': file_size_bytes,
+                'sequence_count': sequence_count,
+                'is_large_file': True,
+                'token': token
+            }
+        else:
+            # For small files, read from disk and return bytes for direct download
+            try:
+                with open(file_path, 'rb') as f:
+                    parquet_data = f.read()
+                # Delete the file since we're returning it in memory
+                file_path.unlink()
+                return {
+                    'success': True,
+                    'parquet_data': parquet_data,
+                    'filename': parquet_filename,
+                    'file_size_bytes': file_size_bytes,
+                    'sequence_count': sequence_count,
+                    'is_large_file': False
+                }
+            except Exception as e:
+                return {
+                    'success': False,
+                    'error': f'Failed to read file for direct download: {str(e)}',
+                    'error_type': type(e).__name__
+                }
         
     except Exception as e:
         return {
@@ -584,21 +685,7 @@ def prepare_plots_download_background(
                 'error': 'No valid plots to include in download.'
             }
         
-        # Create ZIP archive
-        zip_bytes = create_plots_zip(
-            plots,
-            metadata,
-            include_raw_data=include_raw_data,
-            progress_callback=None  # No progress callback in background process
-        )
-        
-        if not zip_bytes:
-            return {
-                'success': False,
-                'error': 'Failed to create ZIP archive.'
-            }
-        
-        # Generate filename
+        # Generate filename first
         chain_label = "paired" if metadata.get('is_paired', False) else "heavy"
         seed_hash = abs(hash(str({
             "search_params": metadata.get('search_params', {}),
@@ -610,16 +697,100 @@ def prepare_plots_download_background(
         else:
             filename = f"abhunter_results_plots_{chain_label}_{seed_hash}.zip"
         
-        file_size_bytes = len(zip_bytes)
+        # Get download path for streaming write
+        token, file_path, download_url = _get_download_path(filename, "zip")
+        
+        # Create ZIP archive directly on disk (not in memory)
+        try:
+            with zipfile.ZipFile(file_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for index, (title, figure, data) in enumerate(plots, start=1):
+                    # Sanitize filename
+                    from components.search.results_plotting import _sanitize_plot_filename
+                    plot_filename = _sanitize_plot_filename(title, index)
+                    # Generate PNG image
+                    image_bytes = figure.to_image(format="png", scale=2)
+                    zf.writestr(plot_filename, image_bytes)
+                    
+                    # Add raw data if requested
+                    if include_raw_data and data is not None:
+                        if isinstance(data, pd.DataFrame):
+                            export_df = data.copy()
+                        elif isinstance(data, pd.Series):
+                            export_df = data.to_frame()
+                        else:
+                            export_df = pd.DataFrame(data)
+                        
+                        raw_filename = plot_filename.rsplit(".", 1)[0] + ".csv"
+                        raw_path = f"raw_data/{raw_filename}"
+                        csv_bytes = export_df.to_csv(index=False).encode("utf-8")
+                        zf.writestr(raw_path, csv_bytes)
+                
+                # Add metadata JSON
+                from components.search.results_plotting import _json_default
+                plot_entries = [
+                    {
+                        "title": title,
+                        "image_file": _sanitize_plot_filename(title, idx + 1),
+                    }
+                    for idx, (title, _, _) in enumerate(plots)
+                ]
+                metadata_with_plots = dict(metadata)
+                metadata_with_plots["plots"] = plot_entries
+                metadata_with_plots["includes_raw_plotting_data"] = include_raw_data
+                metadata_bytes = json.dumps(
+                    metadata_with_plots,
+                    indent=2,
+                    sort_keys=True,
+                    default=_json_default
+                ).encode("utf-8")
+                zf.writestr("search_parameters.json", metadata_bytes)
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Failed to create ZIP archive: {str(e)}',
+                'error_type': type(e).__name__
+            }
+        
+        # Set file permissions to be readable by nginx
+        os.chmod(file_path, 0o644)
+        
+        # Get file size from disk
+        file_size_bytes = file_path.stat().st_size
         plot_count = len(plots)
         
-        return {
-            'success': True,
-            'zip_data': zip_bytes,
-            'filename': filename,
-            'file_size_bytes': file_size_bytes,
-            'plot_count': plot_count
-        }
+        # Check if file is too large for direct download
+        if file_size_bytes > LARGE_FILE_THRESHOLD:
+            # File already on disk, return URL
+            return {
+                'success': True,
+                'download_url': download_url,
+                'filename': filename,
+                'file_size_bytes': file_size_bytes,
+                'plot_count': plot_count,
+                'is_large_file': True,
+                'token': token
+            }
+        else:
+            # For small files, read from disk and return bytes for direct download
+            try:
+                with open(file_path, 'rb') as f:
+                    zip_bytes = f.read()
+                # Delete the file since we're returning it in memory
+                file_path.unlink()
+                return {
+                    'success': True,
+                    'zip_data': zip_bytes,
+                    'filename': filename,
+                    'file_size_bytes': file_size_bytes,
+                    'plot_count': plot_count,
+                    'is_large_file': False
+                }
+            except Exception as e:
+                return {
+                    'success': False,
+                    'error': f'Failed to read file for direct download: {str(e)}',
+                    'error_type': type(e).__name__
+                }
         
     except Exception as e:
         return {
@@ -843,24 +1014,7 @@ def prepare_fasta_download_background(
                     'error': 'No sequences available for selected chain types.'
                 }
             
-            # Create ZIP file in memory
-            zip_buffer = io.BytesIO()
-            
-            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                # Add FASTA files
-                for chain_type, fasta_content in fasta_files.items():
-                    filename = f"sequences_{chain_type}.fasta"
-                    zip_file.writestr(filename, fasta_content.encode('utf-8'))
-                
-                # Add search parameters JSON file
-                search_params_with_metadata = dict(search_params)
-                search_params_json = json.dumps(search_params_with_metadata, indent=2, sort_keys=True, default=str)
-                zip_file.writestr("search_parameters.json", search_params_json.encode('utf-8'))
-            
-            zip_buffer.seek(0)
-            zip_data = zip_buffer.getvalue()
-            
-            # Generate filename
+            # Generate filename first
             identifier = _build_search_identifier({
                 "search_params": search_params_copy,
                 "chain_label": chain_label,
@@ -874,9 +1028,27 @@ def prepare_fasta_download_background(
                 chain_name = list(fasta_files.keys())[0]
                 filename = f"ABHunter_FASTA_{chain_name}_{identifier}.zip"
             
+            # Get download path for streaming write
+            token, file_path, download_url = _get_download_path(filename, "zip")
+            
+            # Create ZIP file directly on disk (not in memory)
+            with zipfile.ZipFile(file_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                # Add FASTA files
+                for chain_type, fasta_content in fasta_files.items():
+                    fasta_filename = f"sequences_{chain_type}.fasta"
+                    zip_file.writestr(fasta_filename, fasta_content.encode('utf-8'))
+                
+                # Add search parameters JSON file
+                search_params_with_metadata = dict(search_params)
+                search_params_json = json.dumps(search_params_with_metadata, indent=2, sort_keys=True, default=str)
+                zip_file.writestr("search_parameters.json", search_params_json.encode('utf-8'))
+            
+            # Set file permissions to be readable by nginx
+            os.chmod(file_path, 0o644)
+            
             # Count total sequences
             total_sequences = sum(content.count('>') for content in fasta_files.values())
-            file_size_bytes = len(zip_data)
+            file_size_bytes = file_path.stat().st_size
             
         except Exception as e:
             # Clean up temp files on error
@@ -894,13 +1066,39 @@ def prepare_fasta_download_background(
         if hasattr(engine, 'conn'):
             engine.conn.close()
         
-        return {
-            'success': True,
-            'data': zip_data,
-            'filename': filename,
-            'file_size_bytes': file_size_bytes,
-            'sequence_count': total_sequences
-        }
+        # Check if file is too large for direct download
+        if file_size_bytes > LARGE_FILE_THRESHOLD:
+            # File already on disk, return URL
+            return {
+                'success': True,
+                'download_url': download_url,
+                'filename': filename,
+                'file_size_bytes': file_size_bytes,
+                'sequence_count': total_sequences,
+                'is_large_file': True,
+                'token': token
+            }
+        else:
+            # For small files, read from disk and return bytes for direct download
+            try:
+                with open(file_path, 'rb') as f:
+                    zip_data = f.read()
+                # Delete the file since we're returning it in memory
+                file_path.unlink()
+                return {
+                    'success': True,
+                    'data': zip_data,
+                    'filename': filename,
+                    'file_size_bytes': file_size_bytes,
+                    'sequence_count': total_sequences,
+                    'is_large_file': False
+                }
+            except Exception as e:
+                return {
+                    'success': False,
+                    'error': f'Failed to read file for direct download: {str(e)}',
+                    'error_type': type(e).__name__
+                }
         
     except Exception as e:
         return {
