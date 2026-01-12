@@ -47,6 +47,7 @@ services:
       - "traefik.http.middlewares.antibody-search-headers.headers.customrequestheaders.X-Real-IP="
     networks:
       - antibody-search-network
+      - monitoring-network
 
   # Development service with hot reloading, and mounted volume for development
   antibody-search-dev:
@@ -108,6 +109,9 @@ services:
       - antibody-search-network
       - monitoring-network
 
+  # OpenTelemetry Collector for traces only
+  # Logs are collected by Alloy (in server/docker-compose.yml) and sent to Loki
+  # This collector handles OTLP traces from Traefik and other services
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: otel-collector-antibody-search
@@ -117,8 +121,8 @@ services:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     ports:
-      - "4317:4317"   # OTLP gRPC receiver
-      - "4318:4318"   # OTLP HTTP receiver
+      - "4317:4317"   # OTLP gRPC receiver (for traces)
+      - "4318:4318"   # OTLP HTTP receiver (for traces)
     networks:
       - antibody-search-network
       - artifact-network

@@ -17,15 +17,8 @@ exporters:
 
 service:
   pipelines:
+    # Only traces pipeline - logs are handled by Alloy
     traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [debug]
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [debug]
-    logs:
       receivers: [otlp]
       processors: [batch]
       exporters: [debug]
