@@ -1,0 +1,70 @@
+{
+	"name": "Antibody Search Dev Container",
+	"dockerComposeFile": "../docker-compose.yml",
+	"service": "antibody-search-dev",
+	"workspaceFolder": "/app",
+	"shutdownAction": "stopCompose",
+	
+	// Override command to keep container running for VS Code
+	// The streamlit server will still run in the background
+	"overrideCommand": false,
+	
+	// Features to add to the dev container
+	"features": {
+		"ghcr.io/devcontainers/features/git:1": {},
+		"ghcr.io/devcontainers/features/github-cli:1": {}
+	},
+	
+	// VS Code extensions to install
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"ms-python.black-formatter",
+				"charliermarsh.ruff",
+				"ms-python.mypy-type-checker",
+				"ms-toolsai.jupyter",
+				"ms-python.debugpy",
+				"ms-azuretools.vscode-docker"
+			],
+			"settings": {
+				"python.defaultInterpreterPath": "/usr/local/bin/python",
+				"python.linting.enabled": true,
+				"python.linting.ruffEnabled": true,
+				"python.formatting.provider": "black",
+				"python.formatting.blackArgs": ["--line-length", "100"],
+				"editor.formatOnSave": true,
+				"editor.codeActionsOnSave": {
+					"source.organizeImports": "explicit"
+				},
+				"files.watcherExclude": {
+					"**/.git/objects/**": true,
+					"**/.git/subtree-cache/**": true,
+					"**/node_modules/**": true,
+					"**/__pycache__/**": true,
+					"**/.pytest_cache/**": true
+				}
+			}
+		}
+	},
+	
+	// Port forwarding
+	"forwardPorts": [8502, 8501],
+	"portsAttributes": {
+		"8502": {
+			"label": "Streamlit Dev",
+			"onAutoForward": "notify"
+		},
+		"8501": {
+			"label": "Streamlit Prod",
+			"onAutoForward": "ignore"
+		}
+	},
+	
+	// Post-create commands
+	"postCreateCommand": "pip install --no-cache-dir -r requirements.txt",
+	
+	// Remote user
+	"remoteUser": "root"
+}

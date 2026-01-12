@@ -7,12 +7,15 @@ analytical query engine on Parquet files.
 
 import time
 import os
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 import re
 
 import duckdb
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 # Configuration: Number of threads for DuckDB queries
 # Set to None to use all available cores, or specify a number (e.g., 4)
@@ -1291,6 +1294,9 @@ class AntibodySearchEngine:
         """
         start_time = time.time()
         
+        # Debug logging: Track query start
+        logger.debug(f"Query started - Chain mode: {chain_mode}, Full results: {full_results}, Limit: {limit}")
+        
         resolved_mode = (chain_mode or "").lower()
         if resolved_mode not in {"paired", "heavy", "light"}:
             resolved_mode = "paired" if self.schema.get('search_type') == 'paired' else "heavy"
@@ -1668,6 +1674,32 @@ class AntibodySearchEngine:
         # Print verbose output if requested
         if verbose:
             self._print_search_summary(statistics, chain_type, full_results, limit)
+        
+        # Debug logging: Track successful query execution details
+        try:
+            # Calculate total data size in bytes
+            results_size = results_df.memory_usage(deep=True).sum() if not results_df.empty else 0
+            stats_size = stats_df.memory_usage(deep=True).sum() if not stats_df.empty else 0
+            total_data_size = results_size + stats_size
+            
+            # Format sizes for readability
+            def format_size(size_bytes):
+                for unit in ['B', 'KB', 'MB', 'GB']:
+                    if size_bytes < 1024.0:
+                        return f"{size_bytes:.2f} {unit}"
+                    size_bytes /= 1024.0
+                return f"{size_bytes:.2f} TB"
+            
+            logger.debug(
+                f"Query executed successfully - Chain: {chain_type}, "
+                f"Runtime: {search_time:.3f}s, "
+                f"Total hits: {total_hits:,}, "
+                f"Results size: {format_size(results_size)}, "
+                f"Stats size: {format_size(stats_size)}, "
+                f"Total data size: {format_size(total_data_size)}"
+            )
+        except Exception as e:
+            logger.debug(f"Error calculating data size for logging: {e}")
         
         # Always return stats_df so users don't need to call search() twice
         # When full_results=False, results_df == stats_df (they're the same)
@@ -2107,6 +2139,32 @@ class AntibodySearchEngine:
         # Print verbose output if requested
         if verbose:
             self._print_search_summary(statistics, "paired", full_results, limit)
+        
+        # Debug logging: Track successful query execution details
+        try:
+            # Calculate total data size in bytes
+            results_size = results_df.memory_usage(deep=True).sum() if not results_df.empty else 0
+            stats_size = stats_df.memory_usage(deep=True).sum() if not stats_df.empty else 0
+            total_data_size = results_size + stats_size
+            
+            # Format sizes for readability
+            def format_size(size_bytes):
+                for unit in ['B', 'KB', 'MB', 'GB']:
+                    if size_bytes < 1024.0:
+                        return f"{size_bytes:.2f} {unit}"
+                    size_bytes /= 1024.0
+                return f"{size_bytes:.2f} TB"
+            
+            logger.debug(
+                f"Query executed successfully - Chain: paired, "
+                f"Runtime: {search_time:.3f}s, "
+                f"Total hits: {total_hits:,}, "
+                f"Results size: {format_size(results_size)}, "
+                f"Stats size: {format_size(stats_size)}, "
+                f"Total data size: {format_size(total_data_size)}"
+            )
+        except Exception as e:
+            logger.debug(f"Error calculating data size for logging: {e}")
         
         # Always return stats_df so users don't need to call search() twice
         # When full_results=False, results_df == stats_df (they're the same)

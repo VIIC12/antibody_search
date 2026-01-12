@@ -2,9 +2,12 @@ import streamlit as st
 import concurrent.futures
 import time
 import os
+import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
 from streamlit_autorefresh import st_autorefresh
+
+logger = logging.getLogger(__name__)
 
 from components.search.search_forms import create_heavy_chain_form, create_light_chain_form
 from components.search.database_utils import (
@@ -627,6 +630,62 @@ def search_page_content():
             print(f"[ERROR] Search failed: Invalid result type: {type(result)}", file=sys.stderr)
             st.session_state.search_status = "idle"
         elif result.get('success'):
+            # Debug logging: Track successful query execution details
+            try:
+                # Calculate total runtime
+                total_runtime = 0.0
+                if st.session_state.search_start_time:
+                    total_runtime = time.time() - st.session_state.search_start_time
+                
+                # Calculate total data size
+                def calculate_data_size(result_data):
+                    """Calculate total memory size of DataFrames in result data."""
+                    total_size = 0
+                    import pandas as pd
+                    
+                    if isinstance(result_data, dict):
+                        for key, value in result_data.items():
+                            if isinstance(value, pd.DataFrame):
+                                total_size += value.memory_usage(deep=True).sum()
+                            elif isinstance(value, dict):
+                                total_size += calculate_data_size(value)
+                    elif isinstance(result_data, pd.DataFrame):
+                        total_size += result_data.memory_usage(deep=True).sum()
+                    
+                    return total_size
+                
+                total_data_size_bytes = calculate_data_size(result)
+                
+                # Format sizes for readability
+                def format_size(size_bytes):
+                    for unit in ['B', 'KB', 'MB', 'GB']:
+                        if size_bytes < 1024.0:
+                            return f"{size_bytes:.2f} {unit}"
+                        size_bytes /= 1024.0
+                    return f"{size_bytes:.2f} TB"
+                
+                # Extract search details for logging
+                if search_mode == 'dual_unpaired':
+                    heavy_hits = result.get('heavy', {}).get('statistics', {}).get('total_hits', 0)
+                    light_hits = result.get('light', {}).get('statistics', {}).get('total_hits', 0)
+                    logger.debug(
+                        f"Query executed successfully - Mode: dual_unpaired, "
+                        f"Total runtime: {total_runtime:.3f}s, "
+                        f"Heavy hits: {heavy_hits:,}, Light hits: {light_hits:,}, "
+                        f"Total data size: {format_size(total_data_size_bytes)}"
+                    )
+                else:
+                    total_hits = result.get('statistics', {}).get('total_hits', 0) if 'statistics' in result else 0
+                    is_paired_str = 'paired' if is_paired else search_mode
+                    logger.debug(
+                        f"Query executed successfully - Mode: {is_paired_str}, "
+                        f"Total runtime: {total_runtime:.3f}s, "
+                        f"Total hits: {total_hits:,}, "
+                        f"Total data size: {format_size(total_data_size_bytes)}"
+                    )
+            except Exception as e:
+                logger.debug(f"Error calculating query execution details for logging: {e}")
+            
             # Show toast notification (only once)
             if 'search_completed_toast_shown' not in st.session_state:
                 total_hits = result.get('statistics', {}).get('total_hits', 0) if 'statistics' in result else 0

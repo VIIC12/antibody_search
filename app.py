@@ -63,11 +63,14 @@ def main():
         }
     )
 
-    st.logo(
-        image="public/images/logo.gif",
-        size="large",
-        link="",
-    )
+    # Resolve logo path relative to app.py location
+    logo_path = Path(__file__).parent / "public" / "images" / "logo.gif"
+    if logo_path.exists():
+        st.logo(
+            image=str(logo_path),
+            size="large",
+            link="",
+        )
     
     with st.sidebar:
         # Common sidebar content (About and License sections)

@@ -8,3 +8,7 @@ toolbarMode="minimal"
 [theme.sidebar]
 primaryColor="black"
 backgroundColor="black"
+
+[server]
+enableCORS=false
+headless=true
