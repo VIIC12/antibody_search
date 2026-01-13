@@ -8,7 +8,29 @@ search parameter validation and extraction.
 from typing import Dict, Any, Tuple, Optional
 import pandas as pd
 
+import logging
+import json
+import time
+
+def _log_debug_event(location, message, data=None):
+    try:
+        log_entry = {
+            "timestamp": int(time.time() * 1000),
+            "location": location,
+            "message": message,
+            "data": data or {},
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "duckdb_spill"
+        }
+        with open("/app/.cursor/debug.log", "a") as f:
+            f.write(json.dumps(log_entry) + "\n")
+    except Exception:
+        pass
+
 from search_engine import AntibodySearchEngine
+
+logger = logging.getLogger(__name__)
 
 
 def validate_search_criteria(search_params: Dict[str, Any], is_paired: bool) -> Tuple[bool, Optional[str]]:
@@ -192,7 +214,19 @@ def execute_search(
     if limit is not None:
         kwargs['limit'] = limit
     
-    return engine.search(**kwargs)
+    # #region agent log
+    _log_debug_event("execute_search", "Executing search", {"params_keys": list(kwargs.keys())})
+    # #endregion
+
+    logger.debug(f"Executing search via execute_search. Params: {kwargs.keys()}")
+    results = engine.search(**kwargs)
+    
+    # Log result size
+    if results:
+        results_df = results[0]
+        logger.debug(f"Search execution completed. Result rows: {len(results_df)}")
+    
+    return results
 
 
 def execute_search_with_stats(

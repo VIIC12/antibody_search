@@ -12,11 +12,15 @@ import zipfile
 import tempfile
 import os
 import uuid
+import logging
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any, List
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+
+# Set up global logger
+logger = logging.getLogger(__name__)
 
 from components.search.results_display import (
     format_results_dataframe,
@@ -388,7 +392,6 @@ def prepare_full_results_download_background(
         # Import here to ensure paths are set up correctly in worker process
         import sys
         import warnings
-        import logging
         from pathlib import Path
         project_root = Path(__file__).parent.parent.parent
         sys.path.insert(0, str(project_root))
@@ -397,6 +400,17 @@ def prepare_full_results_download_background(
         # Suppress Streamlit caching warnings in worker processes
         warnings.filterwarnings("ignore", category=UserWarning, module="streamlit.runtime.caching.cache_data_api")
         logging.getLogger("streamlit.runtime.caching.cache_data_api").setLevel(logging.ERROR)
+        
+        # Ensure logging is configured in worker process
+        if not logging.getLogger().handlers:
+            logging.basicConfig(
+                level=logging.INFO,
+                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                handlers=[logging.StreamHandler(sys.stdout)]
+            )
+            # Set this module to DEBUG in worker
+            logging.getLogger(__name__).setLevel(logging.DEBUG)
+
         
         from components.search.database_utils import init_search_engine
         from components.search.search_execution import execute_search
@@ -416,6 +430,7 @@ def prepare_full_results_download_background(
             data_dir=database_paths,
             db_path=":memory:"
         )
+        logger.info("Background full results download: Search engine initialized")
         
         # Copy search params to avoid modifying original
         search_params_copy = search_params.copy()
@@ -439,6 +454,7 @@ def prepare_full_results_download_background(
         # Get total count first (for progress tracking)
         count_query = f"SELECT COUNT(*) as cnt FROM {table_name} WHERE {where_clause}"
         total_count = engine.conn.execute(count_query).fetchone()[0]
+        logger.info(f"Background full results download: Total sequences to process: {total_count}")
         
         if total_count == 0:
             return {
@@ -525,6 +541,8 @@ def prepare_full_results_download_background(
             sequence_count += len(chunk_df)
             offset += CHUNK_SIZE
             
+            logger.debug(f"Background full results download: Processed chunk. Total processed: {sequence_count}/{total_count}")
+            
             # Safety check: if chunk is smaller than expected, we're done
             if len(chunk_df) < CHUNK_SIZE:
                 break
@@ -537,6 +555,8 @@ def prepare_full_results_download_background(
         
         # Get file size from disk
         file_size_bytes = file_path.stat().st_size
+        
+        logger.info(f"Background full results download: Completed. File size: {file_size_bytes} bytes. Sequences: {sequence_count}")
         
         # Close the engine connection
         if hasattr(engine, 'conn'):
@@ -577,6 +597,7 @@ def prepare_full_results_download_background(
                 }
         
     except Exception as e:
+        logger.error(f"Background full results download failed: {str(e)}", exc_info=True)
         return {
             'success': False,
             'error': str(e),
@@ -616,7 +637,6 @@ def prepare_plots_download_background(
         # Import here to ensure paths are set up correctly in worker process
         import sys
         import warnings
-        import logging
         import json
         import io
         import zipfile
@@ -633,12 +653,25 @@ def prepare_plots_download_background(
         warnings.filterwarnings("ignore", category=UserWarning, module="streamlit.runtime.caching.cache_data_api")
         logging.getLogger("streamlit.runtime.caching.cache_data_api").setLevel(logging.ERROR)
         
+        # Ensure logging is configured in worker process
+        if not logging.getLogger().handlers:
+            logging.basicConfig(
+                level=logging.INFO,
+                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                handlers=[logging.StreamHandler(sys.stdout)]
+            )
+            # Set this module to DEBUG in worker
+            logging.getLogger(__name__).setLevel(logging.DEBUG)
+
+        
         # Import functions from results_plotting module
         from components.search.results_plotting import (
             create_plots_zip,
             _sanitize_plot_filename,
             _json_default
         )
+        
+        logger.info(f"Background plots download: Started. Plots count: {len(plots_data) if plots_data else 0}")
         
         if not plots_data:
             return {
@@ -793,6 +826,7 @@ def prepare_plots_download_background(
                 }
         
     except Exception as e:
+        logger.error(f"Background plots download failed: {str(e)}", exc_info=True)
         return {
             'success': False,
             'error': str(e),
@@ -831,7 +865,6 @@ def prepare_fasta_download_background(
         # Import here to ensure paths are set up correctly in worker process
         import sys
         import warnings
-        import logging
         from pathlib import Path
         project_root = Path(__file__).parent.parent.parent
         sys.path.insert(0, str(project_root))
@@ -840,6 +873,17 @@ def prepare_fasta_download_background(
         # Suppress Streamlit caching warnings in worker processes
         warnings.filterwarnings("ignore", category=UserWarning, module="streamlit.runtime.caching.cache_data_api")
         logging.getLogger("streamlit.runtime.caching.cache_data_api").setLevel(logging.ERROR)
+        
+        # Ensure logging is configured in worker process
+        if not logging.getLogger().handlers:
+            logging.basicConfig(
+                level=logging.INFO,
+                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                handlers=[logging.StreamHandler(sys.stdout)]
+            )
+            # Set this module to DEBUG in worker
+            logging.getLogger(__name__).setLevel(logging.DEBUG)
+
         
         from components.search.database_utils import init_search_engine
         from components.search.search_execution import execute_search
@@ -852,6 +896,7 @@ def prepare_fasta_download_background(
             data_dir=database_paths,
             db_path=":memory:"
         )
+        logger.info("Background FASTA download: Search engine initialized")
         
         # Copy search params to avoid modifying original
         search_params_copy = search_params.copy()
@@ -883,6 +928,7 @@ def prepare_fasta_download_background(
         # Get total count first
         count_query = f"SELECT COUNT(*) as cnt FROM {table_name} WHERE {where_clause}"
         total_count = engine.conn.execute(count_query).fetchone()[0]
+        logger.info(f"Background FASTA download: Total sequences to process: {total_count}")
         
         if total_count == 0:
             return {
@@ -992,6 +1038,8 @@ def prepare_fasta_download_background(
                                 temp_files[chain_label].write(f"{seq}\n")
                                 hit_number += 1
                 
+                logger.debug(f"Background FASTA download: Processed chunk. Processed sequences: {min(offset + len(chunk_df), total_count)}/{total_count}")
+                
                 offset += CHUNK_SIZE
                 
                 if len(chunk_df) < CHUNK_SIZE:
@@ -1005,7 +1053,6 @@ def prepare_fasta_download_background(
                     if content.strip():
                         fasta_files[key] = content
                 # Clean up temp file
-                import os
                 os.unlink(temp_file.name)
             
             if not fasta_files:
@@ -1050,12 +1097,13 @@ def prepare_fasta_download_background(
             total_sequences = sum(content.count('>') for content in fasta_files.values())
             file_size_bytes = file_path.stat().st_size
             
+            logger.info(f"Background FASTA download: Completed. File size: {file_size_bytes} bytes. Sequences: {total_sequences}")
+            
         except Exception as e:
             # Clean up temp files on error
             for temp_file in temp_files.values():
                 try:
                     temp_file.close()
-                    import os
                     if os.path.exists(temp_file.name):
                         os.unlink(temp_file.name)
                 except:
@@ -1101,6 +1149,7 @@ def prepare_fasta_download_background(
                 }
         
     except Exception as e:
+        logger.error(f"Background FASTA download failed: {str(e)}", exc_info=True)
         return {
             'success': False,
             'error': str(e),

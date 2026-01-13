@@ -11,6 +11,25 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 import re
+import json
+import time
+from datetime import datetime
+
+def _log_debug_event(location, message, data=None):
+    try:
+        log_entry = {
+            "timestamp": int(time.time() * 1000),
+            "location": location,
+            "message": message,
+            "data": data or {},
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": "duckdb_spill"
+        }
+        with open("/app/.cursor/debug.log", "a") as f:
+            f.write(json.dumps(log_entry) + "\n")
+    except Exception:
+        pass
 
 import duckdb
 import pandas as pd
@@ -110,6 +129,27 @@ class AntibodySearchEngine:
         self.conn = duckdb.connect(database=db_path)
         self.db_path = db_path
 
+        # Set temp directory to /tmp to avoid bind mount I/O overhead and Streamlit file watcher loops
+        try:
+            # Create a dedicated temp directory for DuckDB
+            duckdb_tmp = Path("/tmp/duckdb_tmp")
+            duckdb_tmp.mkdir(parents=True, exist_ok=True)
+            self.conn.execute(f"SET temp_directory='{str(duckdb_tmp)}'")
+            
+            # #region agent log
+            temp_dir = self.conn.execute("SELECT current_setting('temp_directory')").fetchone()
+            _log_debug_event("AntibodySearchEngine.__init__", "DuckDB initialized (Fixed temp dir)", {
+                "db_path": db_path,
+                "temp_directory": str(temp_dir[0]) if temp_dir else "unknown",
+                "cwd": os.getcwd()
+            })
+            # #endregion
+        except Exception as e:
+            # #region agent log
+            _log_debug_event("AntibodySearchEngine.__init__", "Error setting temp dir", {"error": str(e)})
+            # #endregion
+            pass
+
         # Configure thread count based on global setting
         if DUCKDB_THREADS is not None:
             self.conn.execute(f"SET threads = {DUCKDB_THREADS}")
@@ -125,6 +165,9 @@ class AntibodySearchEngine:
         self.schema = self._detect_schema()
         
         # Register Parquet files as views
+        # #region agent log
+        _log_debug_event("AntibodySearchEngine.__init__", "Calling _register_data", {})
+        # #endregion
         self._register_data(progress_callback, verbose)
     
     def _detect_schema(self) -> Dict[str, Any]:
@@ -215,6 +258,10 @@ class AntibodySearchEngine:
     
     def _register_data(self, progress_callback=None, verbose: bool = True):
         """Register Parquet files as DuckDB views."""
+        # #region agent log
+        _log_debug_event("AntibodySearchEngine._register_data", "Start", {})
+        # #endregion
+
         if progress_callback:
             progress_callback(0.0, "Initializing search engine...")
         
@@ -255,6 +302,10 @@ class AntibodySearchEngine:
         if progress_callback:
             progress_callback(0.2, f"Found {len(parquet_files)} Parquet files")
         
+        # #region agent log
+        _log_debug_event("AntibodySearchEngine._register_data", "Parquet files found", {"count": len(parquet_files)})
+        # #endregion
+
         # Create a view that reads all parquet files (excluding metadata.parquet)
         # Build a list of specific files to avoid schema conflicts
         if progress_callback:
@@ -263,6 +314,11 @@ class AntibodySearchEngine:
         parquet_file_paths = [str(f) for f in parquet_files]
         parquet_files_str = "', '".join(parquet_file_paths)
         
+        # #region agent log
+        _log_debug_event("AntibodySearchEngine._register_data", "Creating antibodies_base view", {"files_count": len(parquet_file_paths)})
+        start_view = time.time()
+        # #endregion
+
         # Register files as view with source_file
         self.conn.execute(f"""
             CREATE OR REPLACE VIEW antibodies_base AS 
@@ -271,6 +327,10 @@ class AntibodySearchEngine:
                                         filename=true)
         """)
         
+        # #region agent log
+        _log_debug_event("AntibodySearchEngine._register_data", "antibodies_base view created", {"duration": time.time() - start_view})
+        # #endregion
+
         # Register metadata view from all data directories
         metadata_files = []
         for data_dir in self.data_dirs:
@@ -334,11 +394,21 @@ class AntibodySearchEngine:
         if progress_callback:
             progress_callback(0.8, "Counting total sequences...")
         
+        # #region agent log
+        _log_debug_event("AntibodySearchEngine._register_data", "Counting total sequences (metadata)", {})
+        start_count = time.time()
+        # #endregion
+
         total_sequences_row = self.conn.execute("""
             SELECT SUM(total_sequences) 
             FROM metadata 
             WHERE total_sequences IS NOT NULL
         """).fetchone()
+
+        # #region agent log
+        _log_debug_event("AntibodySearchEngine._register_data", "Total sequences counted", {"duration": time.time() - start_count})
+        # #endregion
+
         if not total_sequences_row or total_sequences_row[0] is None:
             raise ValueError(
                 "Metadata files must include non-null total_sequences values for every database."
@@ -371,6 +441,10 @@ class AntibodySearchEngine:
         for chain_name, file_paths in chain_file_map.items():
             create_chain_view(chain_name, file_paths)
         
+        # #region agent log
+        _log_debug_event("AntibodySearchEngine._register_data", "Chain views created", {})
+        # #endregion
+
         if progress_callback:
             progress_callback(1.0, "Search engine ready!")
         
@@ -1294,8 +1368,23 @@ class AntibodySearchEngine:
         """
         start_time = time.time()
         
+        # #region agent log
+        try:
+            mem_limit = self.conn.execute("SELECT current_setting('memory_limit')").fetchone()
+            _log_debug_event("AntibodySearchEngine.search", "Search started", {
+                "chain_mode": chain_mode,
+                "full_results": full_results,
+                "limit": limit,
+                "memory_limit": str(mem_limit[0]) if mem_limit else "unknown"
+            })
+        except Exception as e:
+            _log_debug_event("AntibodySearchEngine.search", "Error logging start", {"error": str(e)})
+        # #endregion
+
         # Debug logging: Track query start
         logger.debug(f"Query started - Chain mode: {chain_mode}, Full results: {full_results}, Limit: {limit}")
+        # Add parameter logging
+        logger.debug(f"Search params - Heavy V: {heavy_v}, J: {heavy_j}, Light V: {light_v}, J: {light_j}")
         
         resolved_mode = (chain_mode or "").lower()
         if resolved_mode not in {"paired", "heavy", "light"}:
@@ -1465,7 +1554,11 @@ class AntibodySearchEngine:
         
         where_clause = " AND ".join(conditions) if conditions else "1=1"
         
+        # Log WHERE clause length
+        logger.debug(f"Unpaired WHERE clause constructed. Length: {len(where_clause)}")
+        
         if full_results:
+            logger.debug("Executing unpaired full results query...")
             # Return full sequence data
             query = f"""
                 SELECT *
@@ -1473,10 +1566,22 @@ class AntibodySearchEngine:
                 WHERE {where_clause}
                 {f'LIMIT {limit}' if limit else ''}
             """
+            # #region agent log
+            start_sample = time.time()
+            # #endregion
             results_df = self.conn.execute(query).df()
+            # #region agent log
+            _log_debug_event("AntibodySearchEngine._search_unpaired", "Sample query completed", {
+                "duration": time.time() - start_sample,
+                "rows": len(results_df) if not results_df.empty else 0
+            })
+            # #endregion
             results_df = self._attach_inferred_partners(results_df, chain_type)
             
             # Get subject statistics (can calculate total_hits in same query)
+            # #region agent log
+            start_stats = time.time()
+            # #endregion
             stats_query = f"""
                 SELECT 
                     subject,
@@ -1486,10 +1591,17 @@ class AntibodySearchEngine:
                 GROUP BY subject
             """
             stats_df = self.conn.execute(stats_query).df()
+            # #region agent log
+            _log_debug_event("AntibodySearchEngine._search_unpaired", "Stats query completed", {
+                "duration": time.time() - start_stats,
+                "subjects": len(stats_df) if not stats_df.empty else 0
+            })
+            # #endregion
             # Calculate total_hits directly from stats_df while it's in memory
             total_hits = int(stats_df['hits'].sum()) if not stats_df.empty else 0
             
         else:
+            logger.debug("Executing unpaired statistics only query...")
             # Return statistics only (much faster)
             query = f"""
                 SELECT 
@@ -1703,6 +1815,15 @@ class AntibodySearchEngine:
         
         # Always return stats_df so users don't need to call search() twice
         # When full_results=False, results_df == stats_df (they're the same)
+        
+        # #region agent log
+        _log_debug_event("AntibodySearchEngine._search_unpaired", "Search completed", {
+            "total_hits": total_hits,
+            "search_time": search_time,
+            "stats_df_rows": len(stats_df) if not stats_df.empty else 0
+        })
+        # #endregion
+
         return results_df, stats_df, statistics
     
     def _search_paired(
@@ -1969,7 +2090,11 @@ class AntibodySearchEngine:
         
         where_clause = " AND ".join(conditions) if conditions else "1=1"
         
+        # Log WHERE clause length
+        logger.debug(f"Paired WHERE clause constructed. Length: {len(where_clause)}")
+        
         if full_results:
+            logger.debug("Executing paired full results query...")
             # Return full sequence data
             query = f"""
                 SELECT *
@@ -1977,9 +2102,21 @@ class AntibodySearchEngine:
                 WHERE {where_clause}
                 {f'LIMIT {limit}' if limit else ''}
             """
+            # #region agent log
+            start_sample = time.time()
+            # #endregion
             results_df = self.conn.execute(query).df()
+            # #region agent log
+            _log_debug_event("AntibodySearchEngine._search_paired", "Sample query completed", {
+                "duration": time.time() - start_sample,
+                "rows": len(results_df) if not results_df.empty else 0
+            })
+            # #endregion
             
             # Get subject statistics (can calculate total_hits from this)
+            # #region agent log
+            start_stats = time.time()
+            # #endregion
             stats_query = f"""
                 SELECT 
                     subject,
@@ -1989,8 +2126,15 @@ class AntibodySearchEngine:
                 GROUP BY subject
             """
             stats_df = self.conn.execute(stats_query).df()
+            # #region agent log
+            _log_debug_event("AntibodySearchEngine._search_paired", "Stats query completed", {
+                "duration": time.time() - start_stats,
+                "subjects": len(stats_df) if not stats_df.empty else 0
+            })
+            # #endregion
             
         else:
+            logger.debug("Executing paired statistics only query...")
             # Return statistics only (much faster)
             query = f"""
                 SELECT 
@@ -2168,6 +2312,15 @@ class AntibodySearchEngine:
         
         # Always return stats_df so users don't need to call search() twice
         # When full_results=False, results_df == stats_df (they're the same)
+        
+        # #region agent log
+        _log_debug_event("AntibodySearchEngine._search_paired", "Search completed", {
+            "total_hits": total_hits,
+            "search_time": search_time,
+            "stats_df_rows": len(stats_df) if not stats_df.empty else 0
+        })
+        # #endregion
+
         return results_df, stats_df, statistics
     
     def _print_search_summary(self, statistics: Dict, chain_mode: str, full_results: bool, limit: Optional[int]):

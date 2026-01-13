@@ -2,6 +2,20 @@
 import streamlit as st
 from pathlib import Path
 import sys
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
+# Set specific modules to DEBUG level for troubleshooting
+logging.getLogger("src.search_engine").setLevel(logging.DEBUG)
+logging.getLogger("search_engine").setLevel(logging.DEBUG)  # In case it's imported without src. prefix
+logging.getLogger("components.search.download_utils").setLevel(logging.DEBUG)
+logging.getLogger("components.search.search_execution").setLevel(logging.DEBUG)
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
