@@ -2156,7 +2156,17 @@ def render_subject_hits_boxplot(
     if upper_bound <= lower_bound:
         upper_bound = lower_bound * 2.0
 
-    yaxis_range = [float(np.log10(lower_bound)), float(np.log10(upper_bound))]
+    log_min = float(np.log10(lower_bound))
+    log_max = float(np.log10(upper_bound))
+    if log_max - log_min < 2.0:
+        padding = (2.0 - (log_max - log_min)) / 2.0
+        log_min -= padding
+        log_max += padding
+    yaxis_range = [log_min, log_max]
+
+    tick_exponents = np.arange(np.floor(log_min), np.ceil(log_max) + 1, 1, dtype=int)
+    tick_vals = np.power(10.0, tick_exponents)
+    tick_text = [f"10^{exp}" for exp in tick_exponents]
 
     customdata = pd.DataFrame({
         "subject": donor_labels,
@@ -2208,7 +2218,9 @@ def render_subject_hits_boxplot(
             title="Hits per Million",
             type="log",
             range=yaxis_range,
-            tickformat=".3g",
+            tickmode="array",
+            tickvals=tick_vals,
+            ticktext=tick_text,
         ),
     )
 

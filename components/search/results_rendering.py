@@ -182,8 +182,17 @@ def render_subject_statistics(
     with content_col:
         if not stats_df.empty:
             column_config = get_stats_column_config()
+            desired_order = [
+                "subject",
+                "total_sequences",
+                "hits",
+                "percentage",
+                "per_million",
+            ]
+            ordered_columns = [col for col in desired_order if col in stats_df.columns]
+            stats_df_display = stats_df[ordered_columns] if ordered_columns else stats_df
             st.dataframe(
-                stats_df,
+                stats_df_display,
                 width='stretch',
                 height=200,
                 column_config=column_config

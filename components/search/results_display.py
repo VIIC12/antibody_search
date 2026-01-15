@@ -144,9 +144,9 @@ def get_stats_column_config() -> Dict[str, Any]:
     """
     return {
         "subject": st.column_config.TextColumn("Subject", width="medium"),
-        "hits": st.column_config.NumberColumn("Hits", width="small"),
         "total_sequences": st.column_config.NumberColumn("Total Sequences", width="medium"),
-        "hit_percentage": st.column_config.NumberColumn("Hit %", width="small", format="%.2f%%"),
-        "hits_per_million": st.column_config.NumberColumn("Hits/Million", width="medium", format="%.1f")
+        "hits": st.column_config.NumberColumn("Hits", width="small"),
+        "percentage": st.column_config.NumberColumn("Percentage", width="small", format="%.2f%%"),
+        "per_million": st.column_config.NumberColumn("Hits per Million", width="medium", format="%.1f"),
     }
 
