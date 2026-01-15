@@ -633,9 +633,9 @@ def search_page_content():
                 if search_mode == 'dual_unpaired':
                     heavy_hits = result.get('heavy', {}).get('statistics', {}).get('total_hits', 0)
                     light_hits = result.get('light', {}).get('statistics', {}).get('total_hits', 0)
-                    st.toast(f"✅ Search completed! Found {heavy_hits:,} heavy and {light_hits:,} light sequences", icon="✅")
+                    st.toast(f"Search completed! Found {heavy_hits:,} heavy and {light_hits:,} light sequences", icon=":material/search_check_2:")
                 else:
-                    st.toast(f"✅ Search completed! Found {total_hits:,} sequences", icon="✅")
+                    st.toast(f"Search completed! Found {total_hits:,} sequences", icon=":material/search_check_2:")
                 st.session_state['search_completed_toast_shown'] = True
             
             # Note: Search parameters are stored when search is submitted, not here

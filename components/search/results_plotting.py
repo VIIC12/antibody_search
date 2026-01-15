@@ -257,7 +257,7 @@ def _render_plot_download_buttons(
         
         if status == "idle":
             if st.button(
-                "📥 Download Figures",
+                "⬇ Download Figures",
                 key=f"{download_key}_button_figures",
                 use_container_width=True
             ):
@@ -364,7 +364,7 @@ def _render_plot_download_buttons(
         
         if status == "idle":
             if st.button(
-                "📥 Download Figures + Raw Data",
+                "⬇ Download Figures + Raw Data",
                 key=f"{download_key}_button_raw",
                 use_container_width=True
             ):

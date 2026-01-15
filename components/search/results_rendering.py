@@ -54,31 +54,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-RESULTS_HEADING_SVG = dedent("""
-<svg width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect x="6" y="10" width="24" height="24" rx="6" stroke="#4F46E5" stroke-width="3"/>
-<path d="M20 28L30 38" stroke="#4F46E5" stroke-width="3" stroke-linecap="round"/>
-<circle cx="18" cy="22" r="6" stroke="#4F46E5" stroke-width="3"/>
-<path d="M36 12L40 12C41.1046 12 42 12.8954 42 14L42 34C42 35.1046 41.1046 36 40 36L28 36" stroke="#4F46E5" stroke-width="3" stroke-linecap="round"/>
-</svg>
-""").strip()
-
-
-def render_results_header() -> None:
-    """
-    Render the main search results heading with a custom SVG icon.
-    """
-    st.markdown(
-        dedent(f"""
-        <div style="display:flex;align-items:center;gap:0.75rem;margin:0.5rem 0 1rem;">
-        {RESULTS_HEADING_SVG}
-        <h2 style="margin:0;font-weight:600;color:inherit;">Search Results</h2>
-        </div>
-        """).strip(),
-        unsafe_allow_html=True,
-    )
-
-
 def render_search_results(
     sequences_sample_df: pd.DataFrame,
     stats_df: pd.DataFrame,
@@ -100,12 +75,9 @@ def render_search_results(
         engine: Search engine instance
         show_toast: Whether to show the success toast notification (default: True)
     """
-    # Show success toast only if requested (i.e., for new searches, not cached results)
-    if show_toast:
-        st.toast(f"✅ Search completed! Found {statistics['total_hits']:,} sequences", icon="🎉")
     
     # Display results
-    render_results_header()
+    st.markdown("# :material/search_insights: Search Results")
     
     # Statistics metrics
     render_statistics_metrics(statistics)
@@ -123,8 +95,8 @@ def render_search_results(
     )
 
     # Section 2: Result Distributions (subject statistics + plots)
-    st.markdown("### 📊 Result Distributions")
-    render_subject_statistics(stats_df, statistics, heading_level=4)
+    st.markdown("### :material/bar_chart_4_bars: Result Distributions")
+    render_subject_statistics(stats_df, statistics)
     render_results_plots(
         sequences_sample_df,
         statistics,
@@ -166,7 +138,6 @@ def render_statistics_metrics(statistics: Dict[str, Any]) -> None:
 def render_subject_statistics(
     stats_df: pd.DataFrame,
     statistics: Dict[str, Any],
-    heading_level: int = 3
 ) -> None:
     """
     Render statistics by subject table with download button.
@@ -174,8 +145,7 @@ def render_subject_statistics(
     Args:
         stats_df: Statistics dataframe
     """
-    heading_level = max(1, min(6, heading_level))
-    st.markdown(f"{'#' * heading_level} 📊 Statistics by Subject")
+    st.markdown("#### Statistics by Subject")
     
     content_col, plot_col = st.columns([5, 1])
 
@@ -227,11 +197,11 @@ def render_sequences_table(
     total_hits = statistics.get('total_hits', 0)
     if total_hits > 0:
         st.markdown(
-            f"### 🔬 Sample Sequences "
+            f"### :material/table: Sample Sequences "
             f"(showing {len(sequences_sample_df)} of {total_hits:,} total hits)"
         )
     else:
-        st.markdown("### 🔬 Sample Sequences")
+        st.markdown("### :material/table: Sample Sequences")
     
     if not sequences_sample_df.empty:
         # Format dataframe for display
@@ -268,7 +238,7 @@ def render_stats_download_button(
     """
     if stats_df.empty:
         st.button(
-            "📊 Download Statistics (ZIP)",
+            "⬇ Download Statistics (ZIP)",
             disabled=True,
             use_container_width=True,
             type="primary"
@@ -1105,7 +1075,7 @@ def render_dual_unpaired_results(
         st.toast("✅ Heavy and Light searches completed!", icon="🎉")
     
     st.markdown("---")
-    render_results_header()
+    st.markdown("# :material/search_insights: Search Results")
     
     # Heavy section
     render_chain_heading("Heavy Chain Results", "heavy", level=3, icon="🧬")
@@ -1128,7 +1098,7 @@ def render_dual_unpaired_results(
         engine=engine,
         stats_df=heavy_result['stats_df']
     )
-    render_subject_statistics(heavy_result['stats_df'], heavy_result['statistics'], heading_level=4)
+    render_subject_statistics(heavy_result['stats_df'], heavy_result['statistics'])
     render_results_plots(
         heavy_result['sequences_sample_df'],
         heavy_result['statistics'],
@@ -1159,7 +1129,7 @@ def render_dual_unpaired_results(
         engine=engine,
         stats_df=light_result['stats_df']
     )
-    render_subject_statistics(light_result['stats_df'], light_result['statistics'], heading_level=4)
+    render_subject_statistics(light_result['stats_df'], light_result['statistics'])
     render_results_plots(
         light_result['sequences_sample_df'],
         light_result['statistics'],
