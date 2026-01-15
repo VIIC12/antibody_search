@@ -26,7 +26,7 @@ PLOTTING_DATA_LIMIT = 1000000
 
 # Threshold for showing warning message about large result sets
 # If total_hits exceeds this, a message is shown indicating plots use a sample
-PLOTTING_WARNING_THRESHOLD = 100000
+PLOTTING_WARNING_THRESHOLD = 1_000_000
 
 
 def render_results_plots(
@@ -61,7 +61,7 @@ def render_results_plots(
     
     if total_hits > PLOTTING_WARNING_THRESHOLD:
         st.info(
-            f"ℹ️ **Large result set detected** ({total_hits:,} hits). "
+            f"**Large result set detected** ({total_hits:,} hits). "
             f"Plots are based on a sample of up to {PLOTTING_DATA_LIMIT:,} sequences for performance. "
             f"Distributions should be representative of the full dataset."
         )
