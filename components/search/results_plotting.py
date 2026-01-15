@@ -2140,16 +2140,10 @@ def render_subject_hits_boxplot(
         st.info("Cannot display donor distribution on a log scale due to non-positive values.")
         return
 
-    y_values_millions = y_values / 1_000_000
-
-    if not (y_values_millions > 0).all():
-        st.info("Cannot display donor distribution on a log scale due to non-positive values.")
-        return
-
     # Calculate bounds with more padding to account for jittered points
     # Use more padding (1.5x) to ensure all jittered points are visible
-    min_val = float(y_values_millions.min())
-    max_val = float(y_values_millions.max())
+    min_val = float(y_values.min())
+    max_val = float(y_values.max())
     
     lower_bound = min_val * 0.8
     upper_bound = max_val * 1.5
@@ -2166,13 +2160,12 @@ def render_subject_hits_boxplot(
 
     customdata = pd.DataFrame({
         "subject": donor_labels,
-        "hits_per_million": y_values
     }).to_numpy()
 
     fig = go.Figure()
     fig.add_trace(
         go.Box(
-            y=y_values_millions,
+            y=y_values,
             name="Donors",
             boxpoints="all",
             jitter=0.2,
@@ -2185,8 +2178,7 @@ def render_subject_hits_boxplot(
             fillcolor='rgba(76, 96, 133, 0.2)',  # Transparent box fill
             customdata=customdata,
             hovertemplate=(
-                "Subject: %{customdata[0]}<br>Hits/Million: %{customdata[1]:,.2f}"
-                "<br>Hits/Million (Millions): %{y:.4f}M<extra></extra>"
+                "Subject: %{customdata[0]}<br>Hits/Million: %{y:,.2f}<extra></extra>"
             ),
         )
     )
@@ -2213,7 +2205,7 @@ def render_subject_hits_boxplot(
         margin=dict(l=20, r=20, t=45, b=15),
         template="plotly_white",
         yaxis=dict(
-            title="Hits per Million (Millions)",
+            title="Hits per Million",
             type="log",
             range=yaxis_range,
             tickformat=".3g",
