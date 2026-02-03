@@ -28,6 +28,13 @@ PLOTTING_DATA_LIMIT = 1000000
 # If total_hits exceeds this, a message is shown indicating plots use a sample
 PLOTTING_WARNING_THRESHOLD = 1_000_000
 
+# Keys used to temporarily lock the search form while expensive plotting queries
+# are running. This prevents users from modifying the search mask mid-render,
+# which can otherwise lead to crashes or inconsistent state.
+PLOTTING_LOCK_KEY = "plotting_controls_locked"
+PLOTTING_LOCK_REASON_KEY = "plotting_controls_locked_reason"
+PLOTTING_LOCK_REASON_PLOTS = "plots_loading"
+
 
 def render_results_plots(
     sequences_sample_df: pd.DataFrame,
@@ -82,17 +89,37 @@ def render_results_plots(
     
     # Check if we have cached plotting data for this search
     cached_data = st.session_state.get(cache_key)
+    sequences_full_df = cached_data
     
-    if cached_data is not None:
-        # Use cached data - no need to fetch again
-        sequences_full_df = cached_data
-    else:
-        # Fetch only the columns needed for plotting (much faster)
-        with st.spinner("Loading data for plotting..."):
-            sequences_full_df = fetch_plotting_data(engine, search_params, is_paired, unpaired_chain_type)
+    if sequences_full_df is None:
+        lock_active = st.session_state.get(PLOTTING_LOCK_KEY, False)
+        # First rerun: lock the search controls so the form renders as disabled
+        if not lock_active:
+            st.session_state[PLOTTING_LOCK_KEY] = True
+            st.session_state[PLOTTING_LOCK_REASON_KEY] = PLOTTING_LOCK_REASON_PLOTS
+            st.rerun()
         
-        # Cache the fetched data
-        st.session_state[cache_key] = sequences_full_df
+        fetch_successful = False
+        try:
+            # Fetch only the columns needed for plotting (much faster)
+            with st.spinner("Loading data for plotting..."):
+                sequences_full_df = fetch_plotting_data(
+                    engine,
+                    search_params,
+                    is_paired,
+                    unpaired_chain_type
+                )
+            fetch_successful = True
+            # Cache the fetched data
+            st.session_state[cache_key] = sequences_full_df
+        finally:
+            st.session_state[PLOTTING_LOCK_KEY] = False
+            st.session_state.pop(PLOTTING_LOCK_REASON_KEY, None)
+        
+        if fetch_successful:
+            # Second rerun: re-enable controls and render plots with cached data
+            st.rerun()
+        return
     
     if sequences_full_df.empty:
         st.info("No results available for plotting.")

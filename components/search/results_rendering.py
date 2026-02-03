@@ -76,6 +76,9 @@ def render_search_results(
         show_toast: Whether to show the success toast notification (default: True)
     """
     
+    # Visual separation from the search criteria section
+    st.markdown("---")
+    
     # Display results
     st.markdown("# :material/search_insights: Search Results")
     
@@ -764,7 +767,7 @@ def render_full_download_button(
 
 
 LAST_SEARCH_INFO_MESSAGE = (
-    "💡 **You are currently viewing results from the search below.** "
+    ":material/info: **You are currently viewing results from the search below.** "
     "Modify the search parameters above to perform a new search."
 )
 
@@ -772,13 +775,12 @@ LAST_SEARCH_INFO_MESSAGE = (
 def _render_last_search_header(show_info: bool = True) -> None:
     """Render consistent header for last search criteria sections."""
     st.markdown("## :material/search_gear: Last performed Search Criteria")
-    st.divider()
     if show_info:
         st.info(LAST_SEARCH_INFO_MESSAGE)
 
 
-def _render_selected_databases_summary(selected_databases: List[Any]) -> None:
-    """Show a compact list of the currently selected databases."""
+def _render_selected_databases_summary(selected_databases: Optional[List[Any]]) -> None:
+    """Show a compact list of the databases used for the rendered search."""
     if not selected_databases:
         return
     
@@ -791,19 +793,25 @@ def _render_selected_databases_summary(selected_databases: List[Any]) -> None:
     st.caption(f"Databases: {', '.join(db_names)}")
 
 
-def render_search_criteria_display(search_params: Dict[str, Any], is_paired: bool) -> None:
+def render_search_criteria_display(
+    search_params: Dict[str, Any],
+    is_paired: bool,
+    selected_databases: Optional[List[Any]] = None
+) -> None:
     """
     Render search criteria summary showing the last performed search.
     
     Args:
         search_params: Search parameters dictionary
         is_paired: Whether this is a paired search
+        selected_databases: Optional list of database identifiers used for the search
     """
     # Handle None or empty search_params
     if not search_params:
         search_params = {}
     
-    selected_databases = st.session_state.get('selected_databases', [])
+    if selected_databases is None:
+        selected_databases = st.session_state.get('selected_databases', [])
     _render_last_search_header()
     _render_selected_databases_summary(selected_databases)
     
@@ -1019,13 +1027,15 @@ def _format_query_params_for_display(query_params: Dict[str, Any], is_paired: bo
 
 def render_dual_search_criteria_display(
     heavy_statistics: Dict[str, Any],
-    light_statistics: Dict[str, Any]
+    light_statistics: Dict[str, Any],
+    selected_databases: Optional[List[Any]] = None
 ) -> None:
     """Render search criteria for dual unpaired searches."""
     heavy_params = _format_query_params_for_display(heavy_statistics.get('query_params', {}), False)
     light_params = _format_query_params_for_display(light_statistics.get('query_params', {}), False)
     
-    selected_databases = st.session_state.get('selected_databases', [])
+    if selected_databases is None:
+        selected_databases = st.session_state.get('selected_databases', [])
     _render_last_search_header()
     _render_selected_databases_summary(selected_databases)
     
@@ -1045,7 +1055,7 @@ def render_dual_search_parameters_expander(
     light_statistics: Dict[str, Any]
 ) -> None:
     """Render expander showing heavy and light search parameters."""
-    with st.expander("🔍 Search Parameters"):
+    with st.expander(":material/search: Search Parameters HEAVY+LIGHT"):
         #! TODO When does this get called?
         st.markdown("**Selected Databases:**")
         selected_databases = st.session_state.get('selected_databases', [])

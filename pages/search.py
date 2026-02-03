@@ -3,7 +3,7 @@ import concurrent.futures
 import time
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from streamlit_autorefresh import st_autorefresh
 
 from components.search.search_forms import create_heavy_chain_form, create_light_chain_form
@@ -353,12 +353,20 @@ def search_page_content():
         elif '/Heavy/' in db_path_str:
             has_heavy = True
     
+    def _serialize_selected_databases(db_paths: List[Any]) -> List[str]:
+        """Normalize database identifiers for reuse after the user edits the mask."""
+        try:
+            return sorted([str(path) for path in db_paths])
+        except Exception:
+            return sorted([f"{path}" for path in db_paths])
+    
     def render_cached_results_for_mode(cached_results: Dict[str, Any], current_mode: Optional[str] = None) -> bool:
         engine_obj = st.session_state.get('search_engine')
         if engine_obj is None or not cached_results:
             return False
         
         mode = cached_results.get('mode')
+        cached_selected_databases = cached_results.get('selected_databases')
         if mode == 'dual_unpaired':
             if current_mode and current_mode != 'dual_unpaired':
                 return False
@@ -368,7 +376,8 @@ def search_page_content():
                 return False
             render_dual_search_criteria_display(
                 heavy_result.get('statistics', {}),
-                light_result.get('statistics', {})
+                light_result.get('statistics', {}),
+                selected_databases=cached_selected_databases
             )
             render_dual_unpaired_results(
                 heavy_result,
@@ -401,7 +410,11 @@ def search_page_content():
         if sequences_sample_df is None or statistics is None:
             return False
         
-        render_search_criteria_display(search_params, is_cached_paired)
+        render_search_criteria_display(
+            search_params,
+            is_cached_paired,
+            selected_databases=cached_selected_databases
+        )
         render_search_results(
             sequences_sample_df,
             stats_df,
@@ -453,18 +466,23 @@ def search_page_content():
     # Determine if form should be disabled
     is_search_running = st.session_state.search_status == "running"
     search_status = st.session_state.search_status
+    is_plotting_locked = st.session_state.get('plotting_controls_locked', False)
+    disable_form_controls = is_search_running or is_plotting_locked
     
-    # Disable form fields when search is running
+    if is_plotting_locked:
+        st.info(":material/hourglass: Result plots are loading. Search controls will unlock shortly.")
+    
+    # Disable form fields when search is running or plots are loading
     if search_mode == 'paired':
-        form_data = create_paired_search_form(disabled=is_search_running)
+        form_data = create_paired_search_form(disabled=disable_form_controls)
         search_params = form_data
         dual_form_data = None
     elif search_mode == 'dual_unpaired':
-        form_data = create_dual_unpaired_search_form(disabled=is_search_running)
+        form_data = create_dual_unpaired_search_form(disabled=disable_form_controls)
         search_params = None
         dual_form_data = form_data
     else:
-        form_data = create_unpaired_search_form(loadable_databases, disabled=is_search_running)
+        form_data = create_unpaired_search_form(loadable_databases, disabled=disable_form_controls)
         search_params = form_data
         dual_form_data = None
     
@@ -566,7 +584,7 @@ def search_page_content():
             search_submitted = st.form_submit_button(
                 ":material/database_search: Search Database",
                 type="primary",
-                disabled=has_validation_errors,
+                disabled=(has_validation_errors or disable_form_controls),
                 use_container_width=True
             )
         elif search_status == "running":
@@ -649,7 +667,8 @@ def search_page_content():
                     st.session_state['last_search_results'] = {
                         'mode': 'dual_unpaired',
                         'heavy': heavy_result,
-                        'light': light_result
+                        'light': light_result,
+                        'selected_databases': _serialize_selected_databases(loadable_databases)
                     }
                     with results_container.container():
                         render_dual_unpaired_results(heavy_result, light_result, engine, show_toast=False)
@@ -676,7 +695,8 @@ def search_page_content():
                         'statistics': statistics,
                         'stats_df': stats_df,
                         'is_paired': is_paired,
-                        'search_params': search_params_result
+                        'search_params': search_params_result,
+                        'selected_databases': _serialize_selected_databases(loadable_databases)
                     }
                     try:
                         # Ensure engine is valid before rendering

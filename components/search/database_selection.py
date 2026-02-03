@@ -258,7 +258,7 @@ def render_database_selection(db_structure: dict) -> Tuple[Optional[List[str]], 
     # Show warning if both Heavy and Light are selected but not Paired
     if heavy_selected and light_selected and not paired_selected:
         st.info(
-            "ℹ️ **Note:** Selecting both Heavy Chain and Light Chain does not create paired data. "
+            ":material/info: Selecting both Heavy Chain and Light Chain does not create paired data. "
             "This performs two separate searches (one in unpaired Heavy Chain data, one in unpaired Light Chain data) "
             "and combines the results. For true paired sequences, select **Paired** instead."
         )
