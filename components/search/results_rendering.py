@@ -763,9 +763,37 @@ def render_full_download_button(
                     st.error(f"❌ {error_msg}")
 
 
+LAST_SEARCH_INFO_MESSAGE = (
+    "💡 **You are currently viewing results from the search below.** "
+    "Modify the search parameters above to perform a new search."
+)
+
+
+def _render_last_search_header(show_info: bool = True) -> None:
+    """Render consistent header for last search criteria sections."""
+    st.markdown("## :material/search_gear: Last performed Search Criteria")
+    st.divider()
+    if show_info:
+        st.info(LAST_SEARCH_INFO_MESSAGE)
+
+
+def _render_selected_databases_summary(selected_databases: List[Any]) -> None:
+    """Show a compact list of the currently selected databases."""
+    if not selected_databases:
+        return
+    
+    db_names = []
+    for db_path in selected_databases:
+        path_obj = Path(str(db_path))
+        parent_name = path_obj.parent.name
+        db_names.append(f"{parent_name}/{path_obj.name}")
+    
+    st.caption(f"Databases: {', '.join(db_names)}")
+
+
 def render_search_criteria_display(search_params: Dict[str, Any], is_paired: bool) -> None:
     """
-    Render search criteria in a compact format showing the last performed search.
+    Render search criteria summary showing the last performed search.
     
     Args:
         search_params: Search parameters dictionary
@@ -775,43 +803,29 @@ def render_search_criteria_display(search_params: Dict[str, Any], is_paired: boo
     if not search_params:
         search_params = {}
     
-    # Add divider above
-    st.divider()
+    selected_databases = st.session_state.get('selected_databases', [])
+    _render_last_search_header()
+    _render_selected_databases_summary(selected_databases)
     
-    # Show visible notification
-    st.info("💡 **You are currently viewing results from the search below.** Modify search parameters above to perform a new search.")
-    
-    # Use an expander to make it compact and collapsible
-    with st.expander("📋 Last Search Parameters", expanded=True):
-        # Show selected databases in a compact format
-        selected_databases = st.session_state.get('selected_databases', [])
-        if selected_databases:
-            db_names = []
-            for db_path in selected_databases:
-                db_name = Path(db_path).name
-                parent_name = Path(db_path).parent.name
-                db_names.append(f"{parent_name}/{db_name}")
-            # Display databases once after building the list
-            st.markdown(f"**Databases:** {', '.join(db_names)}")
+    if is_paired:
+        formatted_params = _format_query_params_for_display(search_params, True)
+        col1, col2 = st.columns(2)
         
-        if is_paired:
-            # Paired search - show Heavy and Light chain parameters in columns
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("**🧬 Heavy Chain:**")
-                _render_chain_criteria_compact(search_params, "heavy_", chain_type="Heavy")
-            
-            with col2:
-                st.markdown("**🔬 Light Chain:**")
-                _render_chain_criteria_compact(search_params, "light_", chain_type="Light")
-        else:
-            # Unpaired search - determine chain type from search_params or databases
-            chain_type = _determine_unpaired_chain_type(search_params, selected_databases)
-            display_params = dict(search_params)
-            st.markdown(f"**{'🧬' if chain_type == 'Heavy' else '🔬'} {chain_type} Chain:**")
-            prefix = "heavy_" if chain_type == "Heavy" else "light_"
-            _render_chain_criteria_compact(display_params, prefix, chain_type=chain_type)
+        with col1:
+            st.markdown("#### 🧬 Heavy Chain")
+            _render_chain_criteria(formatted_params, "heavy_", chain_type="Heavy")
+        
+        with col2:
+            st.markdown("#### 🔬 Light Chain")
+            _render_chain_criteria(formatted_params, "light_", chain_type="Light")
+        return
+    
+    chain_type = _determine_unpaired_chain_type(search_params, selected_databases)
+    formatted_params = _format_query_params_for_display(search_params, False)
+    prefix = "heavy_" if chain_type == "Heavy" else "light_"
+    icon = "🧬" if chain_type == "Heavy" else "🔬"
+    st.markdown(f"#### {icon} {chain_type} Chain")
+    _render_chain_criteria(formatted_params, prefix, chain_type=chain_type)
 
 
 def _render_chain_criteria(search_params: Dict[str, Any], prefix: str, chain_type: str = "Heavy") -> None:
@@ -1011,8 +1025,9 @@ def render_dual_search_criteria_display(
     heavy_params = _format_query_params_for_display(heavy_statistics.get('query_params', {}), False)
     light_params = _format_query_params_for_display(light_statistics.get('query_params', {}), False)
     
-    st.markdown("## :material/search_gear: Last performed Search Criteria")
-    st.divider()
+    selected_databases = st.session_state.get('selected_databases', [])
+    _render_last_search_header()
+    _render_selected_databases_summary(selected_databases)
     
     col1, col2 = st.columns(2)
     
@@ -1031,6 +1046,7 @@ def render_dual_search_parameters_expander(
 ) -> None:
     """Render expander showing heavy and light search parameters."""
     with st.expander("🔍 Search Parameters"):
+        #! TODO When does this get called?
         st.markdown("**Selected Databases:**")
         selected_databases = st.session_state.get('selected_databases', [])
         for db_path in selected_databases:
