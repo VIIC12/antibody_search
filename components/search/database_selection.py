@@ -43,7 +43,7 @@ def render_database_selection(db_structure: dict) -> Tuple[Optional[List[str]], 
         - is_ready: True if database is loaded and ready, False otherwise
     """
     # Database selection interface with checkboxes
-    st.markdown("### :material/database_search: Database Selection")
+    st.markdown("### :material/storage: Database Selection")
     
     # Cache structure for downstream consumers (e.g., inferred fallback loading)
     st.session_state['database_structure_cache'] = db_structure

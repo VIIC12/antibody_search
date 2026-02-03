@@ -564,7 +564,7 @@ def search_page_content():
         # Always show a submit button (required by Streamlit forms)
         if search_status == "idle":
             search_submitted = st.form_submit_button(
-                "🔍 Search Database",
+                ":material/database_search: Search Database",
                 type="primary",
                 disabled=has_validation_errors,
                 use_container_width=True
@@ -573,7 +573,7 @@ def search_page_content():
             # Show hidden disabled submit button (required by Streamlit, but we show custom button above)
             # This button is hidden by global CSS (see top of file)
             search_submitted = st.form_submit_button(
-                "🔍 Search Database",
+                ":material/database_search: Search Database",
                 disabled=True,
                 use_container_width=True
             )
@@ -583,9 +583,10 @@ def search_page_content():
             if search_status == "completed" and result and result.get('success'):
                 total_time = time.time() - st.session_state.search_start_time if st.session_state.search_start_time else 0
                 time_label = f" in {total_time:.1f}s" if total_time else ""
-                button_label = f"✅ Search Complete{time_label}"
+                button_label = f":material/search_check_2: Search Complete{time_label}"
             else:
                 button_label = "❌ Search Failed"
+                #! TODO Should never happen, when do we get here?
             
             # This button is hidden by global CSS (see top of file)
             search_submitted = st.form_submit_button(

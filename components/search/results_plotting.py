@@ -54,8 +54,8 @@ def render_results_plots(
         return
     
     if show_heading:
-        st.markdown("### 📊 Result Distributions")
-        # TODO: Does this ever get called here?
+        st.markdown("### :material/bar_chart_4_bars: Result Distributions HEAVY+LIGHT")
+        #! This does only get called if we select heavy AND light, why do we have this twice?
     
     # Check if we have a very large result set (will be sampled)
     total_hits = statistics.get('total_hits', 0)
@@ -1923,14 +1923,14 @@ def plot_cdr_length_distribution(
     length_counts = lengths.value_counts().sort_index()
     
     # Prepare title with highlighting
-    display_title = f"🔍 {title}" if is_highlighted else title
+    display_title = f"{title}" if is_highlighted else title
     title_config = {
         'text': display_title,
         'x': 0.5,
         'xanchor': 'center'
     }
     if is_highlighted:
-        title_config['font'] = {'color': '#FF6B35', 'size': 16}  # Orange-red color for highlighting
+        title_config['font'] = {'color': '#B4DCEA', 'size': 16}
     
     if chain_type == "light":
         color_scale = [
@@ -2005,14 +2005,14 @@ def plot_gene_distribution(
         return
     
     # Prepare title with highlighting
-    display_title = f"🔍 {title}" if is_highlighted else title
+    display_title = f"{title}" if is_highlighted else title
     title_config = {
         'text': display_title,
         'x': 0.5,
         'xanchor': 'center'
     }
     if is_highlighted:
-        title_config['font'] = {'color': '#FF6B35', 'size': 16}  # Orange-red color for highlighting
+        title_config['font'] = {'color': '#B4DCEA', 'size': 16}  # Orange-red color for highlighting
     
     if chain_type == "light":
         color_scale = [

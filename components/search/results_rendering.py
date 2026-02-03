@@ -216,7 +216,7 @@ def render_sequences_table(
         )
     else:
         if total_hits == 0:
-            st.info("🔍 **No sequences found matching your search criteria.** Try adjusting your search parameters.")
+            st.info(":material/search_off: **No sequences found matching your search criteria.** Try adjusting your search parameters.")
         else:
             st.info("No sequence data available.")
 
@@ -938,7 +938,7 @@ def render_search_parameters_expander(statistics: Dict[str, Any], is_paired: boo
     Args:
         statistics: Statistics dictionary containing query_params
     """
-    with st.expander("🔍 Search Parameters"):
+    with st.expander(":material/search: Search Parameters"):
         # Add selected databases information
         st.markdown("**Selected Databases:**")
         selected_databases = st.session_state.get('selected_databases', [])
@@ -1011,7 +1011,7 @@ def render_dual_search_criteria_display(
     heavy_params = _format_query_params_for_display(heavy_statistics.get('query_params', {}), False)
     light_params = _format_query_params_for_display(light_statistics.get('query_params', {}), False)
     
-    st.markdown("## 🔍 Search Criteria")
+    st.markdown("## :material/search_gear: Last performed Search Criteria")
     st.divider()
     
     col1, col2 = st.columns(2)
