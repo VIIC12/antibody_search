@@ -333,7 +333,12 @@ def search_page_content():
         )
         st.stop()
     
-    selected_databases, selected_db, is_ready = render_database_selection(db_structure)
+    is_plotting_locked = st.session_state.get('plotting_controls_locked', False)
+    disable_db_selection = (st.session_state.search_status == "running") or is_plotting_locked
+    selected_databases, selected_db, is_ready = render_database_selection(
+        db_structure,
+        disabled=disable_db_selection
+    )
     if selected_databases is None:
         selected_databases = []
     
@@ -464,9 +469,8 @@ def search_page_content():
     st.divider()
     
     # Determine if form should be disabled
-    is_search_running = st.session_state.search_status == "running"
     search_status = st.session_state.search_status
-    is_plotting_locked = st.session_state.get('plotting_controls_locked', False)
+    is_search_running = search_status == "running"
     disable_form_controls = is_search_running or is_plotting_locked
     
     if is_plotting_locked:

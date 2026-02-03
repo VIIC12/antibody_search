@@ -20,6 +20,10 @@ from components.search.styling import render_chain_heading
 
 logger = logging.getLogger(__name__)
 
+DB_SELECTION_LOCK_MESSAGE = (
+    "Database selection is temporarily locked while a search or plotting task is running."
+)
+
 
 def _is_inferred_path(path: str) -> bool:
     """Return True if the provided database path points to an inferred overlay."""
@@ -29,12 +33,17 @@ def _is_inferred_path(path: str) -> bool:
         return False
 
 
-def render_database_selection(db_structure: dict) -> Tuple[Optional[List[str]], Optional[str], bool]:
+def render_database_selection(
+    db_structure: dict,
+    disabled: bool = False
+) -> Tuple[Optional[List[str]], Optional[str], bool]:
     """
     Render database selection UI with checkboxes for Heavy, Light, and Paired databases.
     
     Args:
         db_structure: Dictionary with database structure from get_database_structure()
+        disabled: When True, all database selection controls are locked (used during
+                  running searches or plotting tasks)
         
     Returns:
         Tuple of (selected_databases, selected_db, is_ready)
@@ -42,8 +51,12 @@ def render_database_selection(db_structure: dict) -> Tuple[Optional[List[str]], 
         - selected_db: Primary database path (first loadable dataset)
         - is_ready: True if database is loaded and ready, False otherwise
     """
+    selection_locked = bool(disabled)
+    
     # Database selection interface with checkboxes
     st.markdown("### :material/storage: Database Selection")
+    if selection_locked:
+        st.info(DB_SELECTION_LOCK_MESSAGE)
     
     # Cache structure for downstream consumers (e.g., inferred fallback loading)
     st.session_state['database_structure_cache'] = db_structure
@@ -82,28 +95,33 @@ def render_database_selection(db_structure: dict) -> Tuple[Optional[List[str]], 
     
     # Determine disabled states: Paired disables Heavy/Light, Heavy/Light disable Paired
     # Store these before auto-unchecking so they remain correct
-    heavy_disabled = paired_currently_selected
-    light_disabled = paired_currently_selected
-    paired_disabled = heavy_currently_selected or light_currently_selected
+    heavy_conflict_disabled = paired_currently_selected
+    light_conflict_disabled = paired_currently_selected
+    paired_conflict_disabled = heavy_currently_selected or light_currently_selected
+    
+    heavy_disabled = heavy_conflict_disabled or selection_locked
+    light_disabled = light_conflict_disabled or selection_locked
+    paired_disabled = paired_conflict_disabled or selection_locked
     
     # Auto-uncheck incompatible selections
     # If Paired is selected, uncheck Heavy and Light
-    if paired_currently_selected:
-        if heavy_currently_selected:
-            st.session_state['heavy_main'] = False
-            # Uncheck all heavy subdirectories
-            for subdir in db_structure['Heavy'].keys():
-                st.session_state[f"heavy_{subdir}"] = False
-        if light_currently_selected:
-            st.session_state['light_main'] = False
-            # Uncheck all light subdirectories
-            for subdir in db_structure['Light'].keys():
-                st.session_state[f"light_{subdir}"] = False
-    
-    # If Heavy or Light is selected, uncheck Paired
-    if (heavy_currently_selected or light_currently_selected) and paired_currently_selected:
-        st.session_state['paired_main'] = False
-        st.session_state['paired_real_bundle'] = False
+    if not selection_locked:
+        if paired_currently_selected:
+            if heavy_currently_selected:
+                st.session_state['heavy_main'] = False
+                # Uncheck all heavy subdirectories
+                for subdir in db_structure['Heavy'].keys():
+                    st.session_state[f"heavy_{subdir}"] = False
+            if light_currently_selected:
+                st.session_state['light_main'] = False
+                # Uncheck all light subdirectories
+                for subdir in db_structure['Light'].keys():
+                    st.session_state[f"light_{subdir}"] = False
+        
+        # If Heavy or Light is selected, uncheck Paired
+        if (heavy_currently_selected or light_currently_selected) and paired_currently_selected:
+            st.session_state['paired_main'] = False
+            st.session_state['paired_real_bundle'] = False
     
     # Heavy Chain selection
     with col1:
@@ -114,11 +132,18 @@ def render_database_selection(db_structure: dict) -> Tuple[Optional[List[str]], 
         if has_inferred_overlay:
             heavy_label += " + Inferred V/J Light Chain"
         # Checkbox state is automatically preserved via session state (key parameter)
+        if selection_locked:
+            heavy_help = DB_SELECTION_LOCK_MESSAGE
+        elif heavy_conflict_disabled:
+            heavy_help = "Disabled when Paired is selected. Inferred data is automatically included when searching Heavy or Light chains."
+        else:
+            heavy_help = "Inferred data is automatically included when searching Heavy or Light chains." if has_inferred_overlay else None
+        
         heavy_selected = st.checkbox(
             heavy_label,
             key="heavy_main",
             disabled=heavy_disabled,
-            help="Disabled when Paired is selected. Inferred data is automatically included when searching Heavy or Light chains." if heavy_disabled else ("Inferred data is automatically included when searching Heavy or Light chains." if has_inferred_overlay else None)
+            help=heavy_help
         )
         # If main checkbox is checked, ensure subdirectories are included
         if heavy_selected:
@@ -142,11 +167,12 @@ def render_database_selection(db_structure: dict) -> Tuple[Optional[List[str]], 
                     with col:
                         checkbox_key = f"heavy_{subdir}"
                         # Streamlit will use session state value automatically if key exists
+                        checkbox_help = DB_SELECTION_LOCK_MESSAGE if selection_locked else f"Files: {info['parquet_count']} | Sequences: {info['sequence_count']:,}"
                         checkbox_value = st.checkbox(
                             f"{subdir}",
                             key=checkbox_key,
                             disabled=heavy_disabled,
-                            help=f"Files: {info['parquet_count']} | Sequences: {info['sequence_count']:,}"
+                            help=checkbox_help
                         )
                         # Add to selected if checkbox is checked
                         if checkbox_value:
@@ -166,11 +192,18 @@ def render_database_selection(db_structure: dict) -> Tuple[Optional[List[str]], 
         light_label = f"Light Chain ({light_total_sequences:,} sequences)"
         if has_inferred_overlay:
             light_label += " + Inferred V/J Heavy Chain"
+        if selection_locked:
+            light_help = DB_SELECTION_LOCK_MESSAGE
+        elif light_conflict_disabled:
+            light_help = "Disabled when Paired is selected. Inferred data is automatically included when searching Heavy or Light chains."
+        else:
+            light_help = "Inferred data is automatically included when searching Heavy or Light chains." if has_inferred_overlay else None
+        
         light_selected = st.checkbox(
             light_label,
             key="light_main",
             disabled=light_disabled,
-            help="Disabled when Paired is selected. Inferred data is automatically included when searching Heavy or Light chains." if light_disabled else ("Inferred data is automatically included when searching Heavy or Light chains." if has_inferred_overlay else None)
+            help=light_help
         )
         if light_selected:
             if len(db_structure['Light']) == 1:
@@ -192,11 +225,12 @@ def render_database_selection(db_structure: dict) -> Tuple[Optional[List[str]], 
                     with col:
                         checkbox_key = f"light_{subdir}"
                         # Streamlit will use session state value automatically if key exists
+                        checkbox_help = DB_SELECTION_LOCK_MESSAGE if selection_locked else f"Files: {info['parquet_count']} | Sequences: {info['sequence_count']:,}"
                         checkbox_value = st.checkbox(
                             f"{subdir}",
                             key=checkbox_key,
                             disabled=light_disabled,
-                            help=f"Files: {info['parquet_count']} | Sequences: {info['sequence_count']:,}"
+                            help=checkbox_help
                         )
                         # Add to selected if checkbox is checked
                         if checkbox_value:
@@ -211,11 +245,18 @@ def render_database_selection(db_structure: dict) -> Tuple[Optional[List[str]], 
     # Paired selection
     with col3:
         st.markdown("### 🔗 Paired")
+        if selection_locked:
+            paired_help = DB_SELECTION_LOCK_MESSAGE
+        elif paired_conflict_disabled:
+            paired_help = "Disabled when Heavy or Light is selected"
+        else:
+            paired_help = None
+        
         paired_selected = st.checkbox(
             f"Paired ({paired_real_sequences:,} sequences)",
             key="paired_main",
             disabled=paired_disabled,
-            help="Disabled when Heavy or Light is selected" if paired_disabled else None
+            help=paired_help
         )
         if paired_selected:
             paired_real_entries = [
@@ -240,12 +281,13 @@ def render_database_selection(db_structure: dict) -> Tuple[Optional[List[str]], 
                     )
                 real_help_parts.append(f"Sequences: {real_sequence_total:,}")
                 real_help_text = " | ".join(real_help_parts)
+                checkbox_help = DB_SELECTION_LOCK_MESSAGE if selection_locked else real_help_text
                 
                 real_selected = st.checkbox(
                     real_label,
                     key="paired_real_bundle",
                     disabled=paired_disabled,
-                    help=real_help_text
+                    help=checkbox_help
                 )
                 if real_selected:
                     for _, info in paired_real_entries:
