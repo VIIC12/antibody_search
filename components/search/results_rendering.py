@@ -145,7 +145,7 @@ def render_subject_statistics(
     Args:
         stats_df: Statistics dataframe
     """
-    st.markdown("#### Statistics by Subject")
+    st.markdown("#### :material/group: Statistics by Subject")
     
     content_col, plot_col = st.columns([5, 1])
 

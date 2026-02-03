@@ -10,11 +10,11 @@ def render_sidebar():
     st.markdown("""
     ## **ABHunter** - High-performance OAS antibody database search
     
-    ### About
+    ### :material/tooltip: About
     ABHunter enables you to search the [Observed Antibody Space (OAS)](https://opig.stats.ox.ac.uk/webapps/oas/) database in seconds and analyze how frequently specific V/D/J genes, CDR lengths, and motifs appear in human, non-vaccinated, healthy patients. For unpaired heavy or light chain data, ABHunter provides inferred V/J gene pairing information and statistical frequencies based on paired antibody data from the database.
 
     ---
-    ### 📄 License & Credits
+    ### :material/lab_profile: License & Credits
     **If you use this software, please cite:** Schlegel, de Riz, Riccabona, Dietzmeyer et al. (2025). *XYZ*. [Link](#)
     
     **Data Source Citations:**

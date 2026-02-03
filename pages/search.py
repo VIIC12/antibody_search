@@ -295,7 +295,7 @@ def create_paired_search_form(disabled: bool = False) -> Dict[str, Any]:
 
 def search_page_content():
     """Main search page content."""
-    st.markdown("# :blue[🔬 AntibodyHunter]")
+    st.markdown("# :blue[:material/vaccines: AntibodyHunter]")
     st.markdown("#### :grey[High-Performance Antibody Database Search]")
     
     # Print database path once when server starts (only on first call)
@@ -447,7 +447,7 @@ def search_page_content():
     engine = st.session_state['search_engine']
     is_paired = search_mode == 'paired'
 
-    st.markdown("## 🔍 Search Criteria")
+    st.markdown("## :material/search: Search Criteria")
     st.divider()
     
     # Determine if form should be disabled

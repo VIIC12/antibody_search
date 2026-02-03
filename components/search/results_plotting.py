@@ -55,6 +55,7 @@ def render_results_plots(
     
     if show_heading:
         st.markdown("### 📊 Result Distributions")
+        # TODO: Does this ever get called here?
     
     # Check if we have a very large result set (will be sampled)
     total_hits = statistics.get('total_hits', 0)
@@ -1211,7 +1212,7 @@ def render_inferred_pairing_plots(
         return
     
     # Determine heading and color scheme based on what we're inferring
-    heading_icon = "🔬" if chain_type == "Heavy" else "🧬"
+    heading_icon = ":material/genetics:" if chain_type == "Heavy" else "🧬"
     heading_chain = "Light" if chain_type == "Heavy" else "Heavy"
     
     # Color scheme based on what we're inferring (not the chain type being searched)
