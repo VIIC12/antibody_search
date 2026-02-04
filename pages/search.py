@@ -295,7 +295,7 @@ def create_paired_search_form(disabled: bool = False) -> Dict[str, Any]:
 
 def search_page_content():
     """Main search page content."""
-    st.markdown("# :blue[:material/vaccines: AntibodyHunter]")
+    st.title(":blue[:material/vaccines: AntibodyHunter]")
     st.markdown("#### :grey[High-Performance Antibody Database Search]")
     
     # Print database path once when server starts (only on first call)
@@ -332,6 +332,107 @@ def search_page_content():
             f"For more information, please refer to the documentation."
         )
         st.stop()
+    
+    # Apply IgBLAST prefill once: set form keys and database selection, then clear prefill
+    prefill = st.session_state.pop('search_prefill_from_igblast', None)
+    if prefill is not None:
+        mode = prefill.get('mode', '')
+        heavy = prefill.get('heavy') or {}
+        light = prefill.get('light') or {}
+        db_struct = db_structure
+        if mode == 'unpaired_heavy' and heavy:
+            st.session_state['ighv_input'] = heavy.get('v', '')
+            st.session_state['ighd_input'] = heavy.get('d', '')
+            st.session_state['ighj_input'] = heavy.get('j', '')
+            st.session_state['cdr1_length_input'] = heavy.get('cdr1_length') or ''
+            st.session_state['cdr2_length_input'] = heavy.get('cdr2_length') or ''
+            st.session_state['cdr3_length_input'] = heavy.get('cdr3_length') or ''
+            st.session_state['cdr1_motif_input'] = heavy.get('cdr1_motif') or ''
+            st.session_state['cdr2_motif_input'] = heavy.get('cdr2_motif') or ''
+            st.session_state['cdr3_motif_input'] = heavy.get('cdr3_motif') or ''
+            st.session_state['heavy_main'] = True
+            st.session_state['light_main'] = False
+            st.session_state['paired_main'] = False
+            for subdir in db_struct.get('Heavy', {}).keys():
+                st.session_state[f'heavy_{subdir}'] = True
+            for subdir in db_struct.get('Light', {}).keys():
+                st.session_state[f'light_{subdir}'] = False
+            st.session_state['paired_real_bundle'] = False
+            st.session_state['search_prefill_message'] = 'Search criteria pre-filled from IgBLAST (unpaired heavy). Select databases and run your search.'
+        elif mode == 'unpaired_light' and light:
+            st.session_state['light_v_input'] = light.get('v', '')
+            st.session_state['light_j_input'] = light.get('j', '')
+            st.session_state['light_cdr1_length_input'] = light.get('cdr1_length') or ''
+            st.session_state['light_cdr2_length_input'] = light.get('cdr2_length') or ''
+            st.session_state['light_cdr3_length_input'] = light.get('cdr3_length') or ''
+            st.session_state['light_cdr1_motif_input'] = light.get('cdr1_motif') or ''
+            st.session_state['light_cdr2_motif_input'] = light.get('cdr2_motif') or ''
+            st.session_state['light_cdr3_motif_input'] = light.get('cdr3_motif') or ''
+            st.session_state['heavy_main'] = False
+            st.session_state['light_main'] = True
+            st.session_state['paired_main'] = False
+            for subdir in db_struct.get('Heavy', {}).keys():
+                st.session_state[f'heavy_{subdir}'] = False
+            for subdir in db_struct.get('Light', {}).keys():
+                st.session_state[f'light_{subdir}'] = True
+            st.session_state['paired_real_bundle'] = False
+            st.session_state['search_prefill_message'] = 'Search criteria pre-filled from IgBLAST (unpaired light). Select databases and run your search.'
+        elif mode == 'paired' and (heavy or light):
+            st.session_state['heavy_v_input'] = heavy.get('v', '')
+            st.session_state['heavy_d_input'] = heavy.get('d', '')
+            st.session_state['heavy_j_input'] = heavy.get('j', '')
+            st.session_state['heavy_cdr1_length_input'] = heavy.get('cdr1_length') or ''
+            st.session_state['heavy_cdr2_length_input'] = heavy.get('cdr2_length') or ''
+            st.session_state['heavy_cdr3_length_input'] = heavy.get('cdr3_length') or ''
+            st.session_state['heavy_cdr1_motif_input'] = heavy.get('cdr1_motif') or ''
+            st.session_state['heavy_cdr2_motif_input'] = heavy.get('cdr2_motif') or ''
+            st.session_state['heavy_cdr3_motif_input'] = heavy.get('cdr3_motif') or ''
+            st.session_state['light_v_input'] = light.get('v', '')
+            st.session_state['light_j_input'] = light.get('j', '')
+            st.session_state['light_cdr1_length_input'] = light.get('cdr1_length') or ''
+            st.session_state['light_cdr2_length_input'] = light.get('cdr2_length') or ''
+            st.session_state['light_cdr3_length_input'] = light.get('cdr3_length') or ''
+            st.session_state['light_cdr1_motif_input'] = light.get('cdr1_motif') or ''
+            st.session_state['light_cdr2_motif_input'] = light.get('cdr2_motif') or ''
+            st.session_state['light_cdr3_motif_input'] = light.get('cdr3_motif') or ''
+            st.session_state['heavy_main'] = False
+            st.session_state['light_main'] = False
+            st.session_state['paired_main'] = True
+            for subdir in db_struct.get('Heavy', {}).keys():
+                st.session_state[f'heavy_{subdir}'] = False
+            for subdir in db_struct.get('Light', {}).keys():
+                st.session_state[f'light_{subdir}'] = False
+            st.session_state['paired_real_bundle'] = True
+            st.session_state['search_prefill_message'] = 'Search criteria pre-filled from IgBLAST (paired). Select databases and run your search.'
+        elif mode == 'dual_unpaired' and (heavy or light):
+            st.session_state['dual_heavy_v_input'] = heavy.get('v', '')
+            st.session_state['dual_heavy_d_input'] = heavy.get('d', '')
+            st.session_state['dual_heavy_j_input'] = heavy.get('j', '')
+            st.session_state['dual_heavy_cdr1_length_input'] = heavy.get('cdr1_length') or ''
+            st.session_state['dual_heavy_cdr2_length_input'] = heavy.get('cdr2_length') or ''
+            st.session_state['dual_heavy_cdr3_length_input'] = heavy.get('cdr3_length') or ''
+            st.session_state['dual_heavy_cdr1_motif_input'] = heavy.get('cdr1_motif') or ''
+            st.session_state['dual_heavy_cdr2_motif_input'] = heavy.get('cdr2_motif') or ''
+            st.session_state['dual_heavy_cdr3_motif_input'] = heavy.get('cdr3_motif') or ''
+            st.session_state['dual_light_v_input'] = light.get('v', '')
+            st.session_state['dual_light_j_input'] = light.get('j', '')
+            st.session_state['dual_light_cdr1_length_input'] = light.get('cdr1_length') or ''
+            st.session_state['dual_light_cdr2_length_input'] = light.get('cdr2_length') or ''
+            st.session_state['dual_light_cdr3_length_input'] = light.get('cdr3_length') or ''
+            st.session_state['dual_light_cdr1_motif_input'] = light.get('cdr1_motif') or ''
+            st.session_state['dual_light_cdr2_motif_input'] = light.get('cdr2_motif') or ''
+            st.session_state['dual_light_cdr3_motif_input'] = light.get('cdr3_motif') or ''
+            st.session_state['heavy_main'] = True
+            st.session_state['light_main'] = True
+            st.session_state['paired_main'] = False
+            for subdir in db_struct.get('Heavy', {}).keys():
+                st.session_state[f'heavy_{subdir}'] = True
+            for subdir in db_struct.get('Light', {}).keys():
+                st.session_state[f'light_{subdir}'] = True
+            st.session_state['paired_real_bundle'] = False
+            st.session_state['search_prefill_message'] = 'Search criteria pre-filled from IgBLAST (dual unpaired). Select databases and run your search.'
+        else:
+            st.session_state['search_prefill_message'] = None
     
     is_plotting_locked = st.session_state.get('plotting_controls_locked', False)
     disable_db_selection = (st.session_state.search_status == "running") or is_plotting_locked
@@ -454,13 +555,17 @@ def search_page_content():
     if not is_ready:
         if 'last_search_results' in st.session_state:
             cached_results = st.session_state['last_search_results']
-            if render_cached_results_for_mode(cached_results, current_mode=search_mode):
-                st.warning("⚠️ Database is loading. Showing cached results below.")
+            render_cached_results_for_mode(cached_results, current_mode=search_mode)
         return
     
     if not selected_db:
         st.warning("⚠️ Please select at least one database to search")
         return
+    
+    # Show IgBLAST prefill message once, then clear
+    prefill_msg = st.session_state.pop('search_prefill_message', None)
+    if prefill_msg:
+        st.info(f"💡 **{prefill_msg}**")
     
     engine = st.session_state['search_engine']
     is_paired = search_mode == 'paired'

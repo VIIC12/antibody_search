@@ -21,7 +21,7 @@ from components.search.styling import render_chain_heading
 logger = logging.getLogger(__name__)
 
 DB_SELECTION_LOCK_MESSAGE = (
-    "Database selection is temporarily locked while a search or plotting task is running."
+    ":material/hourglass: Database selection is temporarily locked while a search or plotting task is running."
 )
 
 

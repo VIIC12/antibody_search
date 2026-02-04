@@ -201,7 +201,13 @@ def search_page_content():
         st.error("No databases found! Please run the data conversion script first.")
         st.stop()
     
-    selected_databases, selected_db, is_ready = render_database_selection(db_structure)
+    search_status = st.session_state.get('search_status', 'idle')
+    is_plotting_locked = st.session_state.get('plotting_controls_locked', False)
+    disable_db_selection = (search_status == "running") or is_plotting_locked
+    selected_databases, selected_db, is_ready = render_database_selection(
+        db_structure,
+        disabled=disable_db_selection
+    )
     if selected_databases is None:
         selected_databases = []
     

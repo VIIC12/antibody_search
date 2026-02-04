@@ -74,10 +74,11 @@ def main():
         render_sidebar()
 
     search = st.Page("pages/search.py", title="Database Search", icon=":material/search:", default=True)
+    igblast = st.Page("pages/igblast.py", title="IgBLAST", icon=":material/genetics:")
     statistics = st.Page("pages/statistics.py", title="Statistics", icon=":material/bar_chart:")
     imprint = st.Page("pages/imprint.py", title="Imprint", icon=":material/info:")
 
-    entry_page = st.navigation([search, statistics, imprint], position="top")
+    entry_page = st.navigation([search, igblast, statistics, imprint], position="top")
 
     # Run the selected page
     entry_page.run()

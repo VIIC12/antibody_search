@@ -5,7 +5,7 @@ from app import render_sidebar
 st.set_page_config(page_title="ABHunter - Imprint")
 
 # Main content
-st.markdown("# :blue[:material/info: Imprint]")
+st.title(":blue[:material/info: Imprint]")
 st.markdown("---")
 
 st.markdown("""
