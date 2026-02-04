@@ -1632,23 +1632,10 @@ class AntibodySearchEngine:
         except Exception:
             total_sequences_lookup = None
         
-        # Fallback: derive totals directly from antibodies table if metadata missing
-        if (total_sequences_lookup is None or total_sequences_lookup.empty):
-            chain_where = ""
-            if chain_type and 'chain' in self.schema.get('available_columns', []):
-                chain_where = f" WHERE lower(chain) = '{chain_type.lower()}'"
-            total_sequences_query = f"""
-                SELECT subject, COUNT(*) as total_sequences
-                FROM {table_name}
-                {chain_where}
-                GROUP BY subject
-            """
-            try:
-                total_sequences_lookup = self.conn.execute(total_sequences_query).df()
-            except Exception:
-                total_sequences_lookup = None
+        # Note: Removed full table scan fallback - if metadata is not available,
+        # we'll just use stats_df with subjects that have hits (no expensive scan)
         
-        # Build stats_df with ALL subjects (including those with zero hits)
+        # Build stats_df with subjects that have hits (or all subjects if metadata available)
         if total_sequences_lookup is not None and not total_sequences_lookup.empty:
             # Start with all subjects from total_sequences_lookup
             # Rename 'total' column to 'total_sequences' if needed
@@ -2163,18 +2150,10 @@ class AntibodySearchEngine:
         except Exception:
             total_sequences_lookup = None
         
-        if (total_sequences_lookup is None or total_sequences_lookup.empty):
-            total_sequences_query = """
-                SELECT subject, COUNT(*) as total_sequences
-                FROM antibodies
-                GROUP BY subject
-            """
-            try:
-                total_sequences_lookup = self.conn.execute(total_sequences_query).df()
-            except Exception:
-                total_sequences_lookup = None
+        # Note: Removed full table scan fallback - if metadata is not available,
+        # we'll just use stats_df with subjects that have hits (no expensive scan)
         
-        # Build stats_df with ALL subjects (including those with zero hits)
+        # Build stats_df with subjects that have hits (or all subjects if metadata available)
         if total_sequences_lookup is not None and not total_sequences_lookup.empty:
             # Start with all subjects from total_sequences_lookup
             # Rename 'total' column to 'total_sequences' if needed

@@ -875,6 +875,7 @@ def search_page_content():
     
     # Submit async search task
     future = executor.submit(
+        # why is this in @test_utils.py ? 
         perform_database_search_background,
         loadable_databases,
         search_params,
