@@ -891,7 +891,7 @@ def _render_chain_criteria(search_params: Dict[str, Any], prefix: str, chain_typ
         for param in params:
             st.write(param)
     else:
-        st.info("No search criteria specified for this chain.")
+        st.markdown("No search criteria specified for this chain.")
 
 
 def _render_chain_criteria_compact(search_params: Dict[str, Any], prefix: str, chain_type: str = "Heavy") -> None:

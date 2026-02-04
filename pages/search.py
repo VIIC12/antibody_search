@@ -722,7 +722,11 @@ def search_page_content():
                 use_container_width=True
             )
     
-    # Ensure form is completely closed before rendering results
+    # Show validation error (e.g. OAS-disallowed gene) right below the form, not after results
+    search_validation_error = st.session_state.pop("search_validation_error", None)
+    if search_validation_error:
+        st.error(f"❌ **{search_validation_error}**")
+    
     # Add a small spacer to separate form from results
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -898,10 +902,13 @@ def search_page_content():
         heavy_valid, heavy_error = validate_search_criteria(heavy_info['search_params'], False)
         light_valid, light_error = validate_search_criteria(light_info['search_params'], False)
         if not heavy_valid or not light_valid:
+            parts = []
             if not heavy_valid and heavy_error:
-                st.warning(f"Heavy Chain: {heavy_error}")
+                parts.append(f"Heavy Chain: {heavy_error}")
             if not light_valid and light_error:
-                st.warning(f"Light Chain: {light_error}")
+                parts.append(f"Light Chain: {light_error}")
+            st.session_state["search_validation_error"] = " ".join(parts)
+            st.rerun()
             return
         
         # Store search parameters for comparison (to detect changes later)
@@ -934,7 +941,8 @@ def search_page_content():
     is_valid, error_message = validate_search_criteria(search_params, is_paired)
     if not is_valid:
         if error_message:
-            st.warning(error_message)
+            st.session_state["search_validation_error"] = error_message
+        st.rerun()
         return
     
     # Store search parameters for comparison (to detect changes later)
