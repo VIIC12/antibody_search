@@ -1,0 +1,24 @@
+{
+  "version": "1.2",
+  "dbname": "IGHD_clean",
+  "dbtype": "Protein",
+  "db-version": 5,
+  "description": "database/Homo_sapiens_clean/IG_prot/IGHD_clean",
+  "number-of-letters": 368,
+  "number-of-sequences": 47,
+  "last-updated": "2026-02-03T17:32:00",
+  "number-of-volumes": 1,
+  "bytes-total": 54428,
+  "bytes-to-cache": 920,
+  "files": [
+    "IGHD_clean.pdb",
+    "IGHD_clean.phr",
+    "IGHD_clean.pin",
+    "IGHD_clean.pog",
+    "IGHD_clean.pos",
+    "IGHD_clean.pot",
+    "IGHD_clean.psq",
+    "IGHD_clean.ptf",
+    "IGHD_clean.pto"
+  ]
+}

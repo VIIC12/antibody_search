@@ -24,11 +24,11 @@ def render_sidebar():
     st.markdown("""
     ## **ABHunter** - High-performance OAS antibody database search
     
-    ### About
+    ### :material/tooltip: About
     ABHunter enables you to search the [Observed Antibody Space (OAS)](https://opig.stats.ox.ac.uk/webapps/oas/) database in seconds and analyze how frequently specific V/D/J genes, CDR lengths, and motifs appear in human, non-vaccinated, healthy patients. For unpaired heavy or light chain data, ABHunter provides inferred V/J gene pairing information and statistical frequencies based on paired antibody data from the database.
 
     ---
-    ### 📄 License & Credits
+    ### :material/lab_profile: License & Credits
     **If you use this software, please cite:** Schlegel, de Riz, Riccabona, Dietzmeyer et al. (2025). *XYZ*. [Link](#)
     
     **Data Source Citations:**
@@ -91,10 +91,11 @@ def main():
         render_sidebar()
 
     search = st.Page("pages/search.py", title="Database Search", icon=":material/search:", default=True)
+    igblast = st.Page("pages/igblast.py", title="IgBLAST", icon=":material/genetics:")
     statistics = st.Page("pages/statistics.py", title="Statistics", icon=":material/bar_chart:")
     imprint = st.Page("pages/imprint.py", title="Imprint", icon=":material/info:")
 
-    entry_page = st.navigation([search, statistics, imprint], position="top")
+    entry_page = st.navigation([search, igblast, statistics, imprint], position="top")
 
     # Run the selected page
     entry_page.run()

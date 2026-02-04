@@ -17,6 +17,9 @@ ENV/
 # Database Files
 data/
 
+#igblast
+backup/
+
 # Plots and Benchmarking
 Benchmark*/
 test/

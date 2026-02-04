@@ -29,13 +29,15 @@ def _log_debug_event(location, message, data=None):
         pass
 
 from search_engine import AntibodySearchEngine
+from components.search.search_forms import validate_gene_range, validate_gene_range_oas
 
 logger = logging.getLogger(__name__)
 
 
 def validate_search_criteria(search_params: Dict[str, Any], is_paired: bool) -> Tuple[bool, Optional[str]]:
     """
-    Validate that at least one search criterion is provided.
+    Validate that at least one search criterion is provided, that gene inputs
+    are within allowed ranges, and that no OAS-disallowed genes are used.
     
     Args:
         search_params: Dictionary of search parameters
@@ -44,6 +46,28 @@ def validate_search_criteria(search_params: Dict[str, Any], is_paired: bool) -> 
     Returns:
         Tuple of (is_valid, error_message)
     """
+    # Validate gene ranges when present (invalid genes => exit search)
+    for key, gene_type in [
+        ("heavy_v", "ighv"),
+        ("heavy_d", "ighd"),
+        ("heavy_j", "ighj"),
+        ("light_v", "light_v"),
+        ("light_j", "light_j"),
+    ]:
+        val = search_params.get(key)
+        if val and isinstance(val, str) and val.strip():
+            ok, err = validate_gene_range(val.strip(), gene_type)
+            if not ok and err:
+                return False, err
+
+    # OAS dataset: reject genes not present in OAS (Heavy V8; Light V L11 [unpaired] or L1,L11 [paired]; Light J L4,L5)
+    for key, gene_type in [("heavy_v", "ighv"), ("light_v", "light_v"), ("light_j", "light_j")]:
+        val = search_params.get(key)
+        if val and isinstance(val, str) and val.strip():
+            ok, err = validate_gene_range_oas(val.strip(), gene_type, is_paired)
+            if not ok and err:
+                return False, err
+
     if is_paired:
         # Check paired parameters
         has_criteria = any([

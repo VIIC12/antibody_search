@@ -1,0 +1,740 @@
+>D87010|IGLV1-36*01|Homo sapiens|F|V-REGION|30908..31203|296 nt|1| | | | |296+0=296| | |
+cagtctgtgctgactcagccaccctcggtgtctgaagcccccaggcagagggtcaccatc
+tcctgttctggaagcagctccaacatcggaaataatgctgtaaactggtaccagcagctc
+ccaggaaaggctcccaaactcctcatctattatgatgatctgctgccctcaggggtctct
+gaccgattctctggctccaagtctggcacctcagcctccctggccatcagtgggctccag
+tctgaggatgaggctgattattactgtgcagcatgggatgacagcctgaatggtcc
+>D87010|IGLV1-40*01|Homo sapiens|F|V-REGION|8718..9016|299 nt|1| | | | |299+0=299| | |
+cagtctgtgctgacgcagccgccctcagtgtctggggccccagggcagagggtcaccatc
+tcctgcactgggagcagctccaacatcggggcaggttatgatgtacactggtaccagcag
+cttccaggaacagcccccaaactcctcatctatggtaacagcaatcggccctcaggggtc
+cctgaccgattctctggctccaagtctggcacctcagcctccctggccatcactgggctc
+caggctgaggatgaggctgattattactgccagtcctatgacagcagcctgagtggttc
+>X53936|IGLV1-40*02|Homo sapiens|F|V-REGION|189..487|299 nt|1| | | | |299+0=299| | |
+cagtctgtcgtgacgcagccgccctcagtgtctggggccccagggcagagggtcaccatc
+tcctgcactgggagcagctccaacatcggggcaggttatgatgtacactggtaccagcag
+cttccaggaacagcccccaaactcctcatctatggtaacagcaatcggccctcaggggtc
+cctgaccgattctctggctccaagtctggcacctcagcctccctggccatcactgggctc
+caggctgaggatgaggctgattattactgccagtcctatgacagcagcctgagtggttc
+>Z22192|IGLV1-40*03|Homo sapiens|F|V-REGION|1..297|297 nt|1| | | | |297+0=297| | |
+cagtctgtcgtgacgcagccgccctcagtgtctggggccccagggcagagggtcaccatc
+tcctgcactgggagcagctccaacatcggggcaggttatgatgtacactggtaccagcag
+cttccaggaacagcccccaaactcctcatctatggtaacagcaatcggccctcaggggtc
+cctgaccgattctctggctccaagtctggcgcctcagcctccctggccatcactgggctc
+caggctgaggatgaggctgattattactgccagtcctatgacagcagcctgagtggt
+>M94118|IGLV1-41*01|Homo sapiens|ORF|V-REGION|401..696|296 nt|1| | | | |296+0=296| | |
+cagtctgtgttgacgcagccgccttcagtgtctgcggccccaggacagaaggtcaccatc
+tcctgctctggaagcagctccgacatggggaattatgcggtatcctggtaccagcagctc
+ccaggaacagcccccaaactcctcatctatgaaaataataagcgaccctcagggattcct
+gaccgattctctggctccaagtctggcacctcagccaccctgggcatcactggcctctgg
+cctgaggacgaggccgattattactgcttagcatgggataccagcccgagagcttg
+>D87010|IGLV1-41*02|Homo sapiens|P|V-REGION|3160..3455|296 nt|1| | | | |296+0=296| | |
+cagtctgtgttgacgcagccgccttcagtgtctgcggccccaggacagaaggtcaccatc
+tcctgctctggaagcagctccgacatggggaattatgcggtatcctggtaccagcagctc
+ccaggaacagcccccaaactcctcatctatgaaaataataagcgaccctcagggattcct
+gaccgattctctggctccaagtctggcacctcagccaccctgggcatcactggcctctgg
+cctgaggactaggccgattattactgcttagcatgggataccagcctgagagcttg
+>AC279207|IGLV1-44*01|Homo sapiens|F|V-REGION|38903..39198|296 nt|1| | | | |296+0=296| | |
+cagtctgtgctgactcagccaccctcagcgtctgggacccccgggcagagggtcaccatc
+tcttgttctggaagcagctccaacatcggaagtaatactgtaaactggtaccagcagctc
+ccaggaacggcccccaaactcctcatctatagtaataatcagcggccctcaggggtccct
+gaccgattctctggctccaagtctggcacctcagcctccctggccatcagtgggctccag
+tctgaggatgaggctgattattactgtgcagcatgggatgacagcctgaatggtcc
+>MW316667|IGLV1-44*02|Homo sapiens|F|V-REGION|261..556|296 nt|1| | | | |296+0=296| | |
+cagtctgtgctgactcagccaccctcagcgtctgggacccccgggcagagggtcaccatc
+tcttgttctggaagcagctccaacatcggaagtaatactgtaaactggtaccagcagctc
+ccaggaacgggccccaaactcctcatctatagtaataatcagcggccctcaggggtccct
+gaccgattctctggctccaagtctggcacctcagcctccctggccatcagtgggctccag
+tctgaggatgaggctgattattactgtgcagcatgggatgacagcctgaatggtcc
+>MW316668|IGLV1-44*03|Homo sapiens|F|V-REGION|259..554|296 nt|1| | | | |296+0=296| | |
+cagtctgtgctgactcagccaccctcagcgtctgggacccccgggcagagggtcaccatc
+tcttgttctggaagcagctccaacatcggaagtaatactgtaaactggtaccagcagctc
+ccaggaacggcccccaaactcctcatctatagtaataatcagcggccctcaggggtcctt
+gaccgattctctggctccaagtctggcacctcagcctccctggccatcagtgggctccag
+tctgaggatgaggctgattattactgtgcagcatgggatgacagcctgaatggtcc
+>OL352719|IGLV1-44*04|Homo sapiens|F|V-REGION|38568..38863|296 nt|1| | | | |296+0=296| | |
+cagtctgtgctgactcagccaccctcagcgtctgggacccccgggcagagggtcaccatc
+tcttgttctggaagcagctccaacatcggaagtaatactgtaaactggtaccagcagctc
+ccaggaacggcccccaaactcctcatctataggaataatcagcggccctcaggggtccct
+gaccgattctctggctccaagtctggcacctcagcctccctggccatcagtgggctccag
+gctgaggatgaggctgattattactgtgcagcatgggatgacagcctgaatggtcc
+>IMGT000280|IGLV1-47*01|Homo sapiens|F|V-REGION|348717..349012|296 nt|1| | | | |296+0=296| | |
+cagtctgtgctgactcagccaccctcagcgtctgggacccccgggcagagggtcaccatc
+tcttgttctggaagcagctccaacatcggaagtaattatgtatactggtaccagcagctc
+ccaggaacggcccccaaactcctcatctataggaataatcagcggccctcaggggtccct
+gaccgattctctggctccaagtctggcacctcagcctccctggccatcagtgggctccgg
+tccgaggatgaggctgattattactgtgcagcatgggatgacagcctgagtggtcc
+>D87016|IGLV1-47*02|Homo sapiens|F|V-REGION|27990..28285|296 nt|1| | | | |296+0=296| | |
+cagtctgtgctgactcagccaccctcagcgtctgggacccccgggcagagggtcaccatc
+tcttgttctggaagcagctccaacatcggaagtaattatgtatactggtaccagcagctc
+ccaggaacggcccccaaactcctcatctatagtaataatcagcggccctcaggggtccct
+gaccgattctctggctccaagtctggcacctcagcctccctggccatcagtgggctccgg
+tccgaggatgaggctgattattactgtgcagcatgggatgacagcctgagtggtcc
+>AC279207|IGLV1-47*03|Homo sapiens|F|V-REGION|15806..16101|296 nt|1| | | | |296+0=296| | |
+cagtctgtgctgactcagccaccctcagcgtctgggacccccgggcagagggtcaccatc
+tcttgttctggaagcagctccaacatcggaagtaattatgtatactggtaccagcagctc
+ccaggaacggcccccaaactcctcatctataggaataatcagcggccctcaggggtccct
+gaccgattctctggctccaagtctggcacctcagcctccctggccatcagtgggctctgg
+tccgaggatgaggctgattattactgtgcagcatgggatgacagcctgagtggtcc
+>M94112|IGLV1-50*01|Homo sapiens|ORF|V-REGION|287..585|299 nt|1| | | | |299+0=299| | |
+cagtctgtgctgacgcagccgccctcagtgtctggggccccagggcagagggtcaccatc
+tcctgcactgggagcagctccaacattggggcgggttatgttgtacattggtaccagcag
+cttccaggaacagcccccaaactcctcatctatggtaacagcaatcggccctcaggggtc
+cctgaccaattctctggctccaagtctggcacctcagcctccctggccatcactggactc
+cagtctgaggatgaggctgattattactgcaaagcatgggataacagcctgaatgctca
+>D87018|IGLV1-51*01|Homo sapiens|F|V-REGION|18584..18879|296 nt|1| | | | |296+0=296| | |
+cagtctgtgttgacgcagccgccctcagtgtctgcggccccaggacagaaggtcaccatc
+tcctgctctggaagcagctccaacattgggaataattatgtatcctggtaccagcagctc
+ccaggaacagcccccaaactcctcatttatgacaataataagcgaccctcagggattcct
+gaccgattctctggctccaagtctggcacgtcagccaccctgggcatcaccggactccag
+actggggacgaggccgattattactgcggaacatgggatagcagcctgagtgctgg
+>M30446|IGLV1-51*02|Homo sapiens|F|V-REGION|55..350|296 nt|1| | | | |296+0=296| | |
+cagtctgtgttgacgcagccgccctcagtgtctgcggccccaggacagaaggtcaccatc
+tcctgctctggaagcagctccaacattgggaataattatgtatcctggtaccagcagctc
+ccaggaacagcccccaaactcctcatctatgaaaataataagcgaccctcagggattcct
+gaccgattctctggctccaagtctggcacgtcagccaccctgggcatcaccggactccag
+actggggacgaggccgattattactgcggaacatgggatagcagcctgagtgctgg
+>D87022|IGLV1-62*01|Homo sapiens|P|V-REGION|20331..20628|298 nt|1| | | | |298+0=298| | |
+cagtctgtgctgactcagccaccctcagtgtcttgggccacaaggcagaggctcactgtc
+tcctgcactggaagcagctccaacactgggactggctataacgtaaactgttggcagtag
+ctcccaagaactgaccccaaactcctcaggcatggtgataagaattgggcctcctgggta
+tctgaccaattctctggttccaagtctggcagcttggcctccctgggcaccactgggctc
+tgggctgaggacaagactgattatcactgccagtcccgtgacatctgctgagtgcttg
+>IMGT000293|IGLV1-62*02|Homo sapiens|P|V-REGION|77324..77621|298 nt|1| | || |298+0=298| | |
+cagtctgtgctgactcagccaccctcagtgtcttgggccacaaggcagaggctcactgtc
+tcctgcactggaagcagctccaacactgggactggctataacgtaaactgttggcagtag
+ctcccaagaactgaccccaaactcctcaggcatggtgataagaattgggcctccttggta
+tctgaccaattctctggttccaagtctggcagcttggcctccctgggcaccactgggctc
+tgggctgaggacaagactgattatcactgccagtcccgtgacatctgctgagtgcttg
+>IMGT000225|IGLV1-67-1*01|Homo sapiens|P|V-REGION|22734..23011|278 nt|1| | | | |278+0=278| | |
+aagtctgtgctgactcaacctccatcagtggcaggggccccaagatagagggtcactatc
+tcctgcactggaagtgccaccagcactgggggtggttttcatgttaatgagtactagcag
+ctcccaggaatggctccatagctcctcatttgtgaaaacagccattggccttcagggttc
+tgtcctggttcacaggcttcgctgagcatttctgggctccagtctggggataaggctgac
+tatttttctttatcttggcacacaagcattaatgctca
+>IMGT000312|IGLV10-54*01|Homo sapiens|F|V-REGION|205237..205532|296 nt|1| | || |296+0=296| | |
+caggcagggctgactcagccaccctcggtgtccaagggcttgagacagaccgccacactc
+acctgcactgggaacagcaacaatgttggcaaccaaggagcagcttggctgcagcagcac
+cagggccaccctcccaaactcctatcctacaggaataacaaccggccctcagggatctca
+gagagattatctgcatccaggtcaggaaacacagcctccctgaccattactggactccag
+cctgaggacgaggctgactattactgctcagcatgggacagcagcctcagtgctca
+>D86996|IGLV10-54*02|Homo sapiens|F|V-REGION|28518..28813|296 nt|1| | | | |296+0=296| | |
+caggcagggctgactcagccaccctcggtgtccaagggcttgagacagaccgccacactc
+acctgcactgggaacagcaacattgttggcaaccaaggagcagcttggctgcagcagcac
+cagggccaccctcccaaactcctatcctacaggaataacaaccggccctcagggatctca
+gagagattctctgcatccaggtcaggaaacacagcctccctgaccattactggactccag
+cctgaggacgaggctgactattactgctcagcattggacagcagcctcagtgctca
+>S70116|IGLV10-54*03|Homo sapiens|P|V-REGION|304..599|296 nt|1| | | | |296+0=296| | |
+caggcagggctgactcagccaccctcggtctccaagggcttgagacagaccgccacactc
+acctgcactgggaacagcaacaatgttggcaaccaaggagcagcttggcctgagcagcac
+cagggccaccctcccaaactcctatcctacaggaataacaaccggccctcagggatctca
+gagagattatctgcatccaggtcaggaaacacagcctccctgaccattactggactccag
+cctgaggacgaggctgactattactgctcagcatgggacagcagcctcagtgctca
+>MW316678|IGLV10-54*04|Homo sapiens|F|V-REGION|317..612|296 nt|1| | | | |296+0=296| | |
+caggcagggctgactcagccaccctcggtgtccaagggcttgagacagaccgccacactc
+acctgcactgggaacagcaacaatgttggcaaccaaggagcagcttggctgcagcagcac
+cagggccaccctcccaaactcctatcctacaggaataacaaccggccctcagggatctca
+gagagattctctgcatccaggtcaggaaacacagcctccctgaccattactggactccag
+cctgaggacgaggctgactattactgctcagcatgggacagcagcctcagtgctca
+>OL352713|IGLV10-54*05|Homo sapiens|F|V-REGION|35505..35800|296 nt|1| | | | |296+0=296| | |
+caggcagggctgactcagccaccctcggtgtccaagggcttgagacagaccgccacactc
+acctgcactgggaacagcaacattgttggcaaccaaggagcagcttggctgcagcagcac
+cagggccaccctcccaaactcctatcctacaggaataacaaccggccctcagggatctca
+gagagattctctgcatccaggtcaggaaacacagcctccctgaccattactggactccag
+cctgaggacgaggctgactattactgctcagcatgggacagcagcctcagtgctca
+>OL352724|IGLV10-54*06|Homo sapiens|F|V-REGION|30457..30752|296 nt|1| | | | |296+0=296| | |
+caggcagggctgactcagccaccctcggtgtccaagggcttgagacagaccgccacactc
+acctgcactgggaacagcaacaatgctggcaaccaaggagcagcttggctgcagcagcac
+cagggccaccctcccaaactcctatcctacaggaataacaaccggccctcagggatctca
+gagagattctctgcatccaggtcaggaaacacagcctccctgaccattactggactccag
+cctgaggacgaggctgactattactgctcagcatgggacagcagcctcagtgctca
+>D86996|IGLV11-55*01|Homo sapiens|ORF|V-REGION|15396..15707|312 nt|1| | | | |312+0=312| | |
+cggcccgtgctgactcagccgccctctctgtctgcatccccgggagcaacagccagactc
+ccctgcaccctgagcagtgacctcagtgttggtggtaaaaacatgttctggtaccagcag
+aagccagggagctctcccaggttattcctgtatcactactcagactcagacaagcagctg
+ggacctggggtccccagtcgagtctctggctccaaggagacctcaagtaacacagcgttt
+ttgctcatctctgggctccagcctgaggacgaggccgattattactgccaggtgtacgaa
+agtagtgctaat
+>KM455555|IGLV11-55*02|Homo sapiens|ORF|V-REGION|176..487|312 nt|1| | | | |312+0=312| | |
+cggcccgtgctgactcagccgccctccctgtctgcatccccgggagcaacagccagactc
+ccctgcaccctgagcagtgacctcagtgttggtggtaaaaacatgttctggtaccagcag
+aagctagggagctctcccaggttattcctgtatcactactcagactcagacaagcagctg
+ggacctggggtccccagtcgagtctctggctccaaggagacctcaagtaacacagcgttt
+ttgctcatctctgggctccagcctgaggacgaggccgattattactgccaggtgtacgaa
+agtagtgctaat
+>AC279423|IGLV2-11*01|Homo sapiens|F|V-REGION|40618..40914|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctcgctcagtgtccgggtctcctggacagtcagtcaccatc
+tcctgcactggaaccagcagtgatgttggtggttataactatgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgatgtcagtaagcggccctcaggggtc
+cctgatcgcttctctggctccaagtctggcaacacggcctccctgaccatctctgggctc
+caggctgaggatgaggctgattattactgctgctcatatgcaggcagctacactttc
+>Z22198|IGLV2-11*02|Homo sapiens|F|V-REGION|1..297|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctcgctcagtgtccgggtctcctggacagtcagtcaccatc
+tcctgcactggaaccagcagtgatgttggtgggtataactatgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgatgtcagtaagcggccctcaggggtc
+cctgatcgcttctctggctccaagtctggcaacacggcctccctgaccatctctgggctc
+caggctgaggatgaggctgattattactgctgctcatatgcaggcagctacactttc
+>Y12415|IGLV2-11*03|Homo sapiens|F|V-REGION|1..274|274 nt|2| | | | |274+0=274|partial in 5' and in 3' | |
+ctcagtgtccgggtctcctggacagtcagtcaccatctcctgcactggaaccagcagtga
+tgttggtggttataactatgtctcctggtaccaacaacacccaggcaaagcccccaaact
+catgatttatgatgtcagtaagcggccctcaggggtccctgatcgcttctctggctccaa
+gtctggcaacacggcctccctgaccatctctgggctccaggctgaggatgaggctgatta
+ttactgctgctcatatgcaggcagctacactttc
+>D87015|IGLV2-14*01|Homo sapiens|F|V-REGION|28763..29059|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctgcctccgtgtctgggtctcctggacagtcgatcaccatc
+tcctgcactggaaccagcagtgacgttggtggttataactatgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgaggtcagtaatcggccctcaggggtt
+tctaatcgcttctctggctccaagtctggcaacacggcctccctgaccatctctgggctc
+caggctgaggacgaggctgattattactgcagctcatatacaagcagcagcactctc
+>L27822|IGLV2-14*02|Homo sapiens|F|V-REGION|175..471|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctgcctccgtgtctgggtctcctggacagtcgatcaccatc
+tcctgcactggaaccagcagtgatgttgggagttataaccttgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgagggcagtaagcggccctcaggggtt
+tctaatcgcttctctggctccaagtctggcaacacggcctccctgaccatctctgggctc
+caggctgaggacgaggctgattattactgcagctcatatacaagcagcagcactctc
+>AC279423|IGLV2-14*03|Homo sapiens|F|V-REGION|6933..7229|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctgcctccgtgtctgggtctcctggacagtcgatcaccatc
+tcctgcactggaaccagcagtgacgttggtggttataactatgtctcctggtaccaacaa
+cacccaggcaaagcccccaaactcatgatttatgatgtcagtaatcggccctcaggggtt
+tctaatcgcttctctggctccaagtctggcaacacggcctccctgaccatctctgggctc
+caggctgaggacgaggctgattattactgcagctcatatacaagcagcagcactctc
+>IMGT000280|IGLV2-14*04|Homo sapiens|F|V-REGION|758921..759217|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctgcctccgtgtctgggtctcctggacagtcgatcaccatc
+tcctgcactggaaccagcagtgacgttggtggttataactatgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgatgtcagtaatcggccctcaggggtt
+tctaatcgcttctctggctccaagtctggcaacacggcctccctgaccatctctgggctc
+caggctgaggacgaggctgattattactgcagctcatatacaagcagcagcactctc
+>MW316674|IGLV2-14*05|Homo sapiens|F|V-REGION|343..639|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctgcctccgtgtctgggtctcctggacagtcgatcaccatc
+tcctgcactggaaccagcagtgacgttggtggttataactatgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgaggtcagtaatcggccctcaggggtc
+cctgatcgcttctctggctccaagtctggcaacacggcctccctgaccatctctgggctc
+caggctgaggacgaggctgattattactgcagctcatatacaagcagcagcactctc
+>D87007|IGLV2-18*01|Homo sapiens|F|V-REGION|35211..35507|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctccctccgtgtccgggtctcctggacagtcagtcaccatc
+tcctgcactggaaccagcagtgacgttggtagttataaccgtgtctcctggtaccagcag
+cccccaggcacagcccccaaactcatgatttatgaggtcagtaatcggccctcaggggtc
+cctgatcgcttctctgggtccaagtctggcaacacggcctccctgaccatctctgggctc
+caggctgaggacgaggctgattattactgcagcttatatacaagcagcagcactttc
+>IMGT000312|IGLV2-18*02|Homo sapiens|F|V-REGION|725481..725777|297 nt|1| | || |297+0=297| | |
+cagtctgccctgactcagcctccctccgtgtccgggtctcctggacagtcagtcaccatc
+tcctgcactggaaccagcagtgacgttggtagttataaccgtgtctcctggtaccagcag
+cccccaggcacagcccccaaactcatgatttatgaggtcagtaatcggccctcaggggtc
+cctgatcgcttctctgggtccaagtctggcaacacggcctccctgaccatctctgggctc
+caggctgaggacgaggctgattattactgcagctcatatacaagcagcagcactttc
+>L27694|IGLV2-18*03|Homo sapiens|F|V-REGION|177..473|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctccctccgtgtccgggtctcctggacagtcagtcaccatc
+tcctgcactggaaccagcagtgacgttggtagttataaccgtgtctcctggtaccagcag
+cccccaggcacagcccccaaactcatgatttatgaggtcagtaatcggccctcaggggtc
+cctgatcgcttctctgggtccaagtctggcaacacggcctccctgaccacctctgggctc
+caggctgaggacgaggctgattattactgcagctcatatacaagcagcagcactttc
+>L27692|IGLV2-18*04|Homo sapiens|F|V-REGION|174..470|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctccctccgtgtccgggtctcctggacagtcagtcaccatc
+tcctgcactggaaccagcagtgacgttggtagttataaccgtgtctcctggtaccagcag
+cccccaggcacagcccccaaactcatgatttatgaggtcagtaatcggccctcaggggtc
+cctgatcgctcctctgggtccaagtccggcaacacggcctccctgaccatctctgggctc
+caggctgaggacgaggctgattattactgcagctcatatacaagcagcagcactttc
+>X14616|IGLV2-23*01|Homo sapiens|F|V-REGION|276..573|298 nt|1| | | | |298+0=298| | |
+cagtctgccctgactcagcctgcctccgtgtctgggtctcctggacagtcgatcaccatc
+tcctgcactggaaccagcagtgatgttgggagttataaccttgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgagggcagtaagcggccctcaggggtt
+tctaatcgcttctctggctccaagtctggcaacacggcctccctgacaatctctgggctc
+caggctgaggacgaggctgattattactgctgctcatatgcaggtagtagcactttac
+>IMGT000280|IGLV2-23*02|Homo sapiens|F|V-REGION|698128..698424|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctgcctccgtgtctgggtctcctggacagtcgatcaccatc
+tcctgcactggaaccagcagtgatgttgggagttataaccttgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgaggtcagtaagcggccctcaggggtt
+tctaatcgcttctctggctccaagtctggcaacacggcctccctgacaatctctgggctc
+caggctgaggacgaggctgattattactgctgctcatatgcaggtagtagcactttc
+>D86994|IGLV2-23*03|Homo sapiens|F|V-REGION|35601..35897|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctgcctccgtgtctgggtctcctggacagtcgatcaccatc
+tcctgcactggaaccagcagtgatgttgggagttataaccttgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgagggcagtaagcggccctcaggggtt
+tctaatcgcttctctggctccaagtctggcaacacggcctccctgacaatctctgggctc
+caggctgaggacgaggctgattattactgctgctcatatgcaggtagtagcactttc
+>OL352727|IGLV2-23*04|Homo sapiens|F|V-REGION|22296..22592|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctgcctccgtgtctgggtctcctggacagtcgatcaccatc
+tcctgcactggaaccagcagtgatgttggtggttataactatgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgatgtcagtaagcggccctcaggggtt
+tctaatcgcttctctggctccaagtctggcaacacggcctccctgacaatctctggactc
+caggctgaggacgaggctgattattactgctgctcatatgcaggtagtagcactttc
+>IMGT000312|IGLV2-23*05|Homo sapiens|F|V-REGION|688831..689127|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctgcctccgtgtctgggtctcctggacagtcgatcaccatc
+tcctgcactggaaccagcagtgatgttggtggttataactatgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgatgtcagtaagcggccctcaggggtt
+tctaatcgcttctctggctccaagtctggcaacacggcctccctgacaatctctgggctc
+caggctgaggacgaggctgattattactgctgctcatatgcaggtagtagcactttc
+>D87014|IGLV2-33*01|Homo sapiens|ORF|V-REGION|5824..6120|297 nt|1| | | | |297+0=297| | |
+caatctgccctgactcagcctccttttgtgtccggggctcctggacagtcggtcaccatc
+tcctgcactggaaccagcagtgacgttggggattatgatcatgtcttctggtaccaaaag
+cgtctcagcactacctccagactcctgatttacaatgtcaatactcggccttcagggatc
+tctgacctcttctcaggctccaagtctggcaacatggcttccctgaccatctctgggctc
+aagtccgaggttgaggctaattatcactgcagcttatattcaagtagttacactttc
+>L27823|IGLV2-33*02|Homo sapiens|ORF|V-REGION|175..471|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctccttttgtgtccggggctcctggacagtcggtcaccatc
+tcctgcactggaaccagcagtgacgttggggattatgatcatgtcttctggtaccaaaag
+cgtctcagcactacctccagactcctgatttacaatgtcaatactcggccttcagggatc
+tctgacctcttctcaggctccaagtctggcaacatggcttccctgaccatctctgggctc
+aagtccgaggttgaggctaattatcactgcagcttatattcaagtagttacactttc
+>L27691|IGLV2-33*03|Homo sapiens|ORF|V-REGION|180..476|297 nt|1| | | | |297+0=297| | |
+caatctgccctgactcagcctccttttgtgtccggggctcctggacagtcggtcaccatc
+tcctgcactggaaccagcagtgacgttggggactatgatcatgtcttctggtaccaaaag
+cgtctcagcactacctccagactcctgatttacaatgtcaatactcggccttcagggatc
+tctgacctcttctcaggctccaagtctggcaacgtggcttccctgaccatctctgggctc
+aagtccgaggttgaggctaattatcactgcagcttatattcaagtagttacactttc
+>D87013|IGLV2-34*01|Homo sapiens|P|V-REGION|30323..30619|297 nt|1| | | | |297+0=297| | |
+cagtctgttctgactcagcctcgctcagtgtccaggtctcctggacagtaggttactatc
+ttctgcactggaaccagcagtgacattgggggttatgaccttgtctcctggtgccagtag
+cacccaggcaaagcccccaaactcatgatttatgatgtcgctaattggccctcaggggcc
+cctggttgcttctctggctccaagtctggcaacacggcctccctgaccatctctgggctc
+caggctgaggacgaggctgattattactgcagctcatatgcaggcagctacaatttc
+>IMGT000225|IGLV2-34*02|Homo sapiens|P|V-REGION|563941..564237|297 nt|1| | || |297+0=297| | |
+cagtctgttctgactcagcctcgctcagtgtccaggtctcctggacagtaggttactatc
+ttctgcactggaaccagcagtgacattgggggttatgaccttgtctcctggtgccagtag
+cacccaggcaaagcccccaaactcatgatttatgatgtcggtaattggccctcaggggcc
+cctggttgcttctctggctccaagtctggcaacacggcctccctgaccatctctgggctc
+caggctgaggacgaggctgattattactgcagctcatatgcaggcagctacaatttc
+>IMGT000312|IGLV2-5*01|Homo sapiens|P|V-REGION|847475..847772|298 nt|1| | || |298+0=298| | |
+cagtctgccctgattcagcctccctccgtgtccgggtctcctggacagtcagtcaccatc
+tcctgcactggaaccagcagtgatgttgggagttatgactatgtctcctggtaccaacag
+cacccaggcacagtccccaaacccatgatctacaatgtcaatactcagccctcaggggtc
+cctgatcgtttctctggctccaagtctggcaatacggcctccatgaccatctctggactc
+caggctgaggacgaggctgattattagtgctgctcatatacaagcagtgccacttaac
+>X57825|IGLV2-5*02|Homo sapiens|P|V-REGION|359..656|298 nt|1| | | | |298+0=298| | |
+cagtctgccctgattcagcctccctccgtgtccgggtctcctggacagtcagtcaccatc
+tcctgcactggaaccagcagtgatgttgggagttatgactatgtctcctggtaccaacag
+cacccaggcacagtccccaaacccatgatctacaatgtcaatactcggccctcaggggtc
+cctgatcgtttctctggctccaagtctggcaacacggcctccatgaccatctctggactc
+caggctgaggacgaggctgattattagtgctgctcatatacaagcagtgccacttaac
+>IMGT000312|IGLV2-8*01|Homo sapiens|F|V-REGION|813705..814001|297 nt|1| | || |297+0=297| | |
+cagtctgccctgactcagcctccctccgcgtccgggtctcctggacagtcagtcaccatc
+tcctgcactggaaccagcagtgacgttggtggttataactatgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgaggtcagtaagcggccctcaggggtc
+cctgatcgcttctctggctccaagtctggcaacacggcctccctgaccgtctctgggctc
+caggctgaggatgaggctgattattactgcagctcatatgcaggcagcaacaatttc
+>L27695|IGLV2-8*02|Homo sapiens|F|V-REGION|173..469|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctccctccgcgtccaggtctcctggacagtcagtcaccatc
+tcctgcactggaaccagcagtgacgttggtggttataactatgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgaggtcagtaagcggccctcaggggtc
+cctgatcgcttctctggctccaagtctggcaacacggcctccctgaccgtctctgggctc
+caggctgaggatgaggctgattattactgcagctcatatgcaggcagcaacaatttc
+>Y12418|IGLV2-8*03|Homo sapiens|F|V-REGION|1..274|274 nt|2| | | | |274+0=274|partial in 5' and in 3' | |
+ctccgcgtccgggtctcctggacagtcagtcaccatctcctgcactggaaccagcagtga
+cgttggtggttataactatgtctcctggtaccaacagcacccaggcaaagcccccaaact
+catgatttatgaggtcagtaagcggccctcaggggtccctgatcgcttctttggctccaa
+gtctggcaacacggcctccctgaccgtctctgggctccaggctgaggatgaggctgatta
+ttactgcagctcatatgcaggcagcaacaatttc
+>OL352721|IGLV2-8*04|Homo sapiens|F|V-REGION|39052..39348|297 nt|1| | | | |297+0=297| | |
+cagtctgccctgactcagcctccctccgcgtccgggtcttctggacagtcagtcaccatc
+tcctgcactggaaccagcagtgacgttggtggttataactatgtctcctggtaccaacag
+cacccaggcaaagcccccaaactcatgatttatgaggtcagtaagcggccctcaggggtc
+cctgatcgcttctctggctccaagtctggcaacacggcctccctgaccgtctctgggctc
+caggctgaggatgaggctgattattactgcagctcatatgcaggcagcaacaatttc
+>X57826|IGLV3-1*01|Homo sapiens|F|V-REGION|2256..2540|285 nt|1| | | | |285+0=285| | |
+tcctatgagctgactcagccaccctcagtgtccgtgtccccaggacagacagccagcatc
+acctgctctggagataaattgggggataaatatgcttgctggtatcagcagaagccaggc
+cagtcccctgtgctggtcatctatcaagatagcaagcggccctcagggatccctgagcga
+ttctctggctccaactctgggaacacagccactctgaccatcagcgggacccaggctatg
+gatgaggctgactattactgtcaggcgtgggacagcagcactgca
+>OL352728|IGLV3-1*02|Homo sapiens|F|V-REGION|13285..13569|285 nt|1| | | | |285+0=285| | |
+tcctatgagctgactcagccaccctcagtgtccgtgtccccaggacagacagccagcatc
+acctgctctggagataaattgggggataaatatgcttgctggtatcagcagaagccaggc
+cagtcccctgtgctggtcatctatcaagatagcgagcggccctcagggatccctgagcga
+ttctctggctccaactctgggaacacagccactctgaccatcagcgggacccaggctatg
+gatgaggctgactattactgtcaggcgtgggacagcagcactgca
+>D87021|IGLV3-10*01|Homo sapiens|F|V-REGION|12250..12539|290 nt|1| | | | |290+0=290| | |
+tcctatgagctgacacagccaccctcggtgtcagtgtccccaggacaaacggccaggatc
+acctgctctggagatgcattgccaaaaaaatatgcttattggtaccagcagaagtcaggc
+caggcccctgtgctggtcatctatgaggacagcaaacgaccctccgggatccctgagaga
+ttctctggctccagctcagggacaatggccaccttgactatcagtggggcccaggtggag
+gatgaagctgactactactgttactcaacagacagcagtggtaatcatag
+>L29166|IGLV3-10*02|Homo sapiens|F|V-REGION|241..525|285 nt|1| | | | |285+0=285|partial in 3'| |
+tcctatgagctgacacagccaccctcggtgtcagtgtccccaggacaaacggccaggatc
+acctgctctggagatgcattgccaaaaaaatatgcttattggtaccagcagaagtcaggc
+caggcccctgtgctggtcatctataaggacagcaaacgaccctcagggatccctgagaga
+ttctctggctccagctcagggacaatggccaccttgaccatcagtggggcccaggtggag
+gatgaagatgactactactgttactcagcagactacagtggtaat
+>AC279221|IGLV3-10*03|Homo sapiens|F|V-REGION|21210..21499|290 nt|1| | | | |290+0=290| | |
+tcctatgagctgacacagccaccctcggtgtcagtgtccccaggacaaacggccaggatc
+acctgctctggagatgcattgccaaaaaaatatgcttattggtaccagcagaagtcaggc
+caggcccctgtgctggtcatctatgaggacagcaaacgaccctccgggatccctgagaga
+ttctctggctccagctcagggacaatggccaccttgactatcagtggggcccaggtggag
+gatgaagatgactactactgttactcaacagacagcagtggtaatcatag
+>AC279423|IGLV3-12*01|Homo sapiens|P|V-REGION|20229..20518|290 nt|1| | | | |290+0=290| | |
+tcctatgagctgactcagccacactcagtgtcagtggccacagcacagatggccaggatc
+acctgtgggggaaacaacattggaagtaaagctgtgcactggtaccagcaaaagccaggc
+caggaccctgtgctggtcatctatagcgatagcaaccggccctcagggatccctgagcga
+ttctctggctccaacccagggaacaccaccaccctaaccatcagcaggatcgaggctggg
+gatgaggctgactattactgtcaggtgtgggacagtagtagtgatcatcc
+>D86998|IGLV3-12*02|Homo sapiens|F|V-REGION|10129..10418|290 nt|1| | | | |290+0=290| | |
+tcctatgagctgactcagccacactcagtgtcagtggccacagcacagatggccaggatc
+acctgtgggggaaacaacattggaagtaaagctgtgcactggtaccagcaaaagccaggc
+caggaccctgtgctggtcatctatagcgatagcaaccggccctcagggatccctgagcga
+ttctctggctccaacccagggaacaccgccaccctaaccatcagcaggatcgaggctggg
+gatgaggctgactattactgtcaggtgtgggacagtagtagtgatcatcc
+>IMGT000225|IGLV3-13*01|Homo sapiens|P|V-REGION|746216..746499|284 nt|1| | || |284+0=284| | |
+tcctatgagctgacacagccacccgcggtgtcagtgtccccaggacagacagccaggatc
+agctgctctggagatgtactgagggataattatgctgactggtacccgcaaaagccaggc
+caggcccctgtgctggtgatatataaagatggtgagcggccctctggaatccctgagcga
+ttctctgggtccacctcagggaacacaaccgccctgaccattagcagggtcctgaccaaa
+ggcggggctgactattactgtttttctggtgattagaacaatct
+>AC279423|IGLV3-13*02|Homo sapiens|P|V-REGION|10225..10508|284 nt|1| | | | |284+0=284| | |
+tcctatgagctgacacagccacccgcggtgtcagtgtccccaggacagacagccaggatc
+agctgctctggagatgtactgagagataattatgctgactggtacccgcaaaagccaggc
+cagacccctgtgctggtgatatataaagatggtgagcggccctctggaatccctgagcga
+ttctctgggtccacctcagggaacacaaccgccctgaccattagcagggtcctgaccaaa
+ggcggggctgactattactgtttttctggtgattagaacaatct
+>IMGT000280|IGLV3-13*03|Homo sapiens|P|V-REGION|762197..762480|284 nt|1| | | | |284+0=284| | |
+tgctatgagctgacacagtcacccgcggtgtcagtgtccccaggacagacagccaggatc
+agctgctctggagatgtactgagagataattatgctgactggtacccgcaaaagccaggc
+cagacccctgtgctggtgatatataaagatggtgagcggccctctggaatccctgagcga
+ttctctgggtccacctcagggaacacaaccgccctgaccattagcagggtcctgaccaaa
+ggcggggctgactattactgtttttctggtgattagaacaatct
+>D87015|IGLV3-16*01|Homo sapiens|F|V-REGION|17478..17767|290 nt|1| | | | |290+0=290| | |
+tcctatgagctgacacagccaccctcggtgtcagtgtccctaggacagatggccaggatc
+acctgctctggagaagcattgccaaaaaaatatgcttattggtaccagcagaagccaggc
+cagttccctgtgctggtgatatataaagacagcgagaggccctcagggatccctgagcga
+ttctctggctccagctcagggacaatagtcacattgaccatcagtggagtccaggcagaa
+gacgaggctgactattactgtctatcagcagacagcagtggtacttatcc
+>X56178|IGLV3-19*01|Homo sapiens|F|V-REGION|201..490|290 nt|1| | | | |290+0=290| | |
+tcttctgagctgactcaggaccctgctgtgtctgtggccttgggacagacagtcaggatc
+acatgccaaggagacagcctcagaagctattatgcaagctggtaccagcagaagccagga
+caggcccctgtacttgtcatctatggtaaaaacaaccggccctcagggatcccagaccga
+ttctctggctccagctcaggaaacacagcttccttgaccatcactggggctcaggcggaa
+gatgaggctgactattactgtaactcccgggacagcagtggtaaccatct
+>AC279208|IGLV3-19*02|Homo sapiens|F|V-REGION|25647..25936|290 nt|1| | | | |290+0=290| | |
+tcgtctgagctgactcaggaccctgctgtgtctgtggccttgggacagacagtcaggatc
+acatgccaaggagacagcctcagaagctattatgcaagctggtaccagcagaagccagga
+caggcccctgtacgtgtcatctatggtaaaaacaaccggccctcagggatcccagaccga
+ttctctggctccagctcaggaaacacagcttccttgaccatcactggggctcaggcggaa
+gatgaggctgactattactgtaactcctgggacagcagtggtaaccatcc
+>X71966|IGLV3-21*01|Homo sapiens|F|V-REGION|688..977|290 nt|1| | | | |290+0=290| | |
+tcctatgtgctgactcagccaccctcagtgtcagtggccccaggaaagacggccaggatt
+acctgtgggggaaacaacattggaagtaaaagtgtgcactggtaccagcagaagccaggc
+caggcccctgtgctggtcatctattatgatagcgaccggccctcagggatccctgagcga
+ttctctggctccaactctgggaacacggccaccctgaccatcagcagggtcgaagccggg
+gatgaggccgactattactgtcaggtgtgggacagtagtagtgatcatcc
+>D87007|IGLV3-21*02|Homo sapiens|F|V-REGION|13325..13614|290 nt|1| | | | |290+0=290| | |
+tcctatgtgctgactcagccaccctcggtgtcagtggccccaggacagacggccaggatt
+acctgtgggggaaacaacattggaagtaaaagtgtgcactggtaccagcagaagccaggc
+caggcccctgtgctggtcgtctatgatgatagcgaccggccctcagggatccctgagcga
+ttctctggctccaactctgggaacacggccaccctgaccatcagcagggtcgaagccggg
+gatgaggccgactattactgtcaggtgtgggatagtagtagtgatcatcc
+>M94115|IGLV3-21*03|Homo sapiens|F|V-REGION|637..926|290 nt|1| | | | |290+0=290| | |
+tcctatgtgctgactcagccaccctcggtgtcagtggccccaggaaagacggccaggatt
+acctgtgggggaaacaacattggaagtaaaagtgtgcactggtaccagcagaagccaggc
+caggcccctgtgctggtcgtctatgatgatagcgaccggccctcagggatccctgagcga
+ttctctggctccaactctgggaacacggccaccctgaccatcagcagggtcgaagccggg
+gatgaggccgactattactgtcaggtgtgggatagtagtagtgatcatcc
+>AC279208|IGLV3-21*04|Homo sapiens|F|V-REGION|17696..17985|290 nt|1| | | | |290+0=290| | |
+tcctatgtgctgactcagccaccctcagtgtcagtggccccaggaaagacggccaggatt
+acctgtgggggaaacaacattggaagtaaaagtgtgcactggtaccagcagaagccaggc
+caggcccctgtgctggtcatctattatgatagcgaccggccctcagggatccctgagcga
+ttctctggctccaactctgggaacacggccaccctgaccatcagcagggtcgaagccggg
+gatgaggccgactattactgtcaggtgtgggatagtagtagtgatcatcc
+>AC279210|IGLV3-22*01|Homo sapiens|F|V-REGION|5975..6258|284 nt|1| | | | |284+0=284| | |
+tcctatgagctgacacagctaccctcggtgtcagtgtccccaggacagacagccaggatc
+acctgctctggagatgtactgggggaaaattatgctgactggtaccagcagaagccaggc
+caggcccctgagttggtgatatacgaagatagtgagcggtaccctggaatccctgaacga
+ttctctgggtccacctcagggaacacgaccaccctgaccatcagcagggtcctgaccgaa
+gacgaggctgactattactgtttgtctggggatgaggacaatcc
+>AC279208|IGLV3-22*03|Homo sapiens|F|V-REGION|9327..9610|284 nt|1| | | | |284+0=284| | |
+tcctatgagctgacacagctaccctcggtgtcattgtccccaggacagaaagccaggatc
+acctgctctggagatgtactggggaaaaattatgctgactggtaccagcagaagccaggc
+caggcccctgagttggtgatatacgaagatagtgagcggtaccctggaatccctgaacga
+ttctctgggtccacctcagggaacacgaccaccctgaccatcagcagggtcctgaccgaa
+gacgaggctgactattactgtttgtctgggaatgaggataatcc
+>X97474|IGLV3-25*01|Homo sapiens|F|V-REGION|1..290|290 nt|1| | | | |290+0=290| | |
+tcctatgagctgatgcagccaccctcggtgtcagtgtccccaggacagacggccaggatc
+acctgctctggagatgcattgccaaagcaatatgcttattggtaccagcagaagccaggc
+caggcccctgtgctggtgatatataaagacagtgagaggccctcagggatccctgagcga
+ttctctggctccagctcagggacaacagtcacgttgaccatcagtggagtccaggcagaa
+gatgaggctgactattactgtcaatcagcagacagcagtggtacttatcc
+>D86994|IGLV3-25*02|Homo sapiens|F|V-REGION|24447..24736|290 nt|1| | | | |290+0=290| | |
+tcctatgagctgacacagccaccctcggtgtcagtgtccccaggacagacggccaggatc
+acctgctctggagatgcattgccaaagcaatatgcttattggtaccagcagaagccaggc
+caggcccctgtgctggtgatatataaagacagtgagaggccctcagggatccctgagcga
+ttctctggctccagctcagggacaacagtcacgttgaccatcagtggagtccaggcagaa
+gatgaggctgactattactgtcaatcagcagacagcagtggtacttatcc
+>AC279213|IGLV3-25*03|Homo sapiens|F|V-REGION|16344..16633|290 nt|1| | | | |290+0=290| | |
+tcctatgagctgacacagccaccctcggtgtcagtgtccccaggacagacggccaggatc
+acctgctctggagatgcattgccaaagcaatatgcttattggtaccagcagaagccaggc
+caggcccctgtgctggtgatatataaagacagtgagaggccctcagggatccctgagcga
+ttctctggctccagctcagggacaacagtcacgttgaccatcagtggagtccaggcagaa
+gacgaggctgactattactgtcaatcagcagacagcagtggtacttatcc
+>D86994|IGLV3-27*01|Homo sapiens|F|V-REGION|5986..6269|284 nt|1| | | | |284+0=284| | |
+tcctatgagctgacacagccatcctcagtgtcagtgtctccgggacagacagccaggatc
+acctgctcaggagatgtactggcaaaaaaatatgctcggtggttccagcagaagccaggc
+caggcccctgtgctggtgatttataaagacagtgagcggccctcagggatccctgagcga
+ttctccggctccagctcagggaccacagtcaccttgaccatcagcggggcccaggttgag
+gatgaggctgactattactgttactctgcggctgacaacaatct
+>D87014|IGLV3-31*01|Homo sapiens|P|V-REGION|22327..22616|290 nt|1| | | | |290+0=290| | |
+tcctctgagctgagtcaggagcctgcagtgtctgtggccttgggatagacagccaggatc
+acctgccagggagacagcatagaagactccgttgtaaactggtacaagcagaagccaagc
+caggcccctgggctggtcatctaacttaacagtgtccagtcttcagggattcctaagaaa
+ttctctggctccagctcagggaacatggccaccctgaccatcactgggattcaggttgaa
+gacaaggctgactattactgtcagtcatgggacagcagtcgtactcattc
+>Z22203|IGLV3-31*02|Homo sapiens|P|V-REGION|1..290|290 nt|1| | | | |290+0=290| | |
+tcctctgagctgagtcaggagcctgcagtgtctgtgtccttgggatagacagccaggatc
+acctgccagggagacagcatagaagactccgttgtaaactggtacaagcagaagccaagc
+caggcccctgggctggtcatctaacttaacagtgtccagtcttcagggattcctaagaaa
+ttctctggctccagctcagggaacatggccaccctgaccatcactgggattcaggttgaa
+gacaaggctgactattactgtcagtcatgggacagcagtcgtactcattc
+>D87014|IGLV3-32*01|Homo sapiens|ORF|V-REGION|12198..12487|290 nt|1| | | | |290+0=290| | |
+tcctctgggccaactcaggtgcctgcagtgtctgtggccttgggacaaatggccaggatc
+acctgccagggagacagcatggaaggctcttatgaacactggtaccagcagaagccaggc
+caggcccccgtgctggtcatctatgatagcagtgaccggccctcaaggatccctgagcga
+ttctctggctccaaatcaggcaacacaaccaccctgaccatcactggggcccaggctgag
+gatgaggctgattattactatcagttgatagacaaccatgctactcaact
+>AC279221|IGLV3-9*01|Homo sapiens|F|V-REGION|28684..28968|285 nt|1| | | | |285+0=285| | |
+tcctatgagctgactcagccactctcagtgtcagtggccctgggacagacggccaggatt
+acctgtgggggaaacaacattggaagtaaaaatgtgcactggtaccagcagaagccaggc
+caggcccctgtgctggtcatctatagggatagcaaccggccctctgggatccctgagcga
+ttctctggctccaactcggggaacacggccaccctgaccatcagcagagcccaagccggg
+gatgaggctgactattactgtcaggtgtgggacagcagcactgca
+>X74288|IGLV3-9*02|Homo sapiens|F|V-REGION|354..643|290 nt|1| | | | |290+0=290| | |
+tcctatgagctgactcagccactctcagtgtcagtggccctgggacaggcggccaggatt
+acctgtgggggaaacaaccttggatataaaagtgtgcactggtaccagcagaagccaggc
+caggcccctgtgctggtcatctatagggataacaaccggccctctgggatccctgagcga
+ttctctggctccaactcggggaacacggccaccctgaccatcagcagagcccaagccggg
+gatgaggctgactattactgtcaggtgtgggacagcagcactgcacaccc
+>IMGT000225|IGLV4-10-1*01|Homo sapiens|P|V-REGION|787001..787287|287 nt|1| | | | |287+0=287| | |
+ctgtctgtgctgacccagcccccgtctgcatctgcctggctgtgagcctcagccaaggtc
+acctacaccagtgaatagtatcaacagagaccaaggaggtccccctagtgtataatggag
+gttaagagtaatggcagcaacagcaaggggaacaggatccccagtcacttattgggctcc
+agccctggggctgaatgctacttaattatcttcaacctccaatctgaggatgaggccgag
+tatcactgtggagagagccacatgtttgatggtgaggatgggtgagc
+>X57828|IGLV4-3*01|Homo sapiens|F|V-REGION|356..669|314 nt|1| | | | |314+0=314| | |
+ctgcctgtgctgactcagcccccgtctgcatctgccttgctgggagcctcgatcaagctc
+acctgcaccctaagcagtgagcacagcacctacaccatcgaatggtatcaacagagacca
+gggaggtccccccagtatataatgaaggttaagagtgatggcagccacagcaagggggac
+gggatccccgatcgcttcatgggctccagttctggggctgaccgctacctcaccttctcc
+aacctccagtctgacgatgaggctgagtatcactgtggagagagccacacgattgatggc
+caagtcggttgagc
+>Z73667|IGLV4-60*01|Homo sapiens|F|V-REGION|1..297|297 nt|1| | | | |297+0=297| | |
+cagcctgtgctgactcaatcatcctctgcctctgcttccctgggatcctcggtcaagctc
+acctgcactctgagcagtgggcacagtagctacatcatcgcatggcatcagcagcagcca
+gggaaggcccctcggtacttgatgaagcttgaaggtagtggaagctacaacaaggggagc
+ggagttcctgatcgcttctcaggctccagctctggggctgaccgctacctcaccatctcc
+aacctccagttagaggatgaggctgattattactgtgagacctgggacagtaacact
+>D87000|IGLV4-60*02|Homo sapiens|F|V-REGION|12968..13266|299 nt|1| | | | |299+0=299| | |
+cagcctgtgctgactcaatcatcctctgcctctgcttccctgggatcctcggtcaagctc
+acctgcactctgagcagtgggcacagtagctacatcatcgcatggcatcagcagcagcca
+gggaaggcccctcggtacttgatgaagcttgaaggtagtggaagctacaacaaggggagc
+ggagttcctgatcgcttctcaggctccagctctggggctgaccgctacctcaccatctcc
+aacctccagtttgaggatgaggctgattattactgtgagacctgggacagtaacactca
+>AC279317|IGLV4-60*03|Homo sapiens|F|V-REGION|7315..7613|299 nt|1| | | | |299+0=299| | |
+cagcctgtgctgactcaatcatcctctgcctctgcttccctgggatcctcggtcaagctc
+acctgcactctgagcagtgggcacagtagctacatcatcgcatggcatcagcagcagcca
+gggaaggcccctcggtacttgatgaagcttgaaggtagtggaagctacaacaaggggagc
+ggagttcctgatcgcttctcaggctccagctctggggctgaccgctacctcaccatctcc
+aacctccagtctgaggatgaggctgattattactgtgagacctgggacagtaacactca
+>D86993|IGLV4-69*01|Homo sapiens|F|V-REGION|16720..17018|299 nt|1| | | | |299+0=299| | |
+cagcttgtgctgactcaatcgccctctgcctctgcctccctgggagcctcggtcaagctc
+acctgcactctgagcagtgggcacagcagctacgccatcgcatggcatcagcagcagcca
+gagaagggccctcggtacttgatgaagcttaacagtgatggcagccacagcaagggggac
+gggatccctgatcgcttctcaggctccagctctggggctgagcgctacctcaccatctcc
+agcctccagtctgaggatgaggctgactattactgtcagacctggggcactggcattca
+>U03868|IGLV4-69*02|Homo sapiens|F|V-REGION|161..459|299 nt|1| | | | |299+0=299| | |
+cagcttgtgctgactcaatcgccctctgcctctgcctccctgggagcctcggtcaagctc
+acctgcactctgagcagtgggcacagcagctacgccatcgcatggcatcagcagcagcca
+gagaagggccctcggtacttgatgaagcttaacagtgatggcagccacagtaagggggac
+gggatccctgatcgcttctcaggctccagctctggggctgagcgctacctcaccatctcc
+agcctccagtctgaggatgaggctgactattactgtcagacctggggcactggcattca
+>IMGT000225|IGLV4-7-1*01|Homo sapiens|P|V-REGION|818777..819094|318 nt|1| | | | |318+0=318| | |
+ctggctgtgctaactcagcccccgtctgcatctgcctcactgggagcctcagtcaagctc
+acctgcaccctgagcagtgagcacagtacctacatcatcaaatggtatcaacagagacca
+gagaggtccccctagtatataatgaagtttcacagcgatggcagacacagaaaggaggac
+aggatccccaattgcttctcgggctccagctctggggctgactgctccctcaccatgtcc
+aacctccagtctgaggacgaggctgagtatcactatggagagagccacaagattgatggc
+caggatgggtgagccaca
+>IMGT000225|IGLV5-37*01|Homo sapiens|F|V-REGION|411649..411960|312 nt|1| | || |312+0=312| | |
+cagcctgtgctgactcagccaccttcctcctccgcatctcctggagaatccgccagactc
+acctgcaccttgcccagtgacatcaatgttggtagctacaacatatactggtaccagcag
+aagccagggagccctcccaggtatctcctgtactactactcagactcagataagggccag
+ggctctggagtccccagccgcttctctggatccaaagatgcttcagccaatacagggatt
+ttactcatctccgggctccagtctgaggatgaggctgactattactgtatgatttggcca
+agcaatgcttct
+>OL352722|IGLV5-37*02|Homo sapiens|F|V-REGION|28300..28611|312 nt|1| | | | |312+0=312| | |
+cagcctgtgctgactcagccaccttcctcctccgcatctcctggagaatccgccagactc
+acctgcaccttgcccagtgacatcaatgttggtagctacaacatatactggtaccagcag
+aagccagggagccctcccaggtatctcctgtactactactcagactcagataagggccag
+ggctctggagtccccagccgcttctctggatccaaagatgcttcggccaatacagggatt
+ttactcatctccgggctccagtctgaggatgaggctgactattactgtatgatttggcca
+agcaatgcttct
+>OL352725|IGLV5-37*03|Homo sapiens|F|V-REGION|22439..22750|312 nt|1| | | | |312+0=312| | |
+cagcctgtgctgactcagccaccttcctcctccgcatctcctggagaatccgccagactc
+acctgcaccttgcccagtgacatcaatgttagtagctacaacatatactggtaccagcag
+aagccagggagccctcccaggtatctcctgtactactactcagactcagataagggccag
+ggctctggagtccccagccgcttctctggatccaaagatgcttcagccaatacagggatt
+ttactcatctccgggctccagtctgaggatgaggctgactattactgtatgatttggcca
+agcaatgcttct
+>Z73668|IGLV5-39*01|Homo sapiens|F|V-REGION|1..312|312 nt|1| | | | |312+0=312| | |
+cagcctgtgctgactcagccaacctccctctcagcatctcctggagcatcagccagattc
+acctgcaccttgcgcagtggcatcaatgttggtacctacaggatatactggtaccagcag
+aagccagggagtcttccccggtatctcctgaggtacaaatcagactcagataagcagcag
+ggctctggagtccccagccgcttctctggatccaaagatgcttcaaccaatgcaggcctt
+ttactcatctctgggctccagtctgaagatgaggctgactattactgtgccatttggtac
+agcagcacttct
+>AF216776|IGLV5-39*02|Homo sapiens|F|V-REGION|181..492|312 nt|1| | | | |312+0=312| | |
+cagcctgtgctgactcagccaacctccctctcagcatctcctggagcatcagccagattc
+acctgcaccttgcgcagcggcatcaatgttggtacctacaggatatactggtaccagcag
+aatccagggagtcttccccggtatctcctgaggtacaaatcagactcagataagcagcag
+ggctctggagtccccagccgcttctctggatccaaagatgcttcaaccaatgcaggcctt
+ttactcatctctgggctccagtctgaagatgaggctgactattactgtgccatttggtac
+agcagcacttct
+>Z73670|IGLV5-45*01|Homo sapiens|F|V-REGION|1..312|312 nt|1| | | | |312+0=312| | |
+caggctgtgctgactcagccggcttccctctctgcatctcctggagcatcagccagtctc
+acctgcaccttgcgcagtggcatcaatgttggtacctacaggatatactggtaccagcag
+aagccagggagtcctccccagtatctcctgaggtacaaatcagactcagataagcagcag
+ggctctggagtccccagccgcttctctggatccaaagatgcttcggccaatgcagggatt
+ttactcatctctgggctccagtctgaggatgaggctgactattactgtatgatttggcac
+agcagcgcttct
+>Z73671|IGLV5-45*02|Homo sapiens|F|V-REGION|1..312|312 nt|1| | | | |312+0=312| | |
+caggctgtgctgactcagccgtcttccctctctgcatctcctggagcatcagccagtctc
+acctgcaccttacgcagtggcatcaatgttggtacctacaggatatactggtaccagcag
+aagccagggagtcctccccagtatctcctgaggtacaaatcagactcagataagcagcag
+ggctctggagtccccagccgcttctctggatccaaagatgcttcggccaatgcagggatt
+ttactcatctctgggctccagtctgaggatgaggctgactattactgtatgatttggcac
+agcagcgcttct
+>IMGT000280|IGLV5-45*03|Homo sapiens|F|V-REGION|366940..367251|312 nt|1| | | | |312+0=312| | |
+caggctgtgctgactcagccgtcttccctctctgcatctcctggagcatcagccagtctc
+acctgcaccttgcgcagtggcatcaatgttggtacctacaggatatactggtaccagcag
+aagccagggagtcctccccagtatctcctgaggtacaaatcagactcagataagcagcag
+ggctctggagtccccagccgcttctctggatccaaagatgcttcggccaatgcagggatt
+ttactcatctctgggctccagtctgaggatgaggctgactattactgtatgatttggcac
+agcagcgcttct
+>KM455553|IGLV5-45*04|Homo sapiens|F|V-REGION|181..492|312 nt|1| | | | |312+0=312| | |
+caggctgtgctgactcagccgtcttccctctctgcatctcctggagcatcagccagtctc
+acctgcaccttgtgcagtggcatcaatgttggtacctacaggatatactggtaccagcag
+aagccagggagtcctccccagtatctcctgaggtacaaatcagactcagataagcagcag
+ggctctggagtccccagccgcttctctggatccaaagatgcttcggccaatgcagggatt
+ttactcatctctgggctccagtctgaggatgaggctgactattactgtatgatttggcac
+agcagcgcttct
+>OL352719|IGLV5-45*05|Homo sapiens|F|V-REGION|33714..34025|312 nt|1| | | | |312+0=312| | |
+caggctgtgctgactcagctggcttccctctctgcatctcctggagcatcagccagtctc
+acctgcaccttgcgcagtggcatcaatgttggtacctacaggatatactggtaccagcag
+aagccagggagtcctccccagtatctcctgaggtacaaatcagactcagataagcagcag
+ggctctggagtccccagccgcttctctggatccaaagatgcttcggccaatgcagggatt
+ttactcatctctgggctccagtctgaggatgaggctgactattactgtatgatttggcac
+agcagcgcttct
+>IMGT000312|IGLV5-48*01|Homo sapiens|F|V-REGION|343639..343950|312 nt|1| | || |312+0=312| | |
+cagcctgtgctgactcagccaacttccctctcagcatctcctggagcatcagccagactc
+acctgcaccttgcgcagtggcatcaatcttggtagctacaggatattctggtaccagcag
+aagccagagagccctccccggtatctcctgagctactactcagactcaagtaagcatcag
+ggctctggagtccccagccgcttctctggatccaaagatgcttcgagcaatgcagggatt
+ttagtcatctctgggctccagtctgaggatgaggctgactattactgtatgatttggcac
+agcagtgcttct
+>KM455554|IGLV5-48*02|Homo sapiens|P|V-REGION|183..494|312 nt|1| | | | |312+0=312| | |
+caggctgtgctgactcagccaacttccctctcagcatctcctggagcatcagccagactc
+acctgcaccttgcgcagtggcatcagtgttggtagctacaggatatactggtaccagcag
+aagccagggagtcctcccaggtatctcctgaactactactcagactcagataagcaccag
+ggctctggagtccccagccgcttctctggatccaaagatgcttcgaccaatgcagggatt
+ttattcatctctgggctctagtctgaggatgaggctgactattactgtatgatttggcac
+agcagtgcttct
+>D87018|IGLV5-52*01|Homo sapiens|F|V-REGION|14819..15135|317 nt|1| | | | |317+0=317| | |
+cagcctgtgctgactcagccatcttcccattctgcatcttctggagcatcagtcagactc
+acctgcatgctgagcagtggcttcagtgttggggacttctggataaggtggtaccaacaa
+aagccagggaaccctccccggtatctcctgtactaccactcagactccaataagggccaa
+ggctctggagttcccagccgcttctctggatccaacgatgcatcagccaatgcagggatt
+ctgcgtatctctgggctccagcctgaggatgaggctgactattactgtggtacatggcac
+agcaactctaagactca
+>Z73673|IGLV6-57*01|Homo sapiens|F|V-REGION|1..296|296 nt|1| | | | |296+0=296| | |
+aattttatgctgactcagccccactctgtgtcggagtctccggggaagacggtaaccatc
+tcctgcacccgcagcagtggcagcattgccagcaactatgtgcagtggtaccagcagcgc
+ccgggcagttcccccaccactgtgatctatgaggataaccaaagaccctctggggtccct
+gatcggttctctggctccatcgacagctcctccaactctgcctccctcaccatctctgga
+ctgaagactgaggacgaggctgactactactgtcagtcttatgatagcagcaatca
+>KM455556|IGLV6-57*02|Homo sapiens|F|V-REGION|183..478|296 nt|1| | | | |296+0=296| | |
+aattttatgctgactcagccccactctgtgtcggagtctccggggaagacggtaaccatc
+tcctgcaccggcagcagtggcagcattgccagcaactatgtgcagtggtaccagcagcgc
+ccgggcagtgcccccaccactgtgatctatgaggataaccaaagaccctctggggtccct
+gatcggttctctggctccatcgacagctcctccaactctgcctccctcaccatctctgga
+ctgaagactgaggacgaggctgactactactgtcagtcttatgatagcagcaatca
+>AC279220|IGLV6-57*03|Homo sapiens|F|V-REGION|396..691|296 nt|1| | | | |296+0=296| | |
+aattttatgctgactcagccccactctgtgtcggagtctccggggaagacggtaaccatc
+tcctgcacccgcagcagtggcagcattgccagcaactatgtgcagtggtaccagcagcgc
+ccgggcagtgcccccaccactgtgatctatgaggataaccaaagaccctctggggtccct
+gatcggttctctggctccatcgacagctcctccaactctgcctccctcaccatctctgga
+ctgaagactgaggacgaggctgactactactgtcagtcttatgatagcagcaatca
+>IMGT000312|IGLV6-57*04|Homo sapiens|F|V-REGION|186244..186539|296 nt|1| | || |296+0=296| | |
+aattttatgctgactcagccgcactctgtgtcggagtctccggggaagacggtaaccatc
+tcctgcacccgcagcagtggcagcattgccagcaactatgtgcagtggtaccagcagcgc
+ccgggcagtgcccccaccactgtgatctatgaggataaccaaagaccctctggggtccct
+gatcggttctctggctccatcgacagctcctccaactctgcctccctcaccatctctgga
+ctgaagactgaggacgaggctgactactactgtcagtcttatgatagcagcaatca
+>X14614|IGLV7-43*01|Homo sapiens|F|V-REGION|414..707|294 nt|1| | | | |294+0=294| | |
+cagactgtggtgactcaggagccctcactgactgtgtccccaggagggacagtcactctc
+acctgtgcttccagcactggagcagtcaccagtggttactatccaaactggttccagcag
+aaacctggacaagcacccagggcactgatttatagtacaagcaacaaacactcctggacc
+cctgcccggttctcaggctccctccttgggggcaaagctgccctgacactgtcaggtgtg
+cagcctgaggacgaggctgagtattactgcctgctctactatggtggtgctcag
+>IMGT000280|IGLV7-46*01|Homo sapiens|F|V-REGION|360539..360832|294 nt|1| | | | |294+0=294| | |
+caggctgtggtgactcaggagccctcactgactgtgtccccaggagggacagtcactctc
+acctgtggctccagcactggagctgtcaccagtggtcattatccctactggttccagcag
+aagcctggccaagcccccaggacactgatttatgatacaagcaacaaacactcctggaca
+cctgcccggttctcaggctccctccttgggggcaaagctgccctgaccctttcgggtgcg
+cagcctgaggatgaggctgagtattactgcttgctctcctatagtggtgctcgg
+>D86999|IGLV7-46*02|Homo sapiens|F|V-REGION|9299..9592|294 nt|1| | | | |294+0=294| | |
+caggctgtggtgactcaggagccctcactgactgtgtccccaggagggacagtcactctc
+acctgtggctccagcactggagctgtcaccagtggtcattatccctactggttccagcag
+aagcctggccaagcccccaggacactgatttatgatacaagcaacaaacactcctggaca
+cctgcccggttctcaggctccctccttgggggcaaagctgccctgacccttttgggtgcg
+cagcctgaggatgaggctgagtattactgcttgctctcctatagtggtgctcgg
+>MW316675|IGLV7-46*04|Homo sapiens|F|V-REGION|355..648|294 nt|1| | | | |294+0=294| | |
+caggctgtggtgactcaggagccctcactgactgtgtccccaggagggacagtcactctc
+acctgtggctccagcactggagctgtcaccagtggtcattatccctactggttccagcag
+aagcctggccaagcccccaggacactgatttatgatacaagcaacaaacactcctggacc
+cctgcccggttctcaggctccctccttgggggcaaagctgccctgaccctttcgggtgcg
+cagcctgaggatgaggctgagtattactgcttgctctcctatagtggtgctcgg
+>OL352719|IGLV7-46*05|Homo sapiens|F|V-REGION|27312..27605|294 nt|1| | | | |294+0=294| | |
+caggctgtggtgactcaggagccctcattgactgtgtccccaggagggacagtcactctc
+acctgtggctccagcactggagctgtcaccagtggtcattatccctactggttccagcag
+aagcctggccaagcccccaggacactgatttatgatacaagcaacaaacactcctggaca
+cctgcccggttctcaggctccctccttgggggcaaagctgccctgaccctttcgggtgcg
+cagcctgaggatgaggctgagtattactgcttgctctcctatagtggtgctcgg
+>D87022|IGLV8-61*01|Homo sapiens|F|V-REGION|32520..32815|296 nt|1| | | | |296+0=296| | |
+cagactgtggtgacccaggagccatcgttctcagtgtcccctggagggacagtcacactc
+acttgtggcttgagctctggctcagtctctactagttactaccccagctggtaccagcag
+accccaggccaggctccacgcacgctcatctacagcacaaacactcgctcttctggggtc
+cctgatcgcttctctggctccatccttgggaacaaagctgccctcaccatcacgggggcc
+caggcagatgatgaatctgattattactgtgtgctgtatatgggtagtggcatttc
+>U03637|IGLV8-61*02|Homo sapiens|F|V-REGION|454..749|296 nt|1| | | | |296+0=296| | |
+cagactgtggtgacccaggagccatcgttctcagtgtcccctggagggacagtcacactc
+acttgtggcttgagctctggctcagtctctactagttactaccccagctggtaccagcag
+accccaggccaggctccacgcacgctcatctacagcacaaacactcgctcttctggggtc
+cctgattgcttctctggctccatccttgggaacaaagctgccctcaccatcacgggggcc
+caggcagatgatgaatctgattattactgtgtgctgtatatgggtagtggcatttc
+>AF266511|IGLV8-61*03|Homo sapiens|F|V-REGION|1..247|247 nt|2| | | | |247+0=247|partial in 5' and in 3' | |
+ggtgacccaggagccatcgttctcagtgtcccctggagggacagtcacactcacttgtgg
+cttgagctctggctcagtctctactagttactaccccagctggtaccagcagaccccagg
+ccaggctccacgcacgctcatctacagcacaaacactcgctcttctggcgtccctgatcg
+cttctctggctccatccttgggaacaaagctgccctcaccatcacgggggcccaggcaga
+tgatgaa
+>U03636|IGLV8/OR8-1*02|Homo sapiens|ORF|V-REGION|251..544|294 nt|1| | | | |294+0=294| | |
+cagtctgtggtgacccaggagccatcactctcagggtctcctggagggacggtcacactc
+acctgtgccctgagctctggctcagtctctaccagtcactaccccaggtggtaccagcag
+accccaggccaggctccacacatgctcatctgcagcccaaacacctgcccttctggggtc
+cctggtcgcttctctggctccatccttgggaacaaagctgccctcaccatcacggggact
+caggtagatgatgactctgatcattactgtgtgctgtacatgggtagtggcaat
+>AC279207|IGLV9-49*01|Homo sapiens|F|V-REGION|1257..1573|317 nt|1| | | | |317+0=317| | |
+cagcctgtgctgactcagccaccttctgcatcagcctccctgggagcctcggtcacactc
+acctgcaccctgagcagcggctacagtaattataaagtggactggtaccagcagagacca
+gggaagggcccccggtttgtgatgcgagtgggcactggtgggattgtgggatccaagggg
+gatggcatccctgatcgcttctcagtcttgggctcaggcctgaatcggtacctgaccatc
+aagaacatccaggaagaggatgagagtgactaccactgtggggcagaccatggcagtggg
+agcaacttcgtgtaacc
+>D87016|IGLV9-49*02|Homo sapiens|F|V-REGION|13445..13761|317 nt|1| | | | |317+0=317| | |
+cagcctgtgctgactcagccaccttctgcatcagcctccctgggagcctcggtcacactc
+acctgcaccctgagcagcggctacagtaattataaagtggactggtaccagcagagacca
+gggaagggcccccggtttgtgatgcgagtgggcactggtgggattgtgggatccaagggg
+gatggcatccctgatcgcttctcagtcttgggctcaggcctgaatcggtacctgaccatc
+aagaacatccaggaagaagatgagagtgactaccactgtggggcagaccatggcagtggg
+agcaacttcgtgtaacc
+>U03869|IGLV9-49*03|Homo sapiens|F|V-REGION|206..522|317 nt|1| | | | |317+0=317| | |
+cagcctgtgctgactcagccaccttctgcatcagcctccctgggagcctcggtcacactc
+acctgcaccctgagcagcggctacagtaattataaagtggactggtaccagcagagacca
+gggaagggcccccgatttgtgatgcgagtgggcactggtgggattgtgggatccaagggg
+gatggcatccctgatcgcttctcagtcttgggctcaggcctgaatcggtacctgaccatc
+aagaacatccaggaagaggatgagagtgactaccactgtggggcagaccatggcagtggg
+agcaacttcgtgtaacc

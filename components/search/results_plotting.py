@@ -26,7 +26,14 @@ PLOTTING_DATA_LIMIT = 1000000
 
 # Threshold for showing warning message about large result sets
 # If total_hits exceeds this, a message is shown indicating plots use a sample
-PLOTTING_WARNING_THRESHOLD = 100000
+PLOTTING_WARNING_THRESHOLD = 1_000_000
+
+# Keys used to temporarily lock the search form while expensive plotting queries
+# are running. This prevents users from modifying the search mask mid-render,
+# which can otherwise lead to crashes or inconsistent state.
+PLOTTING_LOCK_KEY = "plotting_controls_locked"
+PLOTTING_LOCK_REASON_KEY = "plotting_controls_locked_reason"
+PLOTTING_LOCK_REASON_PLOTS = "plots_loading"
 
 
 def render_results_plots(
@@ -54,14 +61,15 @@ def render_results_plots(
         return
     
     if show_heading:
-        st.markdown("### 📊 Result Distributions")
+        st.markdown("### :material/bar_chart_4_bars: Result Distributions HEAVY+LIGHT")
+        #! This does only get called if we select heavy AND light, why do we have this twice?
     
     # Check if we have a very large result set (will be sampled)
     total_hits = statistics.get('total_hits', 0)
     
     if total_hits > PLOTTING_WARNING_THRESHOLD:
         st.info(
-            f"ℹ️ **Large result set detected** ({total_hits:,} hits). "
+            f"**Large result set detected** ({total_hits:,} hits). "
             f"Plots are based on a sample of up to {PLOTTING_DATA_LIMIT:,} sequences for performance. "
             f"Distributions should be representative of the full dataset."
         )
@@ -81,17 +89,37 @@ def render_results_plots(
     
     # Check if we have cached plotting data for this search
     cached_data = st.session_state.get(cache_key)
+    sequences_full_df = cached_data
     
-    if cached_data is not None:
-        # Use cached data - no need to fetch again
-        sequences_full_df = cached_data
-    else:
-        # Fetch only the columns needed for plotting (much faster)
-        with st.spinner("Loading data for plotting..."):
-            sequences_full_df = fetch_plotting_data(engine, search_params, is_paired, unpaired_chain_type)
+    if sequences_full_df is None:
+        lock_active = st.session_state.get(PLOTTING_LOCK_KEY, False)
+        # First rerun: lock the search controls so the form renders as disabled
+        if not lock_active:
+            st.session_state[PLOTTING_LOCK_KEY] = True
+            st.session_state[PLOTTING_LOCK_REASON_KEY] = PLOTTING_LOCK_REASON_PLOTS
+            st.rerun()
         
-        # Cache the fetched data
-        st.session_state[cache_key] = sequences_full_df
+        fetch_successful = False
+        try:
+            # Fetch only the columns needed for plotting (much faster)
+            with st.spinner("Loading data for plotting..."):
+                sequences_full_df = fetch_plotting_data(
+                    engine,
+                    search_params,
+                    is_paired,
+                    unpaired_chain_type
+                )
+            fetch_successful = True
+            # Cache the fetched data
+            st.session_state[cache_key] = sequences_full_df
+        finally:
+            st.session_state[PLOTTING_LOCK_KEY] = False
+            st.session_state.pop(PLOTTING_LOCK_REASON_KEY, None)
+        
+        if fetch_successful:
+            # Second rerun: re-enable controls and render plots with cached data
+            st.rerun()
+        return
     
     if sequences_full_df.empty:
         st.info("No results available for plotting.")
@@ -257,7 +285,7 @@ def _render_plot_download_buttons(
         
         if status == "idle":
             if st.button(
-                "📥 Download Figures",
+                "⬇ Download Figures",
                 key=f"{download_key}_button_figures",
                 width='stretch'
             ):
@@ -376,7 +404,7 @@ def _render_plot_download_buttons(
         
         if status == "idle":
             if st.button(
-                "📥 Download Figures + Raw Data",
+                "⬇ Download Figures + Raw Data",
                 key=f"{download_key}_button_raw",
                 width='stretch'
             ):
@@ -1235,7 +1263,7 @@ def render_inferred_pairing_plots(
         return
     
     # Determine heading and color scheme based on what we're inferring
-    heading_icon = "🔬" if chain_type == "Heavy" else "🧬"
+    heading_icon = ":material/genetics:" if chain_type == "Heavy" else "🧬"
     heading_chain = "Light" if chain_type == "Heavy" else "Heavy"
     
     # Color scheme based on what we're inferring (not the chain type being searched)
@@ -1946,14 +1974,14 @@ def plot_cdr_length_distribution(
     length_counts = lengths.value_counts().sort_index()
     
     # Prepare title with highlighting
-    display_title = f"🔍 {title}" if is_highlighted else title
+    display_title = f"{title}" if is_highlighted else title
     title_config = {
         'text': display_title,
         'x': 0.5,
         'xanchor': 'center'
     }
     if is_highlighted:
-        title_config['font'] = {'color': '#FF6B35', 'size': 16}  # Orange-red color for highlighting
+        title_config['font'] = {'color': '#B4DCEA', 'size': 16}
     
     if chain_type == "light":
         color_scale = [
@@ -2028,14 +2056,14 @@ def plot_gene_distribution(
         return
     
     # Prepare title with highlighting
-    display_title = f"🔍 {title}" if is_highlighted else title
+    display_title = f"{title}" if is_highlighted else title
     title_config = {
         'text': display_title,
         'x': 0.5,
         'xanchor': 'center'
     }
     if is_highlighted:
-        title_config['font'] = {'color': '#FF6B35', 'size': 16}  # Orange-red color for highlighting
+        title_config['font'] = {'color': '#B4DCEA', 'size': 16}  # Orange-red color for highlighting
     
     if chain_type == "light":
         color_scale = [
@@ -2164,16 +2192,10 @@ def render_subject_hits_boxplot(
         st.info("Cannot display donor distribution on a log scale due to non-positive values.")
         return
 
-    y_values_millions = y_values / 1_000_000
-
-    if not (y_values_millions > 0).all():
-        st.info("Cannot display donor distribution on a log scale due to non-positive values.")
-        return
-
     # Calculate bounds with more padding to account for jittered points
     # Use more padding (1.5x) to ensure all jittered points are visible
-    min_val = float(y_values_millions.min())
-    max_val = float(y_values_millions.max())
+    min_val = float(y_values.min())
+    max_val = float(y_values.max())
     
     lower_bound = min_val * 0.8
     upper_bound = max_val * 1.5
@@ -2186,17 +2208,26 @@ def render_subject_hits_boxplot(
     if upper_bound <= lower_bound:
         upper_bound = lower_bound * 2.0
 
-    yaxis_range = [float(np.log10(lower_bound)), float(np.log10(upper_bound))]
+    log_min = float(np.log10(lower_bound))
+    log_max = float(np.log10(upper_bound))
+    if log_max - log_min < 2.0:
+        padding = (2.0 - (log_max - log_min)) / 2.0
+        log_min -= padding
+        log_max += padding
+    yaxis_range = [log_min, log_max]
+
+    tick_exponents = np.arange(np.floor(log_min), np.ceil(log_max) + 1, 1, dtype=int)
+    tick_vals = np.power(10.0, tick_exponents)
+    tick_text = [f"10^{exp}" for exp in tick_exponents]
 
     customdata = pd.DataFrame({
         "subject": donor_labels,
-        "hits_per_million": y_values
     }).to_numpy()
 
     fig = go.Figure()
     fig.add_trace(
         go.Box(
-            y=y_values_millions,
+            y=y_values,
             name="Donors",
             boxpoints="all",
             jitter=0.2,
@@ -2209,8 +2240,7 @@ def render_subject_hits_boxplot(
             fillcolor='rgba(76, 96, 133, 0.2)',  # Transparent box fill
             customdata=customdata,
             hovertemplate=(
-                "Subject: %{customdata[0]}<br>Hits/Million: %{customdata[1]:,.2f}"
-                "<br>Hits/Million (Millions): %{y:.4f}M<extra></extra>"
+                "Subject: %{customdata[0]}<br>Hits/Million: %{y:,.2f}<extra></extra>"
             ),
         )
     )
@@ -2237,10 +2267,12 @@ def render_subject_hits_boxplot(
         margin=dict(l=20, r=20, t=45, b=15),
         template="plotly_white",
         yaxis=dict(
-            title="Hits per Million (Millions)",
+            title="Hits per Million",
             type="log",
             range=yaxis_range,
-            tickformat=".3g",
+            tickmode="array",
+            tickvals=tick_vals,
+            ticktext=tick_text,
         ),
     )
 

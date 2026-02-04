@@ -54,31 +54,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-RESULTS_HEADING_SVG = dedent("""
-<svg width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect x="6" y="10" width="24" height="24" rx="6" stroke="#4F46E5" stroke-width="3"/>
-<path d="M20 28L30 38" stroke="#4F46E5" stroke-width="3" stroke-linecap="round"/>
-<circle cx="18" cy="22" r="6" stroke="#4F46E5" stroke-width="3"/>
-<path d="M36 12L40 12C41.1046 12 42 12.8954 42 14L42 34C42 35.1046 41.1046 36 40 36L28 36" stroke="#4F46E5" stroke-width="3" stroke-linecap="round"/>
-</svg>
-""").strip()
-
-
-def render_results_header() -> None:
-    """
-    Render the main search results heading with a custom SVG icon.
-    """
-    st.markdown(
-        dedent(f"""
-        <div style="display:flex;align-items:center;gap:0.75rem;margin:0.5rem 0 1rem;">
-        {RESULTS_HEADING_SVG}
-        <h2 style="margin:0;font-weight:600;color:inherit;">Search Results</h2>
-        </div>
-        """).strip(),
-        unsafe_allow_html=True,
-    )
-
-
 def render_search_results(
     sequences_sample_df: pd.DataFrame,
     stats_df: pd.DataFrame,
@@ -100,12 +75,12 @@ def render_search_results(
         engine: Search engine instance
         show_toast: Whether to show the success toast notification (default: True)
     """
-    # Show success toast only if requested (i.e., for new searches, not cached results)
-    if show_toast:
-        st.toast(f"✅ Search completed! Found {statistics['total_hits']:,} sequences", icon="🎉")
+    
+    # Visual separation from the search criteria section
+    st.markdown("---")
     
     # Display results
-    render_results_header()
+    st.markdown("# :material/search_insights: Search Results")
     
     # Statistics metrics
     render_statistics_metrics(statistics)
@@ -123,8 +98,8 @@ def render_search_results(
     )
 
     # Section 2: Result Distributions (subject statistics + plots)
-    st.markdown("### 📊 Result Distributions")
-    render_subject_statistics(stats_df, statistics, heading_level=4)
+    st.markdown("### :material/bar_chart_4_bars: Result Distributions")
+    render_subject_statistics(stats_df, statistics)
     render_results_plots(
         sequences_sample_df,
         statistics,
@@ -166,7 +141,6 @@ def render_statistics_metrics(statistics: Dict[str, Any]) -> None:
 def render_subject_statistics(
     stats_df: pd.DataFrame,
     statistics: Dict[str, Any],
-    heading_level: int = 3
 ) -> None:
     """
     Render statistics by subject table with download button.
@@ -174,16 +148,24 @@ def render_subject_statistics(
     Args:
         stats_df: Statistics dataframe
     """
-    heading_level = max(1, min(6, heading_level))
-    st.markdown(f"{'#' * heading_level} 📊 Statistics by Subject")
+    st.markdown("#### :material/group: Statistics by Subject")
     
     content_col, plot_col = st.columns([5, 1])
 
     with content_col:
         if not stats_df.empty:
             column_config = get_stats_column_config()
+            desired_order = [
+                "subject",
+                "total_sequences",
+                "hits",
+                "percentage",
+                "per_million",
+            ]
+            ordered_columns = [col for col in desired_order if col in stats_df.columns]
+            stats_df_display = stats_df[ordered_columns] if ordered_columns else stats_df
             st.dataframe(
-                stats_df,
+                stats_df_display,
                 width='stretch',
                 height=200,
                 column_config=column_config
@@ -218,11 +200,11 @@ def render_sequences_table(
     total_hits = statistics.get('total_hits', 0)
     if total_hits > 0:
         st.markdown(
-            f"### 🔬 Sample Sequences "
+            f"### :material/table: Sample Sequences "
             f"(showing {len(sequences_sample_df)} of {total_hits:,} total hits)"
         )
     else:
-        st.markdown("### 🔬 Sample Sequences")
+        st.markdown("### :material/table: Sample Sequences")
     
     if not sequences_sample_df.empty:
         # Format dataframe for display
@@ -237,7 +219,7 @@ def render_sequences_table(
         )
     else:
         if total_hits == 0:
-            st.info("🔍 **No sequences found matching your search criteria.** Try adjusting your search parameters.")
+            st.info(":material/search_off: **No sequences found matching your search criteria.** Try adjusting your search parameters.")
         else:
             st.info("No sequence data available.")
 
@@ -259,7 +241,7 @@ def render_stats_download_button(
     """
     if stats_df.empty:
         st.button(
-            "📊 Download Statistics (ZIP)",
+            "⬇ Download Statistics (ZIP)",
             disabled=True,
             width='stretch',
             type="primary"
@@ -810,55 +792,74 @@ def render_full_download_button(
                     st.error(f"❌ {error_msg}")
 
 
-def render_search_criteria_display(search_params: Dict[str, Any], is_paired: bool) -> None:
+LAST_SEARCH_INFO_MESSAGE = (
+    ":material/info: **You are currently viewing results from the search below.** "
+    "Modify the search parameters above to perform a new search."
+)
+
+
+def _render_last_search_header(show_info: bool = True) -> None:
+    """Render consistent header for last search criteria sections."""
+    st.markdown("## :material/search_gear: Last performed Search Criteria")
+    if show_info:
+        st.info(LAST_SEARCH_INFO_MESSAGE)
+
+
+def _render_selected_databases_summary(selected_databases: Optional[List[Any]]) -> None:
+    """Show a compact list of the databases used for the rendered search."""
+    if not selected_databases:
+        return
+    
+    db_names = []
+    for db_path in selected_databases:
+        path_obj = Path(str(db_path))
+        parent_name = path_obj.parent.name
+        db_names.append(f"{parent_name}/{path_obj.name}")
+    
+    st.caption(f"Databases: {', '.join(db_names)}")
+
+
+def render_search_criteria_display(
+    search_params: Dict[str, Any],
+    is_paired: bool,
+    selected_databases: Optional[List[Any]] = None
+) -> None:
     """
-    Render search criteria in a compact format showing the last performed search.
+    Render search criteria summary showing the last performed search.
     
     Args:
         search_params: Search parameters dictionary
         is_paired: Whether this is a paired search
+        selected_databases: Optional list of database identifiers used for the search
     """
     # Handle None or empty search_params
     if not search_params:
         search_params = {}
     
-    # Add divider above
-    st.divider()
-    
-    # Show visible notification
-    st.info("💡 **You are currently viewing results from the search below.** Modify search parameters above to perform a new search.")
-    
-    # Use an expander to make it compact and collapsible
-    with st.expander("📋 Last Search Parameters", expanded=True):
-        # Show selected databases in a compact format
+    if selected_databases is None:
         selected_databases = st.session_state.get('selected_databases', [])
-        if selected_databases:
-            db_names = []
-            for db_path in selected_databases:
-                db_name = Path(db_path).name
-                parent_name = Path(db_path).parent.name
-                db_names.append(f"{parent_name}/{db_name}")
-            # Display databases once after building the list
-            st.markdown(f"**Databases:** {', '.join(db_names)}")
+    _render_last_search_header()
+    _render_selected_databases_summary(selected_databases)
+    
+    if is_paired:
+        formatted_params = _format_query_params_for_display(search_params, True)
+        col1, col2 = st.columns(2)
         
-        if is_paired:
-            # Paired search - show Heavy and Light chain parameters in columns
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("**🧬 Heavy Chain:**")
-                _render_chain_criteria_compact(search_params, "heavy_", chain_type="Heavy")
-            
-            with col2:
-                st.markdown("**🔬 Light Chain:**")
-                _render_chain_criteria_compact(search_params, "light_", chain_type="Light")
-        else:
-            # Unpaired search - determine chain type from search_params or databases
-            chain_type = _determine_unpaired_chain_type(search_params, selected_databases)
-            display_params = dict(search_params)
-            st.markdown(f"**{'🧬' if chain_type == 'Heavy' else '🔬'} {chain_type} Chain:**")
-            prefix = "heavy_" if chain_type == "Heavy" else "light_"
-            _render_chain_criteria_compact(display_params, prefix, chain_type=chain_type)
+        with col1:
+            st.markdown("#### 🧬 Heavy Chain")
+            _render_chain_criteria(formatted_params, "heavy_", chain_type="Heavy")
+        
+        with col2:
+            st.markdown("#### 🔬 Light Chain")
+            _render_chain_criteria(formatted_params, "light_", chain_type="Light")
+        return
+    
+    chain_type = _determine_unpaired_chain_type(search_params, selected_databases)
+    formatted_params = _format_query_params_for_display(search_params, False)
+    prefix = "heavy_" if chain_type == "Heavy" else "light_"
+    icon = "🧬" if chain_type == "Heavy" else "🔬"
+    st.markdown(f"#### {icon} {chain_type} Chain")
+    _render_chain_criteria(formatted_params, prefix, chain_type=chain_type)
 
 
 def _render_chain_criteria(search_params: Dict[str, Any], prefix: str, chain_type: str = "Heavy") -> None:
@@ -916,7 +917,7 @@ def _render_chain_criteria(search_params: Dict[str, Any], prefix: str, chain_typ
         for param in params:
             st.write(param)
     else:
-        st.info("No search criteria specified for this chain.")
+        st.markdown("No search criteria specified for this chain.")
 
 
 def _render_chain_criteria_compact(search_params: Dict[str, Any], prefix: str, chain_type: str = "Heavy") -> None:
@@ -985,7 +986,7 @@ def render_search_parameters_expander(statistics: Dict[str, Any], is_paired: boo
     Args:
         statistics: Statistics dictionary containing query_params
     """
-    with st.expander("🔍 Search Parameters"):
+    with st.expander(":material/search: Search Parameters"):
         # Add selected databases information
         st.markdown("**Selected Databases:**")
         selected_databases = st.session_state.get('selected_databases', [])
@@ -1052,14 +1053,17 @@ def _format_query_params_for_display(query_params: Dict[str, Any], is_paired: bo
 
 def render_dual_search_criteria_display(
     heavy_statistics: Dict[str, Any],
-    light_statistics: Dict[str, Any]
+    light_statistics: Dict[str, Any],
+    selected_databases: Optional[List[Any]] = None
 ) -> None:
     """Render search criteria for dual unpaired searches."""
     heavy_params = _format_query_params_for_display(heavy_statistics.get('query_params', {}), False)
     light_params = _format_query_params_for_display(light_statistics.get('query_params', {}), False)
     
-    st.markdown("## 🔍 Search Criteria")
-    st.divider()
+    if selected_databases is None:
+        selected_databases = st.session_state.get('selected_databases', [])
+    _render_last_search_header()
+    _render_selected_databases_summary(selected_databases)
     
     col1, col2 = st.columns(2)
     
@@ -1077,7 +1081,8 @@ def render_dual_search_parameters_expander(
     light_statistics: Dict[str, Any]
 ) -> None:
     """Render expander showing heavy and light search parameters."""
-    with st.expander("🔍 Search Parameters"):
+    with st.expander(":material/search: Search Parameters HEAVY+LIGHT"):
+        #! TODO When does this get called?
         st.markdown("**Selected Databases:**")
         selected_databases = st.session_state.get('selected_databases', [])
         for db_path in selected_databases:
@@ -1122,7 +1127,7 @@ def render_dual_unpaired_results(
         st.toast("✅ Heavy and Light searches completed!", icon="🎉")
     
     st.markdown("---")
-    render_results_header()
+    st.markdown("# :material/search_insights: Search Results")
     
     # Heavy section
     render_chain_heading("Heavy Chain Results", "heavy", level=3, icon="🧬")
@@ -1145,7 +1150,7 @@ def render_dual_unpaired_results(
         engine=engine,
         stats_df=heavy_result['stats_df']
     )
-    render_subject_statistics(heavy_result['stats_df'], heavy_result['statistics'], heading_level=4)
+    render_subject_statistics(heavy_result['stats_df'], heavy_result['statistics'])
     render_results_plots(
         heavy_result['sequences_sample_df'],
         heavy_result['statistics'],
@@ -1176,7 +1181,7 @@ def render_dual_unpaired_results(
         engine=engine,
         stats_df=light_result['stats_df']
     )
-    render_subject_statistics(light_result['stats_df'], light_result['statistics'], heading_level=4)
+    render_subject_statistics(light_result['stats_df'], light_result['statistics'])
     render_results_plots(
         light_result['sequences_sample_df'],
         light_result['statistics'],

@@ -5,10 +5,169 @@ This module provides reusable form components for Heavy and Light chain searches
 eliminating code duplication and improving maintainability.
 """
 
+import re
 import streamlit as st
 from typing import Dict, Any, List, Tuple, Optional
 
 from components.search.styling import render_chain_heading
+
+# Allowed gene family / number ranges (human)
+# Heavy: IGHV1-8, IGHD1-7, IGHJ1-6
+# Light V: IGLV1-11 (Lambda), IGKV1-7 (Kappa)
+# Light J: IGLJ1-7 (Lambda), IGKJ1-5 (Kappa)
+HEAVY_V_RANGE = (1, 8)
+HEAVY_D_RANGE = (1, 7)
+HEAVY_J_RANGE = (1, 6)
+LIGHT_V_LAMBDA_RANGE = (1, 11)   # IGLV1-11
+LIGHT_V_KAPPA_RANGE = (1, 7)     # IGKV1-7
+LIGHT_J_LAMBDA_RANGE = (1, 7)    # IGLJ1-7
+LIGHT_J_KAPPA_RANGE = (1, 5)     # IGKJ1-5
+
+# Genes not present in OAS dataset (valid in general but rejected for this search)
+HEAVY_V_OAS_DISALLOWED = {8}                           # IGHV8
+LIGHT_V_LAMBDA_OAS_DISALLOWED_UNPAIRED = {11}           # IGLV11
+LIGHT_V_LAMBDA_OAS_DISALLOWED_PAIRED = {1, 11}          # IGLV1, IGLV11
+LIGHT_J_LAMBDA_OAS_DISALLOWED = {4, 5}                  # IGLJ4, IGLJ5
+
+
+def _parse_gene_tokens(gene_str: str) -> List[int]:
+    """Parse comma/pipe separated gene tokens and return the first number from each (family or gene number)."""
+    if not gene_str or not gene_str.strip():
+        return []
+    numbers = []
+    for token in re.split(r'[,\|\s]+', gene_str.strip()):
+        token = token.strip()
+        if not token:
+            continue
+        m = re.match(r'^[LlKk]?(\d+)', token)
+        if m:
+            numbers.append(int(m.group(1)))
+    return numbers
+
+
+def _parse_light_gene_tokens(gene_str: str) -> List[Tuple[Optional[str], int]]:
+    """Parse light chain gene string into (prefix, number) per token. prefix is 'L', 'K', or None."""
+    if not gene_str or not gene_str.strip():
+        return []
+    result = []
+    for token in re.split(r'[,\|\s]+', gene_str.strip()):
+        token = token.strip()
+        if not token:
+            continue
+        m = re.match(r'^([LlKk])?(\d+)', token)
+        if m:
+            prefix = m.group(1)
+            if prefix:
+                prefix = prefix.upper()
+            result.append((prefix, int(m.group(2))))
+    return result
+
+
+def validate_gene_range(gene_str: str, gene_type: str) -> Tuple[bool, Optional[str]]:
+    """
+    Validate that all gene numbers in the input fall within the allowed range for that gene type.
+    For light_v / light_j, L (Lambda) and K (Kappa) prefixes are checked separately:
+    - light_v: L or no prefix -> IGLV 1-11, K -> IGKV 1-7
+    - light_j: L or no prefix -> IGLJ 1-7, K -> IGKJ 1-5
+    gene_type: 'ighv' | 'ighd' | 'ighj' | 'light_v' | 'light_j'
+    Returns (is_valid, error_message).
+    """
+    if not gene_str or not gene_str.strip():
+        return True, None
+    if gene_type in ('light_v', 'light_j'):
+        tokens = _parse_light_gene_tokens(gene_str)
+        if not tokens:
+            return True, None
+        invalid: List[str] = []
+        if gene_type == 'light_v':
+            for prefix, n in tokens:
+                if prefix == 'K':
+                    lo, hi = LIGHT_V_KAPPA_RANGE
+                    if n < lo or n > hi:
+                        invalid.append(f"K{n} (IGKV allows 1-7 only)")
+                else:
+                    lo, hi = LIGHT_V_LAMBDA_RANGE
+                    if n < lo or n > hi:
+                        label = f"L{n}" if prefix else str(n)
+                        invalid.append(f"{label} (IGLV allows 1-11 only)")
+            if invalid:
+                return False, "IGLV 1-11 (Lambda), IGKV 1-7 (Kappa). Invalid: " + "; ".join(invalid)
+        else:  # light_j
+            for prefix, n in tokens:
+                if prefix == 'K':
+                    lo, hi = LIGHT_J_KAPPA_RANGE
+                    if n < lo or n > hi:
+                        invalid.append(f"K{n} (IGKJ allows 1-5 only)")
+                else:
+                    lo, hi = LIGHT_J_LAMBDA_RANGE
+                    if n < lo or n > hi:
+                        label = f"L{n}" if prefix else str(n)
+                        invalid.append(f"{label} (IGLJ allows 1-7 only)")
+            if invalid:
+                return False, "IGLJ 1-7 (Lambda), IGKJ 1-5 (Kappa). Invalid: " + "; ".join(invalid)
+        return True, None
+    # Heavy chain
+    numbers = _parse_gene_tokens(gene_str)
+    if not numbers:
+        return True, None
+    if gene_type == 'ighv':
+        lo, hi = HEAVY_V_RANGE
+        name = "IGHV"
+    elif gene_type == 'ighd':
+        lo, hi = HEAVY_D_RANGE
+        name = "IGHD"
+    elif gene_type == 'ighj':
+        lo, hi = HEAVY_J_RANGE
+        name = "IGHJ"
+    else:
+        return True, None
+    out_of_range = [n for n in numbers if n < lo or n > hi]
+    if out_of_range:
+        return False, f"{name} allows {lo}-{hi}. Invalid: {', '.join(str(n) for n in sorted(set(out_of_range)))}"
+    return True, None
+
+
+def validate_gene_range_oas(
+    gene_str: str, gene_type: str, is_paired: bool
+) -> Tuple[bool, Optional[str]]:
+    """
+    Validate that no gene is in the OAS-disallowed list (genes not present in the OAS dataset).
+    gene_type: 'ighv' | 'light_v' | 'light_j'
+    is_paired: True for paired search (stricter light V: L1, L11 disallowed).
+    Returns (is_valid, error_message).
+    """
+    if not gene_str or not gene_str.strip():
+        return True, None
+    if gene_type == 'ighv':
+        numbers = _parse_gene_tokens(gene_str)
+        disallowed = [n for n in numbers if n in HEAVY_V_OAS_DISALLOWED]
+        if disallowed:
+            return False, "IGHV8 is not present in the OAS dataset."
+        return True, None
+    if gene_type == 'light_v':
+        tokens = _parse_light_gene_tokens(gene_str)
+        disallowed_set = LIGHT_V_LAMBDA_OAS_DISALLOWED_PAIRED if is_paired else LIGHT_V_LAMBDA_OAS_DISALLOWED_UNPAIRED
+        invalid = []
+        for prefix, n in tokens:
+            if prefix != 'K' and n in disallowed_set:  # Lambda or no prefix
+                label = f"L{n}" if prefix else str(n)
+                invalid.append(label)
+        if invalid:
+            msg = "IGLV1, IGLV11" if is_paired else "IGLV11"
+            dataset_note = "paired dataset" if is_paired else "OAS dataset"
+            return False, f"{msg} not present in the {dataset_note}. Invalid: {', '.join(invalid)}"
+        return True, None
+    if gene_type == 'light_j':
+        tokens = _parse_light_gene_tokens(gene_str)
+        invalid = []
+        for prefix, n in tokens:
+            # Only reject explicit Lambda: L4, L5 (K4, K5 are valid IGKJ)
+            if prefix == 'L' and n in LIGHT_J_LAMBDA_OAS_DISALLOWED:
+                invalid.append(f"L{n}")
+        if invalid:
+            return False, "IGLJ4, IGLJ5 are not present in the OAS dataset. Invalid: " + ", ".join(invalid)
+        return True, None
+    return True, None
 
 
 def validate_gene_input(gene_str: str, field_name: str = "") -> bool:
@@ -18,7 +177,6 @@ def validate_gene_input(gene_str: str, field_name: str = "") -> bool:
     
     Returns True if valid, False otherwise.
     """
-    import re
     if not gene_str:
         return True
     
@@ -224,6 +382,12 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
             st.error("❌ Only: numbers, **-** , **|** **\\***")
             v_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}IGHV Gene")
+        elif v:
+            range_ok, range_err = validate_gene_range(v, "ighv")
+            if not range_ok and range_err:
+                st.error(f"❌ {range_err}")
+                v_valid = False
+                validation_errors.append(f"{'Heavy ' if prefix else ''}IGHV Gene")
     
     with col2:
         d_valid = True
@@ -238,6 +402,12 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
             st.error("❌ Only: numbers, **-** , **|** **\\***")
             d_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}IGHD Gene")
+        elif d:
+            range_ok, range_err = validate_gene_range(d, "ighd")
+            if not range_ok and range_err:
+                st.error(f"❌ {range_err}")
+                d_valid = False
+                validation_errors.append(f"{'Heavy ' if prefix else ''}IGHD Gene")
     
     with col3:
         j_valid = True
@@ -252,6 +422,12 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
             st.error("❌ Only: numbers, **-** , **|** **\\***")
             j_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}IGHJ Gene")
+        elif j:
+            range_ok, range_err = validate_gene_range(j, "ighj")
+            if not range_ok and range_err:
+                st.error(f"❌ {range_err}")
+                j_valid = False
+                validation_errors.append(f"{'Heavy ' if prefix else ''}IGHJ Gene")
     
     # CDR Length fields
     if show_title:
@@ -554,7 +730,7 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
         light_v = st.text_input(
             "IGLV/KV Gene",
             placeholder="e.g., 1-2 or 1 or L2 or K2",
-            help="Single: 1 or 1-2 | Multiple: 1,2 or 1-2,1-3 | Use L2 for Lambda only, K2 for Kappa only, or 2 for both",
+            help="IGLV 1-11 (Lambda), IGKV 1-7 (Kappa). L2 = Lambda only, K2 = Kappa only, 2 = both. Multiple: 1,2 or 1-2,1-3",
             key=f"{prefix}v_input",
             disabled=disabled
         )
@@ -562,13 +738,19 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
             st.error("❌ Only: numbers, **-** , **|** **\\***, and **L/K** for Lambda/Kappa")
             light_v_valid = False
             validation_errors.append("Light IGLV/KV Gene")
+        elif light_v:
+            range_ok, range_err = validate_gene_range(light_v, "light_v")
+            if not range_ok and range_err:
+                st.error(f"❌ {range_err}")
+                light_v_valid = False
+                validation_errors.append("Light IGLV/KV Gene")
     
     with col2:
         light_j_valid = True
         light_j = st.text_input(
-            "IGLJ Gene",
+            "IGLJ/KJ Gene",
             placeholder="e.g., 2 or L2 or K2",
-            help="Single: 2 | Multiple: 2,3 | Use L2 for Lambda only, K2 for Kappa only, or 2 for both",
+            help="IGLJ 1-7 (Lambda), IGKJ 1-5 (Kappa). L2 = Lambda only, K2 = Kappa only. K6/K7 are invalid (no IGKJ6/7).",
             key=f"{prefix}j_input",
             disabled=disabled
         )
@@ -576,6 +758,12 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
             st.error("❌ Only: numbers, **-** , **|** **\\***, and **L/K** for Lambda/Kappa")
             light_j_valid = False
             validation_errors.append("Light IGLJ Gene")
+        elif light_j:
+            range_ok, range_err = validate_gene_range(light_j, "light_j")
+            if not range_ok and range_err:
+                st.error(f"❌ {range_err}")
+                light_j_valid = False
+                validation_errors.append("Light IGLJ Gene")
     
     # CDR Length fields
     if show_title:

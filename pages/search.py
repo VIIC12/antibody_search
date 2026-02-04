@@ -4,7 +4,7 @@ import time
 import os
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from streamlit_autorefresh import st_autorefresh
 
 logger = logging.getLogger(__name__)
@@ -298,7 +298,7 @@ def create_paired_search_form(disabled: bool = False) -> Dict[str, Any]:
 
 def search_page_content():
     """Main search page content."""
-    st.markdown("# :blue[🔬 AntibodyHunter]")
+    st.title(":blue[:material/vaccines: AntibodyHunter]")
     st.markdown("#### :grey[High-Performance Antibody Database Search]")
     
     # Print database path once when server starts (only on first call)
@@ -336,7 +336,113 @@ def search_page_content():
         )
         st.stop()
     
-    selected_databases, selected_db, is_ready = render_database_selection(db_structure)
+    # Apply IgBLAST prefill once: set form keys and database selection, then clear prefill
+    prefill = st.session_state.pop('search_prefill_from_igblast', None)
+    if prefill is not None:
+        mode = prefill.get('mode', '')
+        heavy = prefill.get('heavy') or {}
+        light = prefill.get('light') or {}
+        db_struct = db_structure
+        if mode == 'unpaired_heavy' and heavy:
+            st.session_state['ighv_input'] = heavy.get('v', '')
+            st.session_state['ighd_input'] = heavy.get('d', '')
+            st.session_state['ighj_input'] = heavy.get('j', '')
+            st.session_state['cdr1_length_input'] = heavy.get('cdr1_length') or ''
+            st.session_state['cdr2_length_input'] = heavy.get('cdr2_length') or ''
+            st.session_state['cdr3_length_input'] = heavy.get('cdr3_length') or ''
+            st.session_state['cdr1_motif_input'] = heavy.get('cdr1_motif') or ''
+            st.session_state['cdr2_motif_input'] = heavy.get('cdr2_motif') or ''
+            st.session_state['cdr3_motif_input'] = heavy.get('cdr3_motif') or ''
+            st.session_state['heavy_main'] = True
+            st.session_state['light_main'] = False
+            st.session_state['paired_main'] = False
+            for subdir in db_struct.get('Heavy', {}).keys():
+                st.session_state[f'heavy_{subdir}'] = True
+            for subdir in db_struct.get('Light', {}).keys():
+                st.session_state[f'light_{subdir}'] = False
+            st.session_state['paired_real_bundle'] = False
+            st.session_state['search_prefill_message'] = 'Search criteria pre-filled from IgBLAST (unpaired heavy). Select databases and run your search.'
+        elif mode == 'unpaired_light' and light:
+            st.session_state['light_v_input'] = light.get('v', '')
+            st.session_state['light_j_input'] = light.get('j', '')
+            st.session_state['light_cdr1_length_input'] = light.get('cdr1_length') or ''
+            st.session_state['light_cdr2_length_input'] = light.get('cdr2_length') or ''
+            st.session_state['light_cdr3_length_input'] = light.get('cdr3_length') or ''
+            st.session_state['light_cdr1_motif_input'] = light.get('cdr1_motif') or ''
+            st.session_state['light_cdr2_motif_input'] = light.get('cdr2_motif') or ''
+            st.session_state['light_cdr3_motif_input'] = light.get('cdr3_motif') or ''
+            st.session_state['heavy_main'] = False
+            st.session_state['light_main'] = True
+            st.session_state['paired_main'] = False
+            for subdir in db_struct.get('Heavy', {}).keys():
+                st.session_state[f'heavy_{subdir}'] = False
+            for subdir in db_struct.get('Light', {}).keys():
+                st.session_state[f'light_{subdir}'] = True
+            st.session_state['paired_real_bundle'] = False
+            st.session_state['search_prefill_message'] = 'Search criteria pre-filled from IgBLAST (unpaired light). Select databases and run your search.'
+        elif mode == 'paired' and (heavy or light):
+            st.session_state['heavy_v_input'] = heavy.get('v', '')
+            st.session_state['heavy_d_input'] = heavy.get('d', '')
+            st.session_state['heavy_j_input'] = heavy.get('j', '')
+            st.session_state['heavy_cdr1_length_input'] = heavy.get('cdr1_length') or ''
+            st.session_state['heavy_cdr2_length_input'] = heavy.get('cdr2_length') or ''
+            st.session_state['heavy_cdr3_length_input'] = heavy.get('cdr3_length') or ''
+            st.session_state['heavy_cdr1_motif_input'] = heavy.get('cdr1_motif') or ''
+            st.session_state['heavy_cdr2_motif_input'] = heavy.get('cdr2_motif') or ''
+            st.session_state['heavy_cdr3_motif_input'] = heavy.get('cdr3_motif') or ''
+            st.session_state['light_v_input'] = light.get('v', '')
+            st.session_state['light_j_input'] = light.get('j', '')
+            st.session_state['light_cdr1_length_input'] = light.get('cdr1_length') or ''
+            st.session_state['light_cdr2_length_input'] = light.get('cdr2_length') or ''
+            st.session_state['light_cdr3_length_input'] = light.get('cdr3_length') or ''
+            st.session_state['light_cdr1_motif_input'] = light.get('cdr1_motif') or ''
+            st.session_state['light_cdr2_motif_input'] = light.get('cdr2_motif') or ''
+            st.session_state['light_cdr3_motif_input'] = light.get('cdr3_motif') or ''
+            st.session_state['heavy_main'] = False
+            st.session_state['light_main'] = False
+            st.session_state['paired_main'] = True
+            for subdir in db_struct.get('Heavy', {}).keys():
+                st.session_state[f'heavy_{subdir}'] = False
+            for subdir in db_struct.get('Light', {}).keys():
+                st.session_state[f'light_{subdir}'] = False
+            st.session_state['paired_real_bundle'] = True
+            st.session_state['search_prefill_message'] = 'Search criteria pre-filled from IgBLAST (paired). Select databases and run your search.'
+        elif mode == 'dual_unpaired' and (heavy or light):
+            st.session_state['dual_heavy_v_input'] = heavy.get('v', '')
+            st.session_state['dual_heavy_d_input'] = heavy.get('d', '')
+            st.session_state['dual_heavy_j_input'] = heavy.get('j', '')
+            st.session_state['dual_heavy_cdr1_length_input'] = heavy.get('cdr1_length') or ''
+            st.session_state['dual_heavy_cdr2_length_input'] = heavy.get('cdr2_length') or ''
+            st.session_state['dual_heavy_cdr3_length_input'] = heavy.get('cdr3_length') or ''
+            st.session_state['dual_heavy_cdr1_motif_input'] = heavy.get('cdr1_motif') or ''
+            st.session_state['dual_heavy_cdr2_motif_input'] = heavy.get('cdr2_motif') or ''
+            st.session_state['dual_heavy_cdr3_motif_input'] = heavy.get('cdr3_motif') or ''
+            st.session_state['dual_light_v_input'] = light.get('v', '')
+            st.session_state['dual_light_j_input'] = light.get('j', '')
+            st.session_state['dual_light_cdr1_length_input'] = light.get('cdr1_length') or ''
+            st.session_state['dual_light_cdr2_length_input'] = light.get('cdr2_length') or ''
+            st.session_state['dual_light_cdr3_length_input'] = light.get('cdr3_length') or ''
+            st.session_state['dual_light_cdr1_motif_input'] = light.get('cdr1_motif') or ''
+            st.session_state['dual_light_cdr2_motif_input'] = light.get('cdr2_motif') or ''
+            st.session_state['dual_light_cdr3_motif_input'] = light.get('cdr3_motif') or ''
+            st.session_state['heavy_main'] = True
+            st.session_state['light_main'] = True
+            st.session_state['paired_main'] = False
+            for subdir in db_struct.get('Heavy', {}).keys():
+                st.session_state[f'heavy_{subdir}'] = True
+            for subdir in db_struct.get('Light', {}).keys():
+                st.session_state[f'light_{subdir}'] = True
+            st.session_state['paired_real_bundle'] = False
+            st.session_state['search_prefill_message'] = 'Search criteria pre-filled from IgBLAST (dual unpaired). Select databases and run your search.'
+        else:
+            st.session_state['search_prefill_message'] = None
+    
+    is_plotting_locked = st.session_state.get('plotting_controls_locked', False)
+    disable_db_selection = (st.session_state.search_status == "running") or is_plotting_locked
+    selected_databases, selected_db, is_ready = render_database_selection(
+        db_structure,
+        disabled=disable_db_selection
+    )
     if selected_databases is None:
         selected_databases = []
     
@@ -356,12 +462,20 @@ def search_page_content():
         elif '/Heavy/' in db_path_str:
             has_heavy = True
     
+    def _serialize_selected_databases(db_paths: List[Any]) -> List[str]:
+        """Normalize database identifiers for reuse after the user edits the mask."""
+        try:
+            return sorted([str(path) for path in db_paths])
+        except Exception:
+            return sorted([f"{path}" for path in db_paths])
+    
     def render_cached_results_for_mode(cached_results: Dict[str, Any], current_mode: Optional[str] = None) -> bool:
         engine_obj = st.session_state.get('search_engine')
         if engine_obj is None or not cached_results:
             return False
         
         mode = cached_results.get('mode')
+        cached_selected_databases = cached_results.get('selected_databases')
         if mode == 'dual_unpaired':
             if current_mode and current_mode != 'dual_unpaired':
                 return False
@@ -371,7 +485,8 @@ def search_page_content():
                 return False
             render_dual_search_criteria_display(
                 heavy_result.get('statistics', {}),
-                light_result.get('statistics', {})
+                light_result.get('statistics', {}),
+                selected_databases=cached_selected_databases
             )
             render_dual_unpaired_results(
                 heavy_result,
@@ -404,7 +519,11 @@ def search_page_content():
         if sequences_sample_df is None or statistics is None:
             return False
         
-        render_search_criteria_display(search_params, is_cached_paired)
+        render_search_criteria_display(
+            search_params,
+            is_cached_paired,
+            selected_databases=cached_selected_databases
+        )
         render_search_results(
             sequences_sample_df,
             stats_df,
@@ -439,35 +558,43 @@ def search_page_content():
     if not is_ready:
         if 'last_search_results' in st.session_state:
             cached_results = st.session_state['last_search_results']
-            if render_cached_results_for_mode(cached_results, current_mode=search_mode):
-                st.warning("⚠️ Database is loading. Showing cached results below.")
+            render_cached_results_for_mode(cached_results, current_mode=search_mode)
         return
     
     if not selected_db:
         st.warning("⚠️ Please select at least one database to search")
         return
     
+    # Show IgBLAST prefill message once, then clear
+    prefill_msg = st.session_state.pop('search_prefill_message', None)
+    if prefill_msg:
+        st.info(f"💡 **{prefill_msg}**")
+    
     engine = st.session_state['search_engine']
     is_paired = search_mode == 'paired'
 
-    st.markdown("## 🔍 Search Criteria")
+    st.markdown("## :material/search: Search Criteria")
     st.divider()
     
     # Determine if form should be disabled
-    is_search_running = st.session_state.search_status == "running"
     search_status = st.session_state.search_status
+    is_search_running = search_status == "running"
+    disable_form_controls = is_search_running or is_plotting_locked
     
-    # Disable form fields when search is running
+    if is_plotting_locked:
+        st.info(":material/hourglass: Result plots are loading. Search controls will unlock shortly.")
+    
+    # Disable form fields when search is running or plots are loading
     if search_mode == 'paired':
-        form_data = create_paired_search_form(disabled=is_search_running)
+        form_data = create_paired_search_form(disabled=disable_form_controls)
         search_params = form_data
         dual_form_data = None
     elif search_mode == 'dual_unpaired':
-        form_data = create_dual_unpaired_search_form(disabled=is_search_running)
+        form_data = create_dual_unpaired_search_form(disabled=disable_form_controls)
         search_params = None
         dual_form_data = form_data
     else:
-        form_data = create_unpaired_search_form(loadable_databases, disabled=is_search_running)
+        form_data = create_unpaired_search_form(loadable_databases, disabled=disable_form_controls)
         search_params = form_data
         dual_form_data = None
     
@@ -567,16 +694,16 @@ def search_page_content():
         # Always show a submit button (required by Streamlit forms)
         if search_status == "idle":
             search_submitted = st.form_submit_button(
-                "🔍 Search Database",
+                ":material/database_search: Search Database",
                 type="primary",
-                disabled=has_validation_errors,
+                disabled=(has_validation_errors or disable_form_controls),
                 use_container_width=True
             )
         elif search_status == "running":
             # Show hidden disabled submit button (required by Streamlit, but we show custom button above)
             # This button is hidden by global CSS (see top of file)
             search_submitted = st.form_submit_button(
-                "🔍 Search Database",
+                ":material/database_search: Search Database",
                 disabled=True,
                 use_container_width=True
             )
@@ -586,9 +713,10 @@ def search_page_content():
             if search_status == "completed" and result and result.get('success'):
                 total_time = time.time() - st.session_state.search_start_time if st.session_state.search_start_time else 0
                 time_label = f" in {total_time:.1f}s" if total_time else ""
-                button_label = f"✅ Search Complete{time_label}"
+                button_label = f":material/search_check_2: Search Complete{time_label}"
             else:
                 button_label = "❌ Search Failed"
+                #! TODO Should never happen, when do we get here?
             
             # This button is hidden by global CSS (see top of file)
             search_submitted = st.form_submit_button(
@@ -597,7 +725,11 @@ def search_page_content():
                 use_container_width=True
             )
     
-    # Ensure form is completely closed before rendering results
+    # Show validation error (e.g. OAS-disallowed gene) right below the form, not after results
+    search_validation_error = st.session_state.pop("search_validation_error", None)
+    if search_validation_error:
+        st.error(f"❌ **{search_validation_error}**")
+    
     # Add a small spacer to separate form from results
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -692,9 +824,9 @@ def search_page_content():
                 if search_mode == 'dual_unpaired':
                     heavy_hits = result.get('heavy', {}).get('statistics', {}).get('total_hits', 0)
                     light_hits = result.get('light', {}).get('statistics', {}).get('total_hits', 0)
-                    st.toast(f"✅ Search completed! Found {heavy_hits:,} heavy and {light_hits:,} light sequences", icon="✅")
+                    st.toast(f"Search completed! Found {heavy_hits:,} heavy and {light_hits:,} light sequences", icon=":material/search_check_2:")
                 else:
-                    st.toast(f"✅ Search completed! Found {total_hits:,} sequences", icon="✅")
+                    st.toast(f"Search completed! Found {total_hits:,} sequences", icon=":material/search_check_2:")
                 st.session_state['search_completed_toast_shown'] = True
             
             # Note: Search parameters are stored when search is submitted, not here
@@ -707,7 +839,8 @@ def search_page_content():
                     st.session_state['last_search_results'] = {
                         'mode': 'dual_unpaired',
                         'heavy': heavy_result,
-                        'light': light_result
+                        'light': light_result,
+                        'selected_databases': _serialize_selected_databases(loadable_databases)
                     }
                     with results_container.container():
                         render_dual_unpaired_results(heavy_result, light_result, engine, show_toast=False)
@@ -734,7 +867,8 @@ def search_page_content():
                         'statistics': statistics,
                         'stats_df': stats_df,
                         'is_paired': is_paired,
-                        'search_params': search_params_result
+                        'search_params': search_params_result,
+                        'selected_databases': _serialize_selected_databases(loadable_databases)
                     }
                     try:
                         # Ensure engine is valid before rendering
@@ -827,10 +961,13 @@ def search_page_content():
         heavy_valid, heavy_error = validate_search_criteria(heavy_info['search_params'], False)
         light_valid, light_error = validate_search_criteria(light_info['search_params'], False)
         if not heavy_valid or not light_valid:
+            parts = []
             if not heavy_valid and heavy_error:
-                st.warning(f"Heavy Chain: {heavy_error}")
+                parts.append(f"Heavy Chain: {heavy_error}")
             if not light_valid and light_error:
-                st.warning(f"Light Chain: {light_error}")
+                parts.append(f"Light Chain: {light_error}")
+            st.session_state["search_validation_error"] = " ".join(parts)
+            st.rerun()
             return
         
         # Store search parameters for comparison (to detect changes later)
@@ -863,7 +1000,8 @@ def search_page_content():
     is_valid, error_message = validate_search_criteria(search_params, is_paired)
     if not is_valid:
         if error_message:
-            st.warning(error_message)
+            st.session_state["search_validation_error"] = error_message
+        st.rerun()
         return
     
     # Store search parameters for comparison (to detect changes later)

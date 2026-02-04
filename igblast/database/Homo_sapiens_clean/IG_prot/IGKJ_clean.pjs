@@ -1,0 +1,24 @@
+{
+  "version": "1.2",
+  "dbname": "IGKJ_clean",
+  "dbtype": "Protein",
+  "db-version": 5,
+  "description": "database/Homo_sapiens_clean/IG_prot/IGKJ_clean",
+  "number-of-letters": 120,
+  "number-of-sequences": 10,
+  "last-updated": "2026-02-03T17:32:00",
+  "number-of-volumes": 1,
+  "bytes-total": 50383,
+  "bytes-to-cache": 339,
+  "files": [
+    "IGKJ_clean.pdb",
+    "IGKJ_clean.phr",
+    "IGKJ_clean.pin",
+    "IGKJ_clean.pog",
+    "IGKJ_clean.pos",
+    "IGKJ_clean.pot",
+    "IGKJ_clean.psq",
+    "IGKJ_clean.ptf",
+    "IGKJ_clean.pto"
+  ]
+}
