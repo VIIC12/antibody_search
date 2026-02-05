@@ -631,7 +631,7 @@ def render_full_download_button(
                         st.download_button(
                             label=f"⬇ Download Full Results ({file_size_mb:.2f} MB)",
                             data=result.get('parquet_data', b''),
-                            file_name=result.get('filename', 'sequences.parquet'),
+                            file_name=result.get('filename', 'sequences.csv.gz'),
                             mime="application/octet-stream",
                             width='stretch',
                             type="primary",

@@ -5,6 +5,7 @@ This module provides functions for preparing and packaging search results
 for download.
 """
 
+import gzip
 import io
 import json
 import hashlib
@@ -379,6 +380,25 @@ def prepare_stats_download(
     return zip_data, filename
 
 
+def _convert_parquet_to_csv_gz(parquet_path: Path, csv_gz_path: Path) -> None:
+    """
+    Convert a Parquet file to gzip-compressed CSV by streaming batches directly
+    into a gzip writer. Avoids writing uncompressed CSV to disk.
+    """
+    parquet_file = pq.ParquetFile(parquet_path)
+    first_batch = True
+    with gzip.open(csv_gz_path, "wt", encoding="utf-8") as f_out:
+        for batch in parquet_file.iter_batches():
+            chunk_df = batch.to_pandas()
+            chunk_df.to_csv(
+                f_out,
+                header=first_batch,
+                index=False,
+            )
+            first_batch = False
+    parquet_path.unlink()
+
+
 def prepare_full_results_download_background(
     database_paths: List[str],
     search_params: Dict[str, Any],
@@ -386,10 +406,11 @@ def prepare_full_results_download_background(
     chain_label: str
 ) -> Dict[str, Any]:
     """
-    Prepare full results table download (Parquet file) in a background process.
+    Prepare full results table download (gzip-compressed CSV) in a background process.
     
-    This function performs a full search (no limit) and creates a Parquet file
-    for download. This is a heavy operation that should run in the background.
+    This function performs a full search (no limit), writes results as Parquet
+    in chunks, then converts to gzip-compressed CSV (.csv.gz) and serves it for
+    download. This is a heavy operation that should run in the background.
     
     Args:
         database_paths: List of database directory paths
@@ -400,9 +421,9 @@ def prepare_full_results_download_background(
     Returns:
         Dictionary with keys:
         - 'success': Boolean indicating if operation succeeded
-        - 'parquet_data': Parquet file content as bytes
-        - 'filename': Suggested filename for download
-        - 'file_size_bytes': Size of Parquet file in bytes
+        - 'parquet_data': .csv.gz file content as bytes (for small files; key kept for API compatibility)
+        - 'filename': Suggested filename for download (.csv.gz)
+        - 'file_size_bytes': Size of file in bytes
         - 'sequence_count': Number of sequences in file
         - 'error': Error message if failed
     """
@@ -487,10 +508,12 @@ def prepare_full_results_download_background(
             "chain_label": chain_label,
             "is_paired": is_paired
         })
-        parquet_filename = f"ABHunter_sequences_{chain_label}_{identifier}.parquet"
+        base_filename = f"ABHunter_sequences_{chain_label}_{identifier}"
+        parquet_filename = f"{base_filename}.parquet"
+        csv_gz_filename = f"{base_filename}.csv.gz"
         
-        # Get download path for streaming write
-        token, file_path, download_url = _get_download_path(parquet_filename, "parquet")
+        # Get download path for streaming write (parquet first, then converted to CSV)
+        token, file_path, _ = _get_download_path(parquet_filename, "parquet")
         
         # Process in chunks to avoid memory issues - stream directly to disk
         CHUNK_SIZE = 100000  # Process 100k rows at a time
@@ -571,8 +594,13 @@ def prepare_full_results_download_background(
         # Set file permissions to be readable by nginx
         os.chmod(file_path, 0o644)
         
-        # Get file size from disk
-        file_size_bytes = file_path.stat().st_size
+        # Convert Parquet to gzip-compressed CSV for download
+        csv_gz_path = file_path.with_suffix(".csv.gz")
+        _convert_parquet_to_csv_gz(file_path, csv_gz_path)
+        
+        os.chmod(csv_gz_path, 0o644)
+        file_size_bytes = csv_gz_path.stat().st_size
+        download_url = f"/downloads/{token}.csv.gz"
         
         logger.info(f"Background full results download: Completed. File size: {file_size_bytes} bytes. Sequences: {sequence_count}")
         
@@ -586,7 +614,7 @@ def prepare_full_results_download_background(
             return {
                 'success': True,
                 'download_url': download_url,
-                'filename': parquet_filename,
+                'filename': csv_gz_filename,
                 'file_size_bytes': file_size_bytes,
                 'sequence_count': sequence_count,
                 'is_large_file': True,
@@ -595,14 +623,13 @@ def prepare_full_results_download_background(
         else:
             # For small files, read from disk and return bytes for direct download
             try:
-                with open(file_path, 'rb') as f:
-                    parquet_data = f.read()
-                # Delete the file since we're returning it in memory
-                file_path.unlink()
+                with open(csv_gz_path, 'rb') as f:
+                    file_data = f.read()
+                csv_gz_path.unlink()
                 return {
                     'success': True,
-                    'parquet_data': parquet_data,
-                    'filename': parquet_filename,
+                    'parquet_data': file_data,
+                    'filename': csv_gz_filename,
                     'file_size_bytes': file_size_bytes,
                     'sequence_count': sequence_count,
                     'is_large_file': False
