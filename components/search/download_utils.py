@@ -33,6 +33,24 @@ from src.search_engine import AntibodySearchEngine
 # Threshold for large files (5MB)
 LARGE_FILE_THRESHOLD = 5 * 1024 * 1024  # 5MB in bytes
 
+# Load .env once so ABHUNTER_DOWNLOAD_DIR is set when this module is used (e.g. from Streamlit or scripts)
+_env_loaded = False
+
+
+def _ensure_env_loaded() -> None:
+    """Load .env from project root once per process so ABHUNTER_DOWNLOAD_DIR etc. are set."""
+    global _env_loaded
+    if _env_loaded:
+        return
+    try:
+        from dotenv import load_dotenv
+        # Project root: components/search/download_utils.py -> go up to repo root
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        load_dotenv(repo_root / ".env")
+    except ImportError:
+        pass
+    _env_loaded = True
+
 
 def generate_filename_base(is_paired: bool) -> str:
     """
@@ -80,13 +98,13 @@ def _build_search_identifier(search_params: Dict[str, Any]) -> str:
 def _get_download_directory() -> Path:
     """
     Get the download directory path from environment variable or use default.
-    
-    Returns:
-        Path object for the download directory
+    Always returns an absolute path so writes do not depend on process CWD.
+    In Docker, set ABHUNTER_DOWNLOAD_DIR=/app/downloads; the same path must
+    be mounted for nginx (read-only) to serve files.
     """
-    download_dir = os.getenv("ABHUNTER_DOWNLOAD_DIR", "./downloads")
-    download_path = Path(download_dir)
-    return download_path
+    _ensure_env_loaded()
+    raw = os.getenv("ABHUNTER_DOWNLOAD_DIR", "./downloads")
+    return Path(raw).resolve()
 
 
 def _generate_download_token() -> str:
@@ -101,7 +119,7 @@ def _generate_download_token() -> str:
 
 def _get_download_path(
     original_filename: str,
-    file_type: str = "parquet"
+    file_type: str = "zip"
 ) -> Tuple[str, Path, str]:
     """
     Generate download path and URL for streaming file writes.
@@ -117,9 +135,9 @@ def _get_download_path(
         OSError: If directory cannot be created
     """
     download_dir = _get_download_directory()
-    
-    # Create directory if it doesn't exist
-    download_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create directory if it doesn't exist (mode so nginx/process can read/write as needed)
+    download_dir.mkdir(parents=True, exist_ok=True, mode=0o775)
     
     # Generate unique token
     token = _generate_download_token()
@@ -1077,9 +1095,19 @@ def prepare_fasta_download_background(
             
             # Get download path for streaming write
             token, file_path, download_url = _get_download_path(filename, "zip")
-            
+
             # Create ZIP file directly on disk (not in memory)
-            with zipfile.ZipFile(file_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            try:
+                zip_fp = zipfile.ZipFile(file_path, 'w', zipfile.ZIP_DEFLATED)
+            except PermissionError as e:
+                download_dir = _get_download_directory()
+                raise PermissionError(
+                    f"Cannot write to download directory: {download_dir}. "
+                    "Ensure the directory exists and is writable by this process. "
+                    "In Docker, set ABHUNTER_DOWNLOAD_DIR=/app/downloads and mount the same host path "
+                    "(e.g. ./downloads) with write access; fix host permissions if needed (e.g. chmod 775 ./downloads)."
+                ) from e
+            with zip_fp as zip_file:
                 # Add FASTA files
                 for chain_type, fasta_content in fasta_files.items():
                     fasta_filename = f"sequences_{chain_type}.fasta"

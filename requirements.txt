@@ -108,6 +108,7 @@ pytokens==0.1.10
 pytz==2025.2
 PyYAML==6.0.3
 pyzmq==27.1.0
+python-dotenv==1.0.1
 referencing==0.36.2
 requests==2.32.5
 rfc3339-validator==0.1.4

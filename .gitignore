@@ -1,3 +1,10 @@
+# Antibody Search
+igblast/bin/igblastn
+igblast/bin/igblastp
+igblast/bin/makeblastdb
+igblast/bin/blastdbcmd
+
+
 # Python
 __pycache__/
 *.py[cod]
@@ -78,3 +85,4 @@ Temporary Items
 ### macOS Patch ###
 # iCloud generated files
 *.icloud
+ncbi-igblast-1.22.0-x64-linux.tar.gz

@@ -1,7 +1,15 @@
 #!/usr/bin/env python
-import streamlit as st
 from pathlib import Path
 import sys
+
+# Load .env from project root so ABHUNTER_DOWNLOAD_DIR, ABHUNTER_DB_PATH, etc. are set when running locally
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+except ImportError:
+    pass
+
+import streamlit as st
 import logging
 
 # Configure logging
