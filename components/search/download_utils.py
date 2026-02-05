@@ -12,10 +12,16 @@ import hashlib
 import zipfile
 import tempfile
 import os
+import time
 import uuid
 import logging
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any, List
+from typing import Optional, Tuple, Dict, Any, List, Callable
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # Windows: no file lock; cache may be filled twice for same query
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -33,6 +39,10 @@ from src.search_engine import AntibodySearchEngine
 
 # Threshold for large files (5MB)
 LARGE_FILE_THRESHOLD = 5 * 1024 * 1024  # 5MB in bytes
+# Query result cache: chunk size when filling cache, lock wait timeout (seconds)
+# 100k rows per chunk to avoid OOM; 1M rows per chunk causes OOM in Docker/constrained memory.
+QUERY_CACHE_CHUNK_SIZE = 1000000
+QUERY_CACHE_LOCK_TIMEOUT = 300
 
 # Load .env once so ABHUNTER_DOWNLOAD_DIR is set when this module is used (e.g. from Streamlit or scripts)
 _env_loaded = False
@@ -106,6 +116,255 @@ def _get_download_directory() -> Path:
     _ensure_env_loaded()
     raw = os.getenv("ABHUNTER_DOWNLOAD_DIR", "./downloads")
     return Path(raw).resolve()
+
+
+def _build_query_cache_key(
+    database_paths: List[str],
+    table_name: str,
+    where_clause: str
+) -> str:
+    """
+    Build a stable cache key for a query result from database_paths, table_name, and where_clause.
+    """
+    payload = json.dumps(
+        {"paths": sorted(database_paths), "table": table_name, "where": where_clause},
+        sort_keys=True,
+        default=str,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def _get_query_cache_directory() -> Path:
+    """
+    Get the directory for caching full query results (Parquet files).
+    Uses ABHUNTER_QUERY_CACHE_DIR if set, otherwise ABHUNTER_DOWNLOAD_DIR/.query_cache.
+    """
+    _ensure_env_loaded()
+    raw = os.getenv("ABHUNTER_QUERY_CACHE_DIR")
+    if raw:
+        cache_dir = Path(raw).resolve()
+    else:
+        cache_dir = _get_download_directory() / ".query_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True, mode=0o775)
+    return cache_dir
+
+
+def _is_valid_parquet_file(path: Path) -> bool:
+    """Return True if path exists and is a valid Parquet file (has proper footer)."""
+    if not path.exists() or path.stat().st_size == 0:
+        return False
+    try:
+        with pq.ParquetFile(path) as _:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+def _get_or_create_cached_result_parquet(
+    database_paths: List[str],
+    table_name: str,
+    where_clause: str,
+    engine,
+    progress_callback: Optional[Callable[[int], None]] = None,
+) -> Optional[Path]:
+    """
+    Return path to a Parquet file containing the full query result, filling the cache if needed.
+    Uses a file lock so only one process runs the query; others wait and then read the cache.
+    Returns None if the query returns no rows (no file written).
+    On lock timeout, runs the query to a temp file and returns that path (caller may delete after use).
+    """
+    cache_dir = _get_query_cache_directory()
+    cache_key = _build_query_cache_key(database_paths, table_name, where_clause)
+    parquet_path = cache_dir / f"{cache_key}.parquet"
+    lock_path = cache_dir / f"{cache_key}.lock"
+
+    # Cache hit: file exists and is valid Parquet (reject incomplete/corrupt files)
+    if _is_valid_parquet_file(parquet_path):
+        return parquet_path
+    if parquet_path.exists():
+        parquet_path.unlink(missing_ok=True)
+
+    lock_acquired = False
+    lock_file = None
+
+    if fcntl is not None:
+        lock_path.touch(exist_ok=True)
+        lock_file = open(lock_path, "a")
+        deadline = time.monotonic() + QUERY_CACHE_LOCK_TIMEOUT
+        while time.monotonic() < deadline:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                lock_acquired = True
+                break
+            except (BlockingIOError, OSError):
+                time.sleep(1)
+        if not lock_acquired:
+            lock_file.close()
+            lock_file = None
+            # Fall back to temp file: run query without caching
+            temp_path = None
+            try:
+                fd, temp_path = tempfile.mkstemp(suffix=".parquet", prefix="abquery_")
+                os.close(fd)
+                # Use LIMIT/OFFSET so only one chunk is in memory at a time
+                _fill_parquet_from_query_limit_offset(
+                    engine, table_name, where_clause, Path(temp_path),
+                    progress_callback=progress_callback,
+                )
+                if Path(temp_path).stat().st_size == 0:
+                    Path(temp_path).unlink(missing_ok=True)
+                    return None
+                return Path(temp_path)
+            except Exception:
+                if temp_path is not None and Path(temp_path).exists():
+                    Path(temp_path).unlink(missing_ok=True)
+                raise
+
+    if lock_acquired or fcntl is None:
+        try:
+            # Double-check after acquiring lock: another process may have filled it
+            if _is_valid_parquet_file(parquet_path):
+                return parquet_path
+            if parquet_path.exists():
+                parquet_path.unlink(missing_ok=True)
+            # Use LIMIT/OFFSET (not streaming) so only one chunk is in memory at a time
+            _fill_parquet_from_query_limit_offset(
+                engine, table_name, where_clause, parquet_path,
+                progress_callback=progress_callback,
+            )
+            if not _is_valid_parquet_file(parquet_path):
+                parquet_path.unlink(missing_ok=True)
+                return None
+            return parquet_path
+        finally:
+            if lock_file is not None and fcntl is not None:
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                except (OSError, AttributeError):
+                    pass
+                lock_file.close()
+
+    return None
+
+
+def _fill_parquet_from_query(
+    engine, table_name: str, where_clause: str, out_path: Path,
+    progress_callback: Optional[Callable[[int], None]] = None,
+) -> None:
+    """
+    Run a single streaming query and write chunks to Parquet. Uses DuckDB's
+    fetch_df_chunk on the connection (execute returns the connection) to avoid
+    LIMIT/OFFSET and repeated scans. Falls back to LIMIT/OFFSET if streaming fails.
+    Writes raw table columns (no formatting). If no rows, writes nothing.
+    progress_callback(rows_written) is called after each chunk.
+    """
+    query_base = f"SELECT * FROM {table_name} WHERE {where_clause}"
+    conn = engine.conn
+    writer = None  # pq.ParquetWriter, set when first chunk is received
+    schema = None
+    rows_written = 0
+    try:
+        conn.execute(query_base)
+        # vectors_per_chunk: DuckDB fetches in units of ~2048 rows; 50 gives ~100k rows per chunk
+        vectors_per_chunk = max(1, QUERY_CACHE_CHUNK_SIZE // 2048)
+        while True:
+            chunk_df = conn.fetch_df_chunk(vectors_per_chunk)
+            if chunk_df.empty:
+                break
+            if writer is None:
+                schema = pa.Schema.from_pandas(chunk_df, preserve_index=False)
+                fields = [pa.field(f.name, f.type, nullable=True) for f in schema]
+                schema = pa.schema(fields)
+                writer = pq.ParquetWriter(out_path, schema, compression="zstd")
+            table = pa.Table.from_pandas(chunk_df)
+            try:
+                table = table.cast(schema)
+            except Exception:
+                unified = pa.unify_schemas([schema, table.schema])
+                table = table.cast(unified)
+            writer.write_table(table)
+            rows_written += len(chunk_df)
+            if progress_callback is not None:
+                progress_callback(rows_written)
+            else:
+                prev_blocks = (rows_written - len(chunk_df)) // QUERY_CACHE_CHUNK_SIZE
+                if rows_written // QUERY_CACHE_CHUNK_SIZE > prev_blocks:
+                    logger.info("Caching query result: %s rows written", rows_written)
+    except (AttributeError, TypeError) as e:
+        logger.warning(
+            "Streaming query failed (%s), falling back to LIMIT/OFFSET: %s",
+            type(e).__name__,
+            e,
+        )
+        if writer is not None:
+            try:
+                writer.close()
+            except Exception:
+                pass
+            out_path.unlink(missing_ok=True)
+        _fill_parquet_from_query_limit_offset(
+            engine, table_name, where_clause, out_path,
+            progress_callback=progress_callback,
+        )
+        return
+    finally:
+        if writer is not None:
+            try:
+                writer.close()
+            except Exception:
+                out_path.unlink(missing_ok=True)
+        if out_path.exists() and out_path.stat().st_size == 0:
+            out_path.unlink(missing_ok=True)
+
+
+def _fill_parquet_from_query_limit_offset(
+    engine, table_name: str, where_clause: str, out_path: Path,
+    progress_callback: Optional[Callable[[int], None]] = None,
+) -> None:
+    """
+    Fallback: run query with LIMIT/OFFSET in chunks and write to Parquet.
+    Used when streaming (fetch_df_chunk) is not available or fails.
+    progress_callback(rows_written) is called after each chunk.
+    """
+    CHUNK_SIZE = QUERY_CACHE_CHUNK_SIZE
+    query_base = f"SELECT * FROM {table_name} WHERE {where_clause}"
+    first_df = engine.conn.execute(f"{query_base} LIMIT {CHUNK_SIZE}").df()
+    if first_df.empty:
+        return
+    schema = pa.Schema.from_pandas(first_df, preserve_index=False)
+    fields = [pa.field(f.name, f.type, nullable=True) for f in schema]
+    schema = pa.schema(fields)
+    writer = pq.ParquetWriter(out_path, schema, compression="zstd")
+    chunk_df = first_df
+    offset = 0
+    rows_written = 0
+    while True:
+        if chunk_df.empty:
+            break
+        table = pa.Table.from_pandas(chunk_df)
+        try:
+            table = table.cast(schema)
+        except Exception:
+            unified = pa.unify_schemas([schema, table.schema])
+            table = table.cast(unified)
+        writer.write_table(table)
+        rows_written += len(chunk_df)
+        if progress_callback is not None:
+            progress_callback(rows_written)
+        else:
+            prev_blocks = (rows_written - len(chunk_df)) // QUERY_CACHE_CHUNK_SIZE
+            if rows_written // QUERY_CACHE_CHUNK_SIZE > prev_blocks:
+                logger.info("Caching query result: %s rows written", rows_written)
+        offset += CHUNK_SIZE
+        if len(chunk_df) < CHUNK_SIZE:
+            break
+        chunk_df = engine.conn.execute(
+            f"{query_base} LIMIT {CHUNK_SIZE} OFFSET {offset}"
+        ).df()
+    writer.close()
+    if out_path.exists() and out_path.stat().st_size == 0:
+        out_path.unlink(missing_ok=True)
 
 
 def _generate_download_token() -> str:
@@ -388,7 +647,7 @@ def _convert_parquet_to_csv_gz(parquet_path: Path, csv_gz_path: Path) -> None:
     parquet_file = pq.ParquetFile(parquet_path)
     first_batch = True
     with gzip.open(csv_gz_path, "wt", encoding="utf-8") as f_out:
-        for batch in parquet_file.iter_batches():
+        for batch in parquet_file.iter_batches(batch_size=6291456):
             chunk_df = batch.to_pandas()
             chunk_df.to_csv(
                 f_out,
@@ -406,26 +665,26 @@ def prepare_full_results_download_background(
     chain_label: str
 ) -> Dict[str, Any]:
     """
-    Prepare full results table download (gzip-compressed CSV) in a background process.
-    
-    This function performs a full search (no limit), writes results as Parquet
-    in chunks, then converts to gzip-compressed CSV (.csv.gz) and serves it for
-    download. This is a heavy operation that should run in the background.
-    
-    Args:
-        database_paths: List of database directory paths
-        search_params: Search parameters dictionary (will be copied)
-        is_paired: Whether this is a paired search
-        chain_label: Chain label for filename ("paired", "heavy", or "light")
+        Prepare full results table download (gzip-compressed CSV) in a background process.
         
-    Returns:
-        Dictionary with keys:
-        - 'success': Boolean indicating if operation succeeded
-        - 'parquet_data': .csv.gz file content as bytes (for small files; key kept for API compatibility)
-        - 'filename': Suggested filename for download (.csv.gz)
-        - 'file_size_bytes': Size of file in bytes
-        - 'sequence_count': Number of sequences in file
-        - 'error': Error message if failed
+        This function performs a full search (no limit), writes results as Parquet
+        in chunks, then converts to gzip-compressed CSV (.csv.gz) and serves it for
+        download. This is a heavy operation that should run in the background.
+        
+        Args:
+            database_paths: List of database directory paths
+            search_params: Search parameters dictionary (will be copied)
+            is_paired: Whether this is a paired search
+            chain_label: Chain label for filename ("paired", "heavy", or "light")
+            
+        Returns:
+            Dictionary with keys:
+            - 'success': Boolean indicating if operation succeeded
+            - 'parquet_data': .csv.gz file content as bytes (for small files; key kept for API compatibility)
+            - 'filename': Suggested filename for download (.csv.gz)
+            - 'file_size_bytes': Size of file in bytes
+            - 'sequence_count': Number of sequences in file
+            - 'error': Error message if failed
     """
     try:
         # Import here to ensure paths are set up correctly in worker process
@@ -470,7 +729,10 @@ def prepare_full_results_download_background(
             db_path=":memory:"
         )
         logger.info("Background full results download: Search engine initialized")
-        
+        # use 24 threads when loading full results
+        if hasattr(engine, "configure_threads"):
+            engine.configure_threads(24)
+
         # Copy search params to avoid modifying original
         search_params_copy = search_params.copy()
         selected_databases_formatted = search_params_copy.pop("selected_databases", [])
@@ -490,111 +752,72 @@ def prepare_full_results_download_background(
         # Determine table name
         table_name = "antibodies"
         
-        # Get total count first (for progress tracking)
-        count_query = f"SELECT COUNT(*) as cnt FROM {table_name} WHERE {where_clause}"
-        total_count = engine.conn.execute(count_query).fetchone()[0]
-        logger.info(f"Background full results download: Total sequences to process: {total_count}")
-        
-        if total_count == 0:
+        # Get or create cached full result (single query; shared with FASTA download)
+        cached_parquet_path = _get_or_create_cached_result_parquet(
+            database_paths, table_name, where_clause, engine
+        )
+        if hasattr(engine, "conn"):
+            engine.conn.close()
+        if cached_parquet_path is None:
             return {
-                'success': False,
-                'error': 'No sequences found to download.'
+                "success": False,
+                "error": "No sequences found to download.",
             }
+        cache_dir = _get_query_cache_directory()
+        is_temp_path = cached_parquet_path.resolve().parent != cache_dir.resolve()
         
-        # Generate token and file path BEFORE starting query (for streaming to disk)
+        # Generate token and file path for formatted output (parquet then converted to CSV)
         search_params_with_metadata = dict(search_params)
         identifier = _build_search_identifier({
             "search_params": search_params_with_metadata,
             "chain_label": chain_label,
-            "is_paired": is_paired
+            "is_paired": is_paired,
         })
         base_filename = f"ABHunter_sequences_{chain_label}_{identifier}"
         parquet_filename = f"{base_filename}.parquet"
         csv_gz_filename = f"{base_filename}.csv.gz"
-        
-        # Get download path for streaming write (parquet first, then converted to CSV)
         token, file_path, _ = _get_download_path(parquet_filename, "parquet")
         
-        # Process in chunks to avoid memory issues - stream directly to disk
-        CHUNK_SIZE = 100000  # Process 100k rows at a time
-        
-        # Get schema from a sample to properly infer nullability
-        # Use a sample of 1000 rows to better detect nullable columns
-        sample_query = f"SELECT * FROM {table_name} WHERE {where_clause} LIMIT 1000"
-        sample_df = engine.conn.execute(sample_query).df()
-        
-        if sample_df.empty:
-            return {
-                'success': False,
-                'error': 'No sequences found to download.'
-            }
-        
-        # Prepare sample for download format
-        sample_formatted = prepare_download_data(sample_df, is_paired)
-        sample_table = pa.Table.from_pandas(sample_formatted)
-        
-        # Make all columns nullable to handle nulls in later chunks
-        # This is safer when processing large datasets where different chunks may have different null patterns
-        schema = sample_table.schema
-        fields = []
-        for field in schema:
-            # Ensure all fields are nullable
-            fields.append(pa.field(field.name, field.type, nullable=True))
-        schema = pa.schema(fields)
-        
-        # Initialize Parquet writer - writes directly to disk file
-        writer = pq.ParquetWriter(file_path, schema, compression='zstd')
+        # Read cached Parquet in chunks, format for download, write to temp Parquet
+        parquet_file = pq.ParquetFile(cached_parquet_path)
+        writer = None
+        schema = None
         sequence_count = 0
+        try:
+            for batch in parquet_file.iter_batches(batch_size=QUERY_CACHE_CHUNK_SIZE):
+                chunk_df = batch.to_pandas()
+                if chunk_df.empty:
+                    continue
+                chunk_formatted = prepare_download_data(chunk_df, is_paired)
+                chunk_table = pa.Table.from_pandas(chunk_formatted)
+                if schema is None:
+                    schema = chunk_table.schema
+                    fields = [pa.field(f.name, f.type, nullable=True) for f in schema]
+                    schema = pa.schema(fields)
+                    writer = pq.ParquetWriter(file_path, schema, compression="zstd")
+                try:
+                    chunk_table = chunk_table.cast(schema)
+                except Exception:
+                    unified = pa.unify_schemas([schema, chunk_table.schema])
+                    chunk_table = chunk_table.cast(unified)
+                if writer is not None:
+                    writer.write_table(chunk_table)
+                sequence_count += len(chunk_df)
+                logger.debug(
+                    "Background full results download: Processed chunk. Total: %s",
+                    sequence_count,
+                )
+        finally:
+            if writer is not None:
+                writer.close()
+        if is_temp_path and cached_parquet_path.exists():
+            cached_parquet_path.unlink(missing_ok=True)
         
-        # Process in chunks using LIMIT/OFFSET - single query pass, stream to disk
-        offset = 0
-        while offset < total_count:
-            chunk_query = f"""
-                SELECT * FROM {table_name} 
-                WHERE {where_clause}
-                LIMIT {CHUNK_SIZE} OFFSET {offset}
-            """
-            chunk_df = engine.conn.execute(chunk_query).df()
-            
-            if chunk_df.empty:
-                break
-            
-            # Format chunk for download
-            chunk_formatted = prepare_download_data(chunk_df, is_paired)
-            
-            # Convert to PyArrow table
-            chunk_table = pa.Table.from_pandas(chunk_formatted)
-            
-            # Cast to match schema (ensures all columns are nullable as per schema)
-            # This handles cases where chunks have different null patterns
-            try:
-                chunk_table = chunk_table.cast(schema)
-            except Exception as e:
-                # If cast fails due to schema differences, unify schemas
-                unified_schema = pa.unify_schemas([schema, chunk_table.schema])
-                chunk_table = chunk_table.cast(unified_schema)
-                # Note: We can't change writer schema mid-stream, so we'll use the unified schema
-                # This should work as long as we made all fields nullable in the initial schema
-            
-            # Write chunk directly to disk file (no memory accumulation)
-            writer.write_table(chunk_table)
-            
-            sequence_count += len(chunk_df)
-            offset += CHUNK_SIZE
-            
-            logger.debug(f"Background full results download: Processed chunk. Total processed: {sequence_count}/{total_count}")
-            
-            # Safety check: if chunk is smaller than expected, we're done
-            if len(chunk_df) < CHUNK_SIZE:
-                break
+        if sequence_count == 0:
+            return {"success": False, "error": "No sequences found to download."}
         
-        # Close writer - file is now complete on disk
-        writer.close()
-        
-        # Set file permissions to be readable by nginx
+        # Convert formatted Parquet to gzip-compressed CSV for download
         os.chmod(file_path, 0o644)
-        
-        # Convert Parquet to gzip-compressed CSV for download
         csv_gz_path = file_path.with_suffix(".csv.gz")
         _convert_parquet_to_csv_gz(file_path, csv_gz_path)
         
@@ -603,10 +826,6 @@ def prepare_full_results_download_background(
         download_url = f"/downloads/{token}.csv.gz"
         
         logger.info(f"Background full results download: Completed. File size: {file_size_bytes} bytes. Sequences: {sequence_count}")
-        
-        # Close the engine connection
-        if hasattr(engine, 'conn'):
-            engine.conn.close()
         
         # Check if file is too large for direct download
         if file_size_bytes > LARGE_FILE_THRESHOLD:
@@ -970,47 +1189,50 @@ def prepare_fasta_download_background(
         # Determine table name
         table_name = "antibodies"
         
-        # Get total count first
-        count_query = f"SELECT COUNT(*) as cnt FROM {table_name} WHERE {where_clause}"
-        total_count = engine.conn.execute(count_query).fetchone()[0]
-        logger.info(f"Background FASTA download: Total sequences to process: {total_count}")
-        
-        if total_count == 0:
+        # Get or create cached full result (single query; shared with full results download)
+        cached_parquet_path = _get_or_create_cached_result_parquet(
+            database_paths, table_name, where_clause, engine
+        )
+        if hasattr(engine, "conn"):
+            engine.conn.close()
+        if cached_parquet_path is None:
             return {
-                'success': False,
-                'error': 'No sequences found to download.'
+                "success": False,
+                "error": "No sequences found to download.",
             }
+        cache_dir = _get_query_cache_directory()
+        is_temp_path = cached_parquet_path.resolve().parent != cache_dir.resolve()
         
-        # Process in chunks to avoid memory issues
-        CHUNK_SIZE = 100000  # Process 100k rows at a time
-        
-        # Determine which sequence columns we need
-        sample_query = f"SELECT * FROM {table_name} WHERE {where_clause} LIMIT 1"
-        sample_df = engine.conn.execute(sample_query).df()
-        
-        if sample_df.empty:
-            return {
-                'success': False,
-                'error': 'No sequences found to download.'
-            }
-        
-        # Determine sequence columns
+        # Infer sequence columns from cached Parquet schema
+        parquet_file = pq.ParquetFile(cached_parquet_path)
+        schema = parquet_file.schema_arrow
+        all_columns = schema.names
         if is_paired:
-            seq_columns = ['sequence_alignment_aa_heavy', 'sequence_alignment_aa_light']
+            seq_columns = ["sequence_alignment_aa_heavy", "sequence_alignment_aa_light"]
         else:
-            if 'sequence_alignment_aa' in sample_df.columns:
-                seq_columns = ['sequence_alignment_aa']
-            elif 'sequence_alignment_aa_heavy' in sample_df.columns and 'sequence_alignment_aa_light' in sample_df.columns:
-                seq_columns = ['sequence_alignment_aa_heavy', 'sequence_alignment_aa_light']
-            elif 'sequence_alignment_aa_heavy' in sample_df.columns:
-                seq_columns = ['sequence_alignment_aa_heavy']
-            elif 'sequence_alignment_aa_light' in sample_df.columns:
-                seq_columns = ['sequence_alignment_aa_light']
+            if "sequence_alignment_aa" in all_columns:
+                seq_columns = ["sequence_alignment_aa"]
+            elif "sequence_alignment_aa_heavy" in all_columns and "sequence_alignment_aa_light" in all_columns:
+                seq_columns = ["sequence_alignment_aa_heavy", "sequence_alignment_aa_light"]
+            elif "sequence_alignment_aa_heavy" in all_columns:
+                seq_columns = ["sequence_alignment_aa_heavy"]
+            elif "sequence_alignment_aa_light" in all_columns:
+                seq_columns = ["sequence_alignment_aa_light"]
             else:
+                if is_temp_path and cached_parquet_path.exists():
+                    cached_parquet_path.unlink(missing_ok=True)
                 return {
-                    'success': False,
-                    'error': 'No sequence columns found in database.'
+                    "success": False,
+                    "error": "No sequence columns found in database.",
                 }
+        seq_columns = [c for c in seq_columns if c in all_columns]
+        if not seq_columns:
+            if is_temp_path and cached_parquet_path.exists():
+                cached_parquet_path.unlink(missing_ok=True)
+            return {
+                "success": False,
+                "error": "No sequence columns found in database.",
+            }
         
         # Create temporary files for FASTA content (to avoid memory issues)
         fasta_files = {}
@@ -1019,62 +1241,43 @@ def prepare_fasta_download_background(
         try:
             # Create temporary files for each FASTA file
             if is_paired:
-                temp_files['paired'] = tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8')
+                temp_files["paired"] = tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8")
             else:
                 if len(seq_columns) == 2:
-                    temp_files['heavy'] = tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8')
-                    temp_files['light'] = tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8')
+                    temp_files["heavy"] = tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8")
+                    temp_files["light"] = tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8")
                 else:
-                    temp_files[chain_label] = tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8')
+                    temp_files[chain_label] = tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8")
             
-            # Process in chunks
-            offset = 0
             hit_number = 1
-            
-            while offset < total_count:
-                chunk_query = f"""
-                    SELECT {', '.join(seq_columns)} FROM {table_name} 
-                    WHERE {where_clause}
-                    LIMIT {CHUNK_SIZE} OFFSET {offset}
-                """
-                chunk_df = engine.conn.execute(chunk_query).df()
-                
+            for batch in parquet_file.iter_batches(columns=seq_columns, batch_size=100000):
+                chunk_df = batch.to_pandas()
                 if chunk_df.empty:
-                    break
-                
-                # Write FASTA content incrementally
+                    continue
                 if is_paired:
                     for _, row in chunk_df.iterrows():
-                        heavy_seq = row.get('sequence_alignment_aa_heavy')
-                        light_seq = row.get('sequence_alignment_aa_light')
-                        
+                        heavy_seq = row.get("sequence_alignment_aa_heavy")
+                        light_seq = row.get("sequence_alignment_aa_light")
                         if pd.notna(heavy_seq) and heavy_seq:
-                            temp_files['paired'].write(f">{hit_number}_heavy\n")
-                            temp_files['paired'].write(f"{heavy_seq}\n")
-                        
+                            temp_files["paired"].write(f">{hit_number}_heavy\n")
+                            temp_files["paired"].write(f"{heavy_seq}\n")
                         if pd.notna(light_seq) and light_seq:
-                            temp_files['paired'].write(f">{hit_number}_light\n")
-                            temp_files['paired'].write(f"{light_seq}\n")
-                        
+                            temp_files["paired"].write(f">{hit_number}_light\n")
+                            temp_files["paired"].write(f"{light_seq}\n")
                         hit_number += 1
                 else:
                     if len(seq_columns) == 2:
-                        # Both heavy and light columns exist
                         for _, row in chunk_df.iterrows():
-                            heavy_seq = row.get('sequence_alignment_aa_heavy')
-                            light_seq = row.get('sequence_alignment_aa_light')
-                            
+                            heavy_seq = row.get("sequence_alignment_aa_heavy")
+                            light_seq = row.get("sequence_alignment_aa_light")
                             if pd.notna(heavy_seq) and heavy_seq:
-                                temp_files['heavy'].write(f">{hit_number}_heavy\n")
-                                temp_files['heavy'].write(f"{heavy_seq}\n")
-                            
+                                temp_files["heavy"].write(f">{hit_number}_heavy\n")
+                                temp_files["heavy"].write(f"{heavy_seq}\n")
                             if pd.notna(light_seq) and light_seq:
-                                temp_files['light'].write(f">{hit_number}_light\n")
-                                temp_files['light'].write(f"{light_seq}\n")
-                            
+                                temp_files["light"].write(f">{hit_number}_light\n")
+                                temp_files["light"].write(f"{light_seq}\n")
                             hit_number += 1
                     else:
-                        # Single sequence column
                         seq_col = seq_columns[0]
                         for _, row in chunk_df.iterrows():
                             seq = row.get(seq_col)
@@ -1082,13 +1285,10 @@ def prepare_fasta_download_background(
                                 temp_files[chain_label].write(f">{hit_number}_{chain_label}\n")
                                 temp_files[chain_label].write(f"{seq}\n")
                                 hit_number += 1
-                
-                logger.debug(f"Background FASTA download: Processed chunk. Processed sequences: {min(offset + len(chunk_df), total_count)}/{total_count}")
-                
-                offset += CHUNK_SIZE
-                
-                if len(chunk_df) < CHUNK_SIZE:
-                    break
+                logger.debug("Background FASTA download: Processed chunk. Hit number: %s", hit_number)
+            
+            if is_temp_path and cached_parquet_path.exists():
+                cached_parquet_path.unlink(missing_ok=True)
             
             # Close temp files and read content
             for key, temp_file in temp_files.items():
@@ -1164,10 +1364,6 @@ def prepare_fasta_download_background(
                 except:
                     pass
             raise  # Re-raise to be caught by outer except
-        
-        # Close the engine connection
-        if hasattr(engine, 'conn'):
-            engine.conn.close()
         
         # Check if file is too large for direct download
         if file_size_bytes > LARGE_FILE_THRESHOLD:

@@ -36,9 +36,18 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# Configuration: Number of threads for DuckDB queries
-# Set to None to use all available cores, or specify a number (e.g., 4)
-DUCKDB_THREADS = None  # Change this to set a specific thread count
+# Configuration: DuckDB memory limit (e.g. '40GB'). When exceeded, DuckDB spills to disk instead of OOM.
+# Set ABHUNTER_DUCKDB_MEMORY_LIMIT to override (e.g. '8GB' for smaller containers).
+DUCKDB_MEMORY_LIMIT = os.getenv('ABHUNTER_DUCKDB_MEMORY_LIMIT', '40GB')
+
+# Configuration: Number of threads per DuckDB connection. Limits per-query parallelism so one
+# heavy download doesn't starve other requests. Set ABHUNTER_DUCKDB_THREADS to override (integer).
+# Default 4 for web server; use higher for single-user or batch.
+_duckdb_threads_env = os.environ.get('ABHUNTER_DUCKDB_THREADS')
+try:
+    DUCKDB_THREADS = int(_duckdb_threads_env) if _duckdb_threads_env is not None else 4
+except (ValueError, TypeError):
+    DUCKDB_THREADS = 4
 
 # Configuration: Verbose output control via environment variable
 # Set ABHUNTER_VERBOSE=true to enable verbose output (default: false)
@@ -125,41 +134,39 @@ class AntibodySearchEngine:
             'J': {'Heavy': {}, 'Light': {}}
         }
 
-        # Connect to DuckDB with the specified database path
+        # Connect to DuckDB (one connection per engine; for concurrent requests each worker has its own).
         self.conn = duckdb.connect(database=db_path)
         self.db_path = db_path
 
-        # Set temp directory to /tmp to avoid bind mount I/O overhead and Streamlit file watcher loops
+        # Memory limit: DuckDB spills to disk when exceeded instead of triggering OS OOM kill.
         try:
-            # Create a dedicated temp directory for DuckDB
+            self.conn.execute(f"SET memory_limit='{DUCKDB_MEMORY_LIMIT}'")
+        except Exception as e:
+            logger.error("Error setting DuckDB memory_limit: %s", e)
+
+        try:
+            self.conn.execute("SET allocator_background_threads = true;")
+        except Exception as e:
+            logger.error("Error setting allocator_background_threads: %s", e)
+
+        # Temp directory for spill and temp files
+        try:
             duckdb_tmp = Path("/tmp/duckdb_tmp")
             duckdb_tmp.mkdir(parents=True, exist_ok=True)
             self.conn.execute(f"SET temp_directory='{str(duckdb_tmp)}'")
-            
-            # #region agent log
             temp_dir = self.conn.execute("SELECT current_setting('temp_directory')").fetchone()
-            _log_debug_event("AntibodySearchEngine.__init__", "DuckDB initialized (Fixed temp dir)", {
+            _log_debug_event("AntibodySearchEngine.__init__", "DuckDB initialized", {
                 "db_path": db_path,
                 "temp_directory": str(temp_dir[0]) if temp_dir else "unknown",
                 "cwd": os.getcwd()
             })
-            # #endregion
         except Exception as e:
-            # #region agent log
             _log_debug_event("AntibodySearchEngine.__init__", "Error setting temp dir", {"error": str(e)})
-            # #endregion
-            pass
 
-        # Configure thread count based on global setting
-        if DUCKDB_THREADS is not None:
-            self.conn.execute(f"SET threads = {DUCKDB_THREADS}")
-            if verbose:
-                print(f"DuckDB configured to use {DUCKDB_THREADS} threads")
-        else:
-            # Use all available cores (DuckDB default)
-            available_cores = os.cpu_count()
-            if verbose:
-                print(f"DuckDB using all available cores: {available_cores}")
+        # Thread limit per connection so one heavy query doesn't starve other requests.
+        self.conn.execute(f"SET threads = {DUCKDB_THREADS}")
+        if verbose:
+            print(f"DuckDB: memory_limit={DUCKDB_MEMORY_LIMIT}, threads={DUCKDB_THREADS}")
         
         # Detect database schema (paired vs unpaired)
         self.schema = self._detect_schema()

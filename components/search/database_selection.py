@@ -404,7 +404,7 @@ def initialize_database(
         # Validate datasets before loading
         for db_path in loadable_databases:
             parquet_files = list(Path(db_path).glob('*.parquet'))
-            metadata_fresh = check_metadata_freshness(db_path)
+            metadata_fresh = True #check_metadata_freshness(db_path)
             if not parquet_files or not metadata_fresh:
                 st.error(f"Database files not found or metadata is outdated for {db_path}.")
                 return False

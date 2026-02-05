@@ -446,7 +446,7 @@ def render_full_download_button(
             elif elapsed < 30:
                 return "Processing results..."
             elif elapsed < 60:
-                return "Creating Parquet file..."
+                return "Creating file..."
             else:
                 return "Finalizing..."
         

@@ -18,12 +18,12 @@ from components.search.search_execution import (
     validate_search_criteria,
     execute_search_with_stats
 )
-from components.search.results_rendering import (
-    render_search_results,
-    render_dual_unpaired_results,
-    render_dual_search_criteria_display,
-    render_search_criteria_display
-)
+# Import module first so any dependency failure shows the real error (not "cannot import name")
+import components.search.results_rendering as _results_rendering
+render_search_results = _results_rendering.render_search_results
+render_dual_unpaired_results = _results_rendering.render_dual_unpaired_results
+render_dual_search_criteria_display = _results_rendering.render_dual_search_criteria_display
+render_search_criteria_display = _results_rendering.render_search_criteria_display
 from components.search.styling import render_chain_heading
 from components.test_utils import (
     perform_database_search_background,
@@ -738,17 +738,6 @@ def search_page_content():
     # Handle completed async search results (only process once, don't rerun immediately)
     if st.session_state.search_status == "completed":
         result = st.session_state.search_result
-        
-        # Debug: Log result structure
-        if result:
-            import sys
-            if isinstance(result, dict):
-                result_keys = list(result.keys())
-                has_success = 'success' in result
-                success_value = result.get('success')
-                print(f"[DEBUG] Result keys: {result_keys}, has_success: {has_success}, success_value: {success_value}", file=sys.stderr)
-            else:
-                print(f"[DEBUG] Result is not a dict: {type(result)}", file=sys.stderr)
         
         # Handle case where result might not be a dict or might be missing 'success' key
         if not result:

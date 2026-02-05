@@ -7,7 +7,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '12.0'
+          cpus: '22.0'
           memory: 48G
     env_file:
       - .env
@@ -166,25 +166,6 @@ services:
     depends_on:
       - download-callback
 
-  # OpenTelemetry Collector for traces only
-  # Logs are collected by Alloy (in server/docker-compose.yml) and sent to Loki
-  # This collector handles OTLP traces from Traefik and other services
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
-    container_name: otel-collector-antibody-search
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    volumes:
-      - ./logs:/var/log/otel-collector
-      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-    ports:
-      - "4317:4317"   # OTLP gRPC receiver (for traces)
-      - "4318:4318"   # OTLP HTTP receiver (for traces)
-    networks:
-      - antibody-search-network
-      - artifact-network
-      - monitoring-network
-    restart: unless-stopped
 
 networks:
   antibody-search-network:
