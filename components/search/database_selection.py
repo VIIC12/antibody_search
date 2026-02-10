@@ -159,11 +159,10 @@ def render_database_selection(
                         checkbox_key = f"heavy_{subdir}"
                         st.session_state[checkbox_key] = True
                 
-                # Show checkboxes for multiple subdirectories
-                sub_col1, sub_col2 = st.columns(2)
+                # Show checkboxes for multiple subdirectories in a single row
                 subdirs = list(db_structure['Heavy'].items())
-                for i, (subdir, info) in enumerate(subdirs):
-                    col = sub_col1 if i % 2 == 0 else sub_col2
+                sub_cols = st.columns(len(subdirs)) if subdirs else []
+                for (subdir, info), col in zip(subdirs, sub_cols):
                     with col:
                         checkbox_key = f"heavy_{subdir}"
                         # Streamlit will use session state value automatically if key exists
