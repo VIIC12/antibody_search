@@ -58,9 +58,11 @@ def render_sidebar():
         flag_base64 = base64.b64encode(flag_svg.encode('utf-8')).decode('utf-8')
         flag_img = f'<img src="data:image/svg+xml;base64,{flag_base64}" alt="Leipzig Flag" style="height: 1.2em; vertical-align: middle; margin-right: 0.3em;" />'
     
+    # Stick inside the sidebar near the bottom, without overflowing when the sidebar is resized
     st.markdown(
         f"""
-        <div style='position: fixed; bottom: 2rem; left: 1.5rem; opacity: 0.85; font-size: 0.9rem;'>
+        ---
+        <div style='bottom: 0px; opacity: 0.85; font-size: 0.9rem;'>
             {flag_img if flag_img else ''}
             Made in Leipzig, Germany <br/>Institute for Drug Discovery, Leipzig University.
         </div>

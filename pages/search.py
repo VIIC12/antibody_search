@@ -298,7 +298,7 @@ def create_paired_search_form(disabled: bool = False) -> Dict[str, Any]:
 
 def search_page_content():
     """Main search page content."""
-    st.title(":blue[:material/vaccines: AntibodyHunter]")
+    st.title(":material/vaccines: AntibodyHunter")
     st.markdown("#### :grey[High-Performance Antibody Database Search]")
     
     # Print database path once when server starts (only on first call)
