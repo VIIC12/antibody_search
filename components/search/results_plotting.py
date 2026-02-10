@@ -535,8 +535,8 @@ def fetch_plotting_data(
     """
     Fetch data for plotting using the same search logic as the main search.
     This ensures ALL search parameters (motifs, similarity, mismatches, etc.) are applied identically.
-    After fetching results, filters to only the columns needed for plotting.
-    Limits results to prevent memory exhaustion on large result sets.
+    Only the columns needed for plots (CDR lengths, V/D/J gene calls) are requested from the engine,
+    reducing I/O and memory versus loading 1M full rows. Limits results to PLOTTING_DATA_LIMIT.
     
     Args:
         engine: Search engine instance
@@ -545,7 +545,7 @@ def fetch_plotting_data(
         unpaired_chain_type: Chain type for unpaired searches ("Heavy" or "Light")
         
     Returns:
-        DataFrame with only the columns needed for plotting (max 100k rows for performance)
+        DataFrame with only the columns needed for plotting (up to PLOTTING_DATA_LIMIT rows).
     """
     # Use the search engine's search method to get results with identical filtering
     # This ensures ALL search parameters (including motifs, similarity, mismatches, etc.) are applied identically
@@ -560,49 +560,33 @@ def fetch_plotting_data(
     else:
         search_kwargs['chain_mode'] = unpaired_chain_type.lower()
     
-    # Execute search with full_results=True but limit to plotting limit
-    # This ensures we use the exact same WHERE clause as the main search
+    # Determine which columns we need for plotting (CDR lengths, V/D/J genes only)
+    # Passing these to search() reduces I/O and memory vs loading 1M full rows
+    plotting_columns = []
+    for base_col in ['cdr1_length', 'cdr2_length', 'cdr3_length']:
+        if base_col in engine.schema.get('length_columns', {}):
+            plotting_columns.extend(engine.schema['length_columns'][base_col])
+    for base_col in ['v_call', 'd_call', 'j_call']:
+        if base_col in engine.schema.get('chain_columns', {}):
+            plotting_columns.extend(engine.schema['chain_columns'][base_col])
+    # Restrict to columns that exist in the schema (valid for SELECT)
+    available_columns = [c for c in plotting_columns if c in engine.schema.get('available_columns', [])]
+    if not available_columns:
+        available_columns = None  # fall back to SELECT * if none matched
+    
+    # Execute search with full_results=True, limit to plotting limit, and only fetch plotting columns
     sequences_df, _, _ = engine.search(
         **search_kwargs,
         full_results=True,
-        limit=PLOTTING_DATA_LIMIT
+        limit=PLOTTING_DATA_LIMIT,
+        columns=available_columns
     )
     
     if sequences_df.empty:
         return pd.DataFrame()
     
-    # Determine which columns we need for plotting
-    if is_paired:
-        # Paired: need both heavy and light chain columns - use schema to get actual column names
-        columns = []
-        # Get CDR length columns
-        for base_col in ['cdr1_length', 'cdr2_length', 'cdr3_length']:
-            if base_col in engine.schema.get('length_columns', {}):
-                columns.extend(engine.schema['length_columns'][base_col])
-        # Get gene call columns
-        for base_col in ['v_call', 'd_call', 'j_call']:
-            if base_col in engine.schema.get('chain_columns', {}):
-                columns.extend(engine.schema['chain_columns'][base_col])
-    else:
-        # Unpaired: need standard columns - use schema to get actual column names
-        columns = []
-        # Get CDR length columns
-        for base_col in ['cdr1_length', 'cdr2_length', 'cdr3_length']:
-            if base_col in engine.schema.get('length_columns', {}):
-                columns.extend(engine.schema['length_columns'][base_col])
-        # Get gene call columns
-        for base_col in ['v_call', 'd_call', 'j_call']:
-            if base_col in engine.schema.get('chain_columns', {}):
-                columns.extend(engine.schema['chain_columns'][base_col])
-    
-    # Filter to only include columns that exist in the result DataFrame
-    available_columns = [col for col in columns if col in sequences_df.columns]
-    
-    if not available_columns:
-        return pd.DataFrame()
-    
-    # Return only the columns needed for plotting
-    return sequences_df[available_columns]
+    # Return as-is (engine already returned only requested columns when available_columns was set)
+    return sequences_df
 
 
 def build_plotting_where_clause(

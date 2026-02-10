@@ -1347,6 +1347,7 @@ class AntibodySearchEngine:
         light_cdr3_mismatches: int = 2,
         full_results: bool = False,
         limit: Optional[int] = None,
+        columns: Optional[List[str]] = None,
         verbose: bool = False
     ) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
         """Search for antibody sequences.
@@ -1357,6 +1358,8 @@ class AntibodySearchEngine:
             light_*: Light-chain filters (used for paired searches and light-mode unpaired searches).
             full_results: When True return full sequence rows, otherwise return subject-level stats.
             limit: Optional limit for result rows when `full_results` is True.
+            columns: Optional list of column names to return when full_results=True. If given, only these
+                columns are selected (reduces I/O and memory for e.g. plotting). Ignored when full_results=False.
             verbose: When True, print search summary (total hits, search time, etc.) immediately.
             
         CDR Motif Search Behavior:
@@ -1411,7 +1414,7 @@ class AntibodySearchEngine:
                 light_cdr1_motif, light_cdr2_motif, light_cdr3_motif,
                 light_cdr1_similarity, light_cdr2_similarity, light_cdr3_similarity,
                 light_cdr1_mismatches, light_cdr2_mismatches, light_cdr3_mismatches,
-                full_results, limit, start_time, verbose
+                full_results, limit, columns, start_time, verbose
             )
         else:
             chain_type = 'Light' if resolved_mode == 'light' else 'Heavy'
@@ -1438,7 +1441,7 @@ class AntibodySearchEngine:
                 cdr1_sim, cdr2_sim, cdr3_sim,
                 cdr1_mm, cdr2_mm, cdr3_mm,
                 chain_type,
-                full_results, limit, start_time, verbose
+                full_results, limit, columns, start_time, verbose
             )
     
     def _search_unpaired(
@@ -1461,6 +1464,7 @@ class AntibodySearchEngine:
         chain_type: str = "Heavy",
         full_results: bool = False,
         limit: Optional[int] = None,
+        columns: Optional[List[str]] = None,
         start_time: float = None,
         verbose: bool = False
     ) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
@@ -1566,9 +1570,12 @@ class AntibodySearchEngine:
         
         if full_results:
             logger.debug("Executing unpaired full results query...")
-            # Return full sequence data
+            # When columns specified, select only those (e.g. for plotting) to reduce I/O and memory
+            if columns:
+                logger.debug(f"Plotting/restricted columns for unpaired: {columns}")
+            select_list = ", ".join(f'"{c}"' for c in columns) if columns else "*"
             query = f"""
-                SELECT *
+                SELECT {select_list}
                 FROM {table_name}
                 WHERE {where_clause}
                 {f'LIMIT {limit}' if limit else ''}
@@ -1583,7 +1590,9 @@ class AntibodySearchEngine:
                 "rows": len(results_df) if not results_df.empty else 0
             })
             # #endregion
-            results_df = self._attach_inferred_partners(results_df, chain_type)
+            # Inferred partners need v_call and add extra columns; skip when we requested a minimal column set
+            if not columns:
+                results_df = self._attach_inferred_partners(results_df, chain_type)
             
             # Get subject statistics (can calculate total_hits in same query)
             # #region agent log
@@ -1854,6 +1863,7 @@ class AntibodySearchEngine:
         light_cdr3_mismatches: int = 2,
         full_results: bool = False,
         limit: Optional[int] = None,
+        columns: Optional[List[str]] = None,
         start_time: float = None,
         verbose: bool = False
     ) -> Tuple[pd.DataFrame, pd.DataFrame, Dict]:
@@ -2089,9 +2099,12 @@ class AntibodySearchEngine:
         
         if full_results:
             logger.debug("Executing paired full results query...")
-            # Return full sequence data
+            # When columns specified, select only those (e.g. for plotting) to reduce I/O and memory
+            if columns:
+                logger.debug(f"Plotting/restricted columns for paired: {columns}")
+            select_list = ", ".join(f'"{c}"' for c in columns) if columns else "*"
             query = f"""
-                SELECT *
+                SELECT {select_list}
                 FROM antibodies
                 WHERE {where_clause}
                 {f'LIMIT {limit}' if limit else ''}
