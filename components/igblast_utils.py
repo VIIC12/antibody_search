@@ -16,7 +16,10 @@ import pandas as pd
 from io import StringIO
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-IGBLAST_ROOT = PROJECT_ROOT / "igblast"
+
+# IgBLAST root: use ABHUNTER_IGBLAST_PATH if set (e.g. export ABHUNTER_IGBLAST_PATH="/path/to/igblast"), else project igblast/
+_igblast_path = os.getenv("ABHUNTER_IGBLAST_PATH")
+IGBLAST_ROOT = Path(_igblast_path).resolve() if _igblast_path else (PROJECT_ROOT / "igblast")
 IGBLAST_BIN = IGBLAST_ROOT / "bin"
 IGBLAST_DB_BASE = "database/Homo_sapiens_clean/IG_dna"
 
@@ -39,7 +42,7 @@ def _get_igblast_env() -> dict:
 
 
 def is_igblast_available() -> bool:
-    """Return True if igblast/ exists and igblast/bin/igblastn is present."""
+    """Return True if the IgBLAST directory exists and bin/igblastn is present. Path can be set via ABHUNTER_IGBLAST_PATH."""
     if not IGBLAST_ROOT.is_dir():
         return False
     igblastn = IGBLAST_BIN / "igblastn"

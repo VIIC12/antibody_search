@@ -31,6 +31,8 @@ pip install -r requirements.txt
 #### Execution
 ```bash
 export ABHUNTER_DB_PATH=./data
+# Optional: custom IgBLAST directory (default: project igblast/)
+# export ABHUNTER_IGBLAST_PATH="/path/to/igblast"
 streamlit run app.py
 ```
 then open the link in your browser
