@@ -159,23 +159,24 @@ def render_database_selection(
                         checkbox_key = f"heavy_{subdir}"
                         st.session_state[checkbox_key] = True
                 
-                # Show checkboxes for multiple subdirectories in a single row
+                # Show checkboxes for multiple subdirectories in a 3x2 grid
                 subdirs = list(db_structure['Heavy'].items())
-                sub_cols = st.columns(len(subdirs)) if subdirs else []
-                for (subdir, info), col in zip(subdirs, sub_cols):
-                    with col:
-                        checkbox_key = f"heavy_{subdir}"
-                        # Streamlit will use session state value automatically if key exists
-                        checkbox_help = DB_SELECTION_LOCK_MESSAGE if selection_locked else f"Files: {info['parquet_count']} | Sequences: {info['sequence_count']:,}"
-                        checkbox_value = st.checkbox(
-                            f"{subdir}",
-                            key=checkbox_key,
-                            disabled=heavy_disabled,
-                            help=checkbox_help
-                        )
-                        # Add to selected if checkbox is checked
-                        if checkbox_value:
-                            selected_databases.append(info['path'])
+                cols_per_row = 3
+                for row_start in range(0, len(subdirs), cols_per_row):
+                    row_items = subdirs[row_start : row_start + cols_per_row]
+                    sub_cols = st.columns(cols_per_row)
+                    for (subdir, info), col in zip(row_items, sub_cols):
+                        with col:
+                            checkbox_key = f"heavy_{subdir}"
+                            checkbox_help = DB_SELECTION_LOCK_MESSAGE if selection_locked else f"Files: {info['parquet_count']} | Sequences: {info['sequence_count']:,}"
+                            checkbox_value = st.checkbox(
+                                f"{subdir}",
+                                key=checkbox_key,
+                                disabled=heavy_disabled,
+                                help=checkbox_help
+                            )
+                            if checkbox_value:
+                                selected_databases.append(info['path'])
         else:
             # Uncheck all heavy subdirectories if main category is unchecked
             for subdir in db_structure['Heavy'].keys():
