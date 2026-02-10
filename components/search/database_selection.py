@@ -243,7 +243,7 @@ def render_database_selection(
     
     # Paired selection
     with col3:
-        st.markdown("### 🔗 Paired")
+        render_chain_heading("Paired", "heavy", level=3, icon="🔗", margin_top="0", margin_bottom="0.5rem", use_chain_color=False)
         if selection_locked:
             paired_help = DB_SELECTION_LOCK_MESSAGE
         elif paired_conflict_disabled:
