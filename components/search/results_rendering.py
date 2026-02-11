@@ -847,11 +847,11 @@ def render_search_criteria_display(
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("#### 🧬 Heavy Chain")
+            render_chain_heading("Heavy Chain", "heavy", level=4, icon="🧬")
             _render_chain_criteria(formatted_params, "heavy_", chain_type="Heavy")
         
         with col2:
-            st.markdown("#### 🔬 Light Chain")
+            render_chain_heading("Light Chain", "light", level=4, icon="🔬")
             _render_chain_criteria(formatted_params, "light_", chain_type="Light")
         return
     
@@ -859,7 +859,7 @@ def render_search_criteria_display(
     formatted_params = _format_query_params_for_display(search_params, False)
     prefix = "heavy_" if chain_type == "Heavy" else "light_"
     icon = "🧬" if chain_type == "Heavy" else "🔬"
-    st.markdown(f"#### {icon} {chain_type} Chain")
+    render_chain_heading(f"{chain_type} Chain", chain_type, level=4, icon=icon)
     _render_chain_criteria(formatted_params, prefix, chain_type=chain_type)
 
 
@@ -1069,11 +1069,11 @@ def render_dual_search_criteria_display(
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("#### 🧬 Heavy Chain")
+        render_chain_heading("Heavy Chain", "heavy", level=4, icon="🧬")
         _render_chain_criteria(heavy_params, "heavy_", chain_type="Heavy")
     
     with col2:
-        st.markdown("#### 🔬 Light Chain")
+        render_chain_heading("Light Chain", "light", level=4, icon="🔬")
         _render_chain_criteria(light_params, "light_", chain_type="Light")
 
 

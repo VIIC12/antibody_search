@@ -14,6 +14,8 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from components.search.styling import render_chain_heading, render_heavy_light_heading
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -1497,7 +1499,7 @@ def render_paired_plots(
     
     aa_distributions = aa_distributions or {}
     with col1:
-        st.markdown("#### 🧬 Heavy Chain")
+        render_chain_heading("Heavy Chain", "heavy", level=4, icon="🧬")
         render_heavy_chain_plots(
             sequences_df, search_params, prefix="heavy_", collector=collector,
             aa_distributions=aa_distributions,
@@ -1505,7 +1507,7 @@ def render_paired_plots(
         )
     
     with col2:
-        st.markdown("#### 🔬 Light Chain")
+        render_chain_heading("Light Chain", "light", level=4, icon="🔬")
         render_light_chain_plots(
             sequences_df, search_params, prefix="light_", collector=collector,
             aa_distributions=aa_distributions,
@@ -1598,7 +1600,7 @@ def render_paired_v_gene_heatmap(
         coloraxis_colorbar=dict(title="Pairs")
     )
 
-    st.markdown("#### 🧬 Heavy × Light V Gene Pairing")
+    render_heavy_light_heading("Heavy × Light V Gene Pairing", level=4)
     st.plotly_chart(fig, use_container_width=True)
 
     if collector is not None:
@@ -1691,7 +1693,7 @@ def render_paired_j_gene_heatmap(
         coloraxis_colorbar=dict(title="Pairs")
     )
 
-    st.markdown("#### 🔬 Heavy × Light J Gene Pairing")
+    render_heavy_light_heading("Heavy × Light J Gene Pairing", level=4)
     st.plotly_chart(fig, use_container_width=True)
 
     if collector is not None:
