@@ -42,7 +42,8 @@ def render_results_plots(
     is_paired: bool,
     search_params: Dict[str, Any],
     engine: AntibodySearchEngine,
-    show_heading: bool = True
+    show_heading: bool = True,
+    show_spider_toggle: bool = True,
 ) -> None:
     """
     Render plots for search results based on available data and search parameters.
@@ -151,6 +152,7 @@ def render_results_plots(
             statistics=statistics,
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
+            show_spider_toggle=show_spider_toggle,
         )
 
     subject_plot_entry = st.session_state.get("latest_subject_hits_plot")
@@ -577,11 +579,13 @@ def fetch_plotting_data(
     
     # Determine which columns we need for plotting (CDR lengths, V/D/J genes only)
     # Passing these to search() reduces I/O and memory vs loading 1M full rows
+    # Light chains have no D gene - exclude d_call when querying light chain view
+    chain_base_cols = ['v_call', 'j_call'] if (not is_paired and unpaired_chain_type.lower() == 'light') else ['v_call', 'd_call', 'j_call']
     plotting_columns = []
     for base_col in ['cdr1_length', 'cdr2_length', 'cdr3_length']:
         if base_col in engine.schema.get('length_columns', {}):
             plotting_columns.extend(engine.schema['length_columns'][base_col])
-    for base_col in ['v_call', 'd_call', 'j_call']:
+    for base_col in chain_base_cols:
         if base_col in engine.schema.get('chain_columns', {}):
             plotting_columns.extend(engine.schema['chain_columns'][base_col])
     # Restrict to columns that exist in the schema (valid for SELECT)
@@ -1017,6 +1021,7 @@ def render_unpaired_plots(
     statistics: Optional[Dict[str, Any]] = None,
     aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
     spider_mode: str = "per_aa",
+    show_spider_toggle: bool = True,
 ) -> None:
     """
     Render plots for unpaired search results.
@@ -1031,7 +1036,7 @@ def render_unpaired_plots(
             sequences_df, search_params, prefix="", collector=collector,
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
-            show_toggle=True,
+            show_toggle=show_spider_toggle,
         )
     else:
         render_heavy_chain_plots(

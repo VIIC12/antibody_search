@@ -1188,7 +1188,8 @@ def render_dual_unpaired_results(
         light_result['statistics'],
         is_paired=False,
         search_params=light_result['search_params'],
-        engine=engine
+        engine=engine,
+        show_spider_toggle=False,
     )
     render_dual_search_parameters_expander(
         heavy_result['statistics'],
