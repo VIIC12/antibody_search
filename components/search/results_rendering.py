@@ -61,11 +61,10 @@ def render_search_results(
     is_paired: bool,
     search_params: Dict[str, Any],
     engine: AntibodySearchEngine,
-    show_toast: bool = True
 ) -> None:
     """
     Render complete search results including statistics, sequences, and downloads.
-    
+
     Args:
         sequences_sample_df: Sample sequences dataframe
         stats_df: Statistics dataframe
@@ -73,7 +72,6 @@ def render_search_results(
         is_paired: Whether this is a paired search
         search_params: Search parameters dictionary
         engine: Search engine instance
-        show_toast: Whether to show the success toast notification (default: True)
     """
     
     # Visual separation from the search criteria section
@@ -1121,12 +1119,8 @@ def render_dual_unpaired_results(
     heavy_result: Dict[str, Any],
     light_result: Dict[str, Any],
     engine: AntibodySearchEngine,
-    show_toast: bool = False
 ) -> None:
     """Render results for simultaneous unpaired heavy and light searches."""
-    if show_toast:
-        st.toast("✅ Heavy and Light searches completed!", icon="🎉")
-    
     st.markdown("---")
     st.markdown("# :material/search_insights: Search Results")
     

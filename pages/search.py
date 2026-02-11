@@ -492,7 +492,6 @@ def search_page_content():
                 heavy_result,
                 light_result,
                 engine_obj,
-                show_toast=False
             )
             return True
         
@@ -531,7 +530,6 @@ def search_page_content():
             is_cached_paired,
             search_params,
             engine_obj,
-            show_toast=False
         )
         return True
     
@@ -832,7 +830,7 @@ def search_page_content():
                         'selected_databases': _serialize_selected_databases(loadable_databases)
                     }
                     with results_container.container():
-                        render_dual_unpaired_results(heavy_result, light_result, engine, show_toast=False)
+                        render_dual_unpaired_results(heavy_result, light_result, engine)
             else:
                 # Single search results (paired or unpaired)
                 sequences_sample_df = result.get('sequences_sample_df')
@@ -872,7 +870,6 @@ def search_page_content():
                                 is_paired,
                                 search_params_result,
                                 engine,
-                                show_toast=False  # We already show toast above
                             )
                     except Exception as render_error:
                         # If rendering fails, show error but don't mark search as failed
