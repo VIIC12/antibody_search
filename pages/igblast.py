@@ -13,10 +13,11 @@ from components.search.styling import get_chain_color
 
 st.set_page_config(page_title="ABHunter - IgBLAST Gene ID", page_icon="🧬")
 
-st.title(":blue[:material/genetics: IgBLAST Gene Identification]")
+st.title(":material/genetics: IgBLAST Gene Identification")
 st.markdown(
-    "Enter heavy and/or light chain **nucleotide** sequence(s) (V region or full chain). "
-    "IgBLAST will run with V, D, J germline databases and return **V, D, J** (heavy) or **V, J** (light) genes."
+    "Enter heavy and/or light chain **nucleotide** sequence(s) (V region or full chain)."
+    "IgBLAST will run with V, D, J germline databases and return **V, D, J** (heavy) or **V, J** (light) genes.\n\n"
+    "This is an implementation of the NCBI IgBLAST tool. For more information, please refer to the [NCBI IgBLAST website](https://www.ncbi.nlm.nih.gov/igblast/)."
 )
 
 col_heavy, col_light = st.columns(2)

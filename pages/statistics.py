@@ -9,7 +9,7 @@ from pathlib import Path
 st.set_page_config(page_title="ABHunter - Statistics", layout="wide")
 
 # Main content
-st.markdown("# :blue[:material/bar_chart: Statistics]")
+st.markdown("# :material/bar_chart: Statistics")
 st.markdown("---")
 
 # Introduction
