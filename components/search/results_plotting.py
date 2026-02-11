@@ -89,7 +89,13 @@ def render_results_plots(
     
     # Check if we have cached plotting data for this search
     cached_data = st.session_state.get(cache_key)
-    sequences_full_df = cached_data
+    sequences_full_df = None
+    aa_distributions = {}
+    if cached_data is not None:
+        if isinstance(cached_data, tuple):
+            sequences_full_df, aa_distributions = cached_data
+        else:
+            sequences_full_df = cached_data
     
     if sequences_full_df is None:
         lock_active = st.session_state.get(PLOTTING_LOCK_KEY, False)
@@ -101,9 +107,9 @@ def render_results_plots(
         
         fetch_successful = False
         try:
-            # Fetch only the columns needed for plotting (much faster)
+            # Fetch plotting data (sequences + CDR AA distributions for spider plots)
             with st.spinner("Loading data for plotting..."):
-                sequences_full_df = fetch_plotting_data(
+                sequences_full_df, aa_distributions = fetch_plotting_data(
                     engine,
                     search_params,
                     is_paired,
@@ -111,7 +117,7 @@ def render_results_plots(
                 )
             fetch_successful = True
             # Cache the fetched data
-            st.session_state[cache_key] = sequences_full_df
+            st.session_state[cache_key] = (sequences_full_df, aa_distributions)
         finally:
             st.session_state[PLOTTING_LOCK_KEY] = False
             st.session_state.pop(PLOTTING_LOCK_REASON_KEY, None)
@@ -126,10 +132,15 @@ def render_results_plots(
         return
     
     collected_plots: List[Tuple[str, go.Figure, Optional[pd.DataFrame]]] = []
-    
+    spider_mode = "per_aa"
+
     # Determine which plots to show based on search type and parameters
     if is_paired:
-        render_paired_plots(sequences_full_df, search_params, collected_plots)
+        render_paired_plots(
+            sequences_full_df, search_params, collected_plots,
+            aa_distributions=aa_distributions,
+            spider_mode=spider_mode,
+        )
     else:
         render_unpaired_plots(
             sequences_full_df,
@@ -137,7 +148,9 @@ def render_results_plots(
             collected_plots,
             chain_type=unpaired_chain_type,
             engine=engine,
-            statistics=statistics
+            statistics=statistics,
+            aa_distributions=aa_distributions,
+            spider_mode=spider_mode,
         )
 
     subject_plot_entry = st.session_state.get("latest_subject_hits_plot")
@@ -545,7 +558,9 @@ def fetch_plotting_data(
         unpaired_chain_type: Chain type for unpaired searches ("Heavy" or "Light")
         
     Returns:
-        DataFrame with only the columns needed for plotting (up to PLOTTING_DATA_LIMIT rows).
+        Tuple of (sequences_df, aa_distributions). sequences_df has columns for plotting;
+        aa_distributions is a dict mapping CDR keys (e.g. 'cdr1_heavy', 'cdr3') to DataFrames
+        with aa/percent for spider plots.
     """
     # Use the search engine's search method to get results with identical filtering
     # This ensures ALL search parameters (including motifs, similarity, mismatches, etc.) are applied identically
@@ -583,10 +598,101 @@ def fetch_plotting_data(
     )
     
     if sequences_df.empty:
-        return pd.DataFrame()
-    
-    # Return as-is (engine already returned only requested columns when available_columns was set)
-    return sequences_df
+        return sequences_df, {}
+
+    # Fetch CDR AA distributions (overall per CDR, not per V-family) for spider plots
+    aa_distributions = fetch_cdr_aa_distribution(
+        engine, search_params, is_paired, unpaired_chain_type
+    )
+
+    return sequences_df, aa_distributions
+
+
+# Standard 20 amino acids for CDR AA distribution
+_CDR_AA_VALID = ("A", "R", "N", "D", "C", "E", "Q", "G", "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V")
+
+# AA property groups for spider plot "by property" view (from TODO_v_gen_aa_distribution.ipynb)
+_AA_PROPERTY_GROUPS: Dict[str, Tuple[str, ...]] = {
+    "Hydrophobic": ("A", "V", "L", "I", "M", "F", "W"),
+    "Small/Polar": ("G", "S", "T", "Y", "N", "Q"),
+    "Positively Charged": ("K", "R", "H"),
+    "Negatively Charged": ("D", "E"),
+    "Proline": ("P",),
+    "Cysteine": ("C",),
+}
+
+SPIDER_PLOT_MODE_KEY = "cdr_spider_plot_mode"
+
+
+def fetch_cdr_aa_distribution(
+    engine: AntibodySearchEngine,
+    search_params: Dict[str, Any],
+    is_paired: bool,
+    unpaired_chain_type: str = "Heavy",
+    limit: int = PLOTTING_DATA_LIMIT,
+) -> Dict[str, pd.DataFrame]:
+    """
+    Fetch amino acid distribution per CDR region for search hits via SQL aggregation.
+    Returns overall distribution (no per-V-family breakdown) for each CDR type.
+    Uses the same WHERE clause as the search; limit matches plotting limit.
+    """
+    where_clause = build_plotting_where_clause(
+        engine, search_params, is_paired, unpaired_chain_type
+    )
+    table_name = "antibodies"
+    if not is_paired:
+        table_name = engine.chain_views.get(unpaired_chain_type, "antibodies")
+
+    # CDR AA columns to query: (column_name, result_key)
+    if is_paired:
+        cdr_specs = [
+            ("cdr1_aa_heavy", "cdr1_heavy"),
+            ("cdr2_aa_heavy", "cdr2_heavy"),
+            ("cdr3_aa_heavy", "cdr3_heavy"),
+            ("cdr1_aa_light", "cdr1_light"),
+            ("cdr2_aa_light", "cdr2_light"),
+            ("cdr3_aa_light", "cdr3_light"),
+        ]
+    else:
+        cdr_specs = [
+            ("cdr1_aa", "cdr1"),
+            ("cdr2_aa", "cdr2"),
+            ("cdr3_aa", "cdr3"),
+        ]
+
+    valid_aa_list = "','".join(_CDR_AA_VALID)
+    result: Dict[str, pd.DataFrame] = {}
+
+    available = set(engine.schema.get("available_columns", []))
+    for cdr_col, key in cdr_specs:
+        if available and cdr_col not in available:
+            continue
+        query = f"""
+        WITH limited AS (
+            SELECT {cdr_col} AS cdr_aa
+            FROM {table_name}
+            WHERE {where_clause} AND {cdr_col} IS NOT NULL AND length({cdr_col}) > 0
+            LIMIT {limit}
+        ),
+        expanded AS (
+            SELECT unnest(str_split(cdr_aa, '')) AS aa FROM limited
+        )
+        SELECT aa, COUNT(*)::BIGINT AS cnt
+        FROM expanded
+        WHERE aa IN ('{valid_aa_list}')
+        GROUP BY aa
+        """
+        try:
+            df = engine.conn.execute(query).df()
+            if df.empty:
+                continue
+            total = df["cnt"].sum()
+            df["percent"] = (df["cnt"] / total * 100).round(2) if total > 0 else 0.0
+            result[key] = df
+        except Exception:
+            continue
+
+    return result
 
 
 def build_plotting_where_clause(
@@ -908,7 +1014,9 @@ def render_unpaired_plots(
     collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
     chain_type: str = "Heavy",
     engine: Optional[AntibodySearchEngine] = None,
-    statistics: Optional[Dict[str, Any]] = None
+    statistics: Optional[Dict[str, Any]] = None,
+    aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
+    spider_mode: str = "per_aa",
 ) -> None:
     """
     Render plots for unpaired search results.
@@ -917,10 +1025,20 @@ def render_unpaired_plots(
         sequences_df: Sequences dataframe
         search_params: Search parameters dictionary
     """
+    aa_distributions = aa_distributions or {}
     if chain_type.lower() == "light":
-        render_light_chain_plots(sequences_df, search_params, prefix="", collector=collector)
+        render_light_chain_plots(
+            sequences_df, search_params, prefix="", collector=collector,
+            aa_distributions=aa_distributions,
+            spider_mode=spider_mode,
+            show_toggle=True,
+        )
     else:
-        render_heavy_chain_plots(sequences_df, search_params, prefix="", collector=collector)
+        render_heavy_chain_plots(
+            sequences_df, search_params, prefix="", collector=collector,
+            aa_distributions=aa_distributions,
+            spider_mode=spider_mode,
+        )
 
     overlay_active = (
         (statistics or {}).get('inferred_overlay_active')
@@ -1359,7 +1477,9 @@ def render_inferred_pairing_plots(
 def render_paired_plots(
     sequences_df: pd.DataFrame,
     search_params: Dict[str, Any],
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None
+    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
+    aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
+    spider_mode: str = "per_aa",
 ) -> None:
     """
     Render plots for paired search results.
@@ -1370,13 +1490,23 @@ def render_paired_plots(
     """
     col1, col2 = st.columns(2)
     
+    aa_distributions = aa_distributions or {}
     with col1:
         st.markdown("#### 🧬 Heavy Chain")
-        render_heavy_chain_plots(sequences_df, search_params, prefix="heavy_", collector=collector)
+        render_heavy_chain_plots(
+            sequences_df, search_params, prefix="heavy_", collector=collector,
+            aa_distributions=aa_distributions,
+            spider_mode=spider_mode,
+        )
     
     with col2:
         st.markdown("#### 🔬 Light Chain")
-        render_light_chain_plots(sequences_df, search_params, prefix="light_", collector=collector)
+        render_light_chain_plots(
+            sequences_df, search_params, prefix="light_", collector=collector,
+            aa_distributions=aa_distributions,
+            spider_mode=spider_mode,
+            show_toggle=False,
+        )
 
     # Render V and J gene pairing heatmaps side by side
     col_v, col_j = st.columns(2)
@@ -1577,7 +1707,9 @@ def render_heavy_chain_plots(
     sequences_df: pd.DataFrame,
     search_params: Dict[str, Any],
     prefix: str = "",
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None
+    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
+    aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
+    spider_mode: str = "per_aa",
 ) -> None:
     """
     Render Heavy chain specific plots.
@@ -1656,6 +1788,11 @@ def render_heavy_chain_plots(
         plots_rendered.append("cdr3_length")
     
     # Display CDR length plots in a row if we have any
+    aa_distributions = aa_distributions or {}
+    has_spiders = any(
+        _cdr_length_col_to_aa_key(p[1], prefix) in aa_distributions
+        for p in cdr_plots
+    )
     if cdr_plots:
         cols = st.columns(len(cdr_plots))
         for i, plot_data in enumerate(cdr_plots):
@@ -1679,6 +1816,30 @@ def render_heavy_chain_plots(
                         title,
                         chain_type="heavy",
                         collector=collector
+                    )
+        # Toggle directly above spider plots (below histograms); only in Heavy to avoid duplicate key
+        if has_spiders:
+            if SPIDER_PLOT_MODE_KEY not in st.session_state:
+                st.session_state[SPIDER_PLOT_MODE_KEY] = "per_aa"
+            by_property = st.toggle(
+                "Group by property",
+                value=(st.session_state.get(SPIDER_PLOT_MODE_KEY, "per_aa") == "by_property"),
+                key="cdr_spider_plot_mode_toggle",
+            )
+            spider_mode = "by_property" if by_property else "per_aa"
+            st.session_state[SPIDER_PLOT_MODE_KEY] = spider_mode
+            st.markdown("<div style='margin-top: -0.5rem;'></div>", unsafe_allow_html=True)
+        for i, plot_data in enumerate(cdr_plots):
+            df, col, title = plot_data[:3]
+            aa_key = _cdr_length_col_to_aa_key(col, prefix)
+            if aa_key and aa_key in aa_distributions:
+                with cols[i]:
+                    plot_cdr_aa_spider(
+                        aa_distributions[aa_key],
+                        f"{title} AA Composition",
+                        chain_type="heavy",
+                        collector=collector,
+                        spider_mode=spider_mode,
                     )
     
     # V Gene distribution - always show for Heavy chains to maintain layout
@@ -1780,7 +1941,10 @@ def render_light_chain_plots(
     sequences_df: pd.DataFrame,
     search_params: Dict[str, Any],
     prefix: str = "light_",
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None
+    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
+    aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
+    spider_mode: str = "per_aa",
+    show_toggle: bool = False,
 ) -> None:
     """
     Render Light chain specific plots.
@@ -1849,6 +2013,11 @@ def render_light_chain_plots(
             plots_rendered.append("cdr3_length")
     
     # Display CDR length plots in a row if we have any
+    aa_distributions = aa_distributions or {}
+    has_spiders = any(
+        _cdr_length_col_to_aa_key(p[1], prefix) in aa_distributions
+        for p in cdr_plots
+    )
     if cdr_plots:
         cols = st.columns(len(cdr_plots))
         for i, (df, col, title) in enumerate(cdr_plots):
@@ -1860,6 +2029,35 @@ def render_light_chain_plots(
                     chain_type="light",
                     collector=collector
                 )
+        # Toggle (unpaired Light) or placeholder (paired, to align with Heavy's toggle)
+        if has_spiders:
+            if show_toggle:
+                if SPIDER_PLOT_MODE_KEY not in st.session_state:
+                    st.session_state[SPIDER_PLOT_MODE_KEY] = "per_aa"
+                by_property = st.toggle(
+                    "Group by property",
+                    value=(st.session_state.get(SPIDER_PLOT_MODE_KEY, "per_aa") == "by_property"),
+                    key="cdr_spider_plot_mode_toggle",
+                )
+                spider_mode = "by_property" if by_property else "per_aa"
+                st.session_state[SPIDER_PLOT_MODE_KEY] = spider_mode
+                st.markdown("<div style='margin-top: -0.5rem;'></div>", unsafe_allow_html=True)
+            else:
+                st.markdown("<div style='height: 36px;'></div>", unsafe_allow_html=True)
+            spider_mode = st.session_state.get(SPIDER_PLOT_MODE_KEY, "per_aa")
+        for i, (df, col, title) in enumerate(cdr_plots):
+            aa_key = _cdr_length_col_to_aa_key(col, prefix)
+            if aa_key and aa_key in aa_distributions:
+                if has_spiders:
+                    spider_mode = st.session_state.get(SPIDER_PLOT_MODE_KEY, "per_aa")
+                with cols[i]:
+                    plot_cdr_aa_spider(
+                        aa_distributions[aa_key],
+                        f"{title} AA Composition",
+                        chain_type="light",
+                        collector=collector,
+                        spider_mode=spider_mode,
+                    )
     
     # V Gene distribution - always show for Light chains
     v_call_col = None
@@ -1926,6 +2124,105 @@ def render_light_chain_plots(
     
     if not plots_rendered:
         st.info("No plots available (all filters specified).")
+
+
+def _cdr_length_col_to_aa_key(col: str, prefix: str) -> str:
+    """Map CDR length column name to aa_distributions key."""
+    if col == "cdr1_length_heavy" or (col.endswith("_heavy") and "cdr1" in col):
+        return "cdr1_heavy"
+    if col == "cdr2_length_heavy" or (col.endswith("_heavy") and "cdr2" in col):
+        return "cdr2_heavy"
+    if col == "cdr3_length_heavy" or (col.endswith("_heavy") and "cdr3" in col):
+        return "cdr3_heavy"
+    if col == "cdr1_length_light" or (col.endswith("_light") and "cdr1" in col):
+        return "cdr1_light"
+    if col == "cdr2_length_light" or (col.endswith("_light") and "cdr2" in col):
+        return "cdr2_light"
+    if col == "cdr3_length_light" or (col.endswith("_light") and "cdr3" in col):
+        return "cdr3_light"
+    if col == "cdr1_length":
+        return "cdr1"
+    if col == "cdr2_length":
+        return "cdr2"
+    if col == "cdr3_length":
+        return "cdr3"
+    return ""
+
+
+def _aggregate_aa_by_property(aa_df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate per-AA percentages into property groups."""
+    if aa_df is None or aa_df.empty or "aa" not in aa_df.columns:
+        return pd.DataFrame()
+    if "percent" not in aa_df.columns and "cnt" in aa_df.columns:
+        total = aa_df["cnt"].sum()
+        aa_df = aa_df.copy()
+        aa_df["percent"] = (aa_df["cnt"] / total * 100).round(2) if total > 0 else 0.0
+    pct_map = aa_df.set_index("aa")["percent"].to_dict() if "percent" in aa_df.columns else {}
+    rows = []
+    for group_name, aas in _AA_PROPERTY_GROUPS.items():
+        pct = sum(float(pct_map.get(a, 0)) for a in aas)
+        rows.append({"group": group_name, "percent": round(pct, 2)})
+    return pd.DataFrame(rows)
+
+
+def plot_cdr_aa_spider(
+    aa_df: pd.DataFrame,
+    title: str,
+    chain_type: str = "heavy",
+    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
+    spider_mode: str = "per_aa",
+) -> None:
+    """
+    Plot CDR amino acid distribution as a radar/spider chart.
+    aa_df must have columns 'aa' and 'percent' (or 'cnt' to compute percent).
+    spider_mode: 'per_aa' for individual AAs, 'by_property' for property groups.
+    """
+    if aa_df is None or aa_df.empty or "aa" not in aa_df.columns:
+        return
+    if "percent" not in aa_df.columns and "cnt" in aa_df.columns:
+        total = aa_df["cnt"].sum()
+        aa_df = aa_df.copy()
+        aa_df["percent"] = (aa_df["cnt"] / total * 100).round(2) if total > 0 else 0.0
+    if "percent" not in aa_df.columns:
+        return
+
+    if spider_mode == "by_property":
+        plot_df = _aggregate_aa_by_property(aa_df)
+        if plot_df.empty:
+            return
+        theta = list(plot_df["group"])
+        r = list(plot_df["percent"])
+    else:
+        # Per AA: ensure all 20 AAs in consistent order; fill missing with 0
+        pct_map = aa_df.set_index("aa")["percent"].to_dict()
+        theta = list(_CDR_AA_VALID)
+        r = [float(pct_map.get(a, 0)) for a in theta]
+    fig = go.Figure(data=go.Scatterpolar(
+        r=r,
+        theta=theta,
+        fill="toself",
+        name=title,
+    ))
+    if chain_type == "light":
+        color = "#CB4154"
+    else:
+        color = "#4C6085"
+    fig.update_traces(
+        line_color=color,
+        fillcolor=color,
+        opacity=0.4,
+    )
+    max_r = max(r) * 1.1 if r else 10
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, max_r])),
+        showlegend=False,
+        title=dict(text=title, x=0.5, xanchor="center"),
+        height=260,
+        margin=dict(l=60, r=60, t=50, b=40),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    if collector is not None:
+        collector.append((f"aa_spider_{title.replace(' ', '_')}", prepare_export_figure(fig), aa_df.copy()))
 
 
 def plot_cdr_length_distribution(

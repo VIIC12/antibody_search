@@ -438,6 +438,7 @@ def render_full_download_button(
         status = st.session_state[full_status_key]
         
         # Estimate phase based on elapsed time
+        #! TODO Does this ever get used from here?
         def estimate_phase(elapsed: float) -> str:
             if elapsed < 3:
                 return "Initializing..."
