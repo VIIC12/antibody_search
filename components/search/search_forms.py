@@ -373,7 +373,7 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         v_valid = True
         v = st.text_input(
             "IGHV Gene",
-            placeholder="e.g., 3,4 or 3-23*01",
+            placeholder="e.g., 3 or 3,4 or 3-23*01",
             help="Single: 3 or 3-23 | Multiple: 3,4 or 3-20,3-22",
             key=v_key,
             disabled=disabled
@@ -393,7 +393,7 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         d_valid = True
         d = st.text_input(
             "IGHD Gene",
-            placeholder="e.g., 2-21 or 2",
+            placeholder="e.g., 2 or 2-21 or 2,3",
             help="Single: 2 or 2-21 | Multiple: 2,3 or 2-15,2-21",
             key=d_key,
             disabled=disabled
@@ -413,8 +413,8 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         j_valid = True
         j = st.text_input(
             "IGHJ Gene",
-            placeholder="e.g., 4 or J4",
-            help="Single: 4 or J4 | Multiple: 4,5 or J4,J5",
+            placeholder="e.g., 4 or 4,5",
+            help="Single: 4 | Multiple: 4,5",
             key=j_key,
             disabled=disabled
         )

@@ -3,7 +3,7 @@ base="dark"
 primaryColor="#483d8b"
 
 [client]
-*toolbarMode="minimal"
+toolbarMode="viewer"
 
 [theme.sidebar]
 primaryColor="black"
