@@ -346,26 +346,26 @@ if results_heavy is not None or results_light is not None:
         prefill_btns = st.columns([1, 1, 1])
         with prefill_btns[0]:
             if has_heavy and not has_light:
-                if st.button("Use in Database search (unpaired heavy)", type="secondary", use_container_width=True):
+                if st.button("Use in Database search (unpaired heavy)", type="secondary", width="content"):
                     st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
                         "unpaired_heavy", results_heavy[0], None
                     )
                     st.switch_page("pages/search.py")
             elif has_light and not has_heavy:
-                if st.button("Use in Database search (unpaired light)", type="secondary", use_container_width=True):
+                if st.button("Use in Database search (unpaired light)", type="secondary", width="content"):
                     st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
                         "unpaired_light", None, results_light[0]
                     )
                     st.switch_page("pages/search.py")
             elif has_heavy and has_light:
-                if st.button("Use in Database search (paired)", type="secondary", use_container_width=True):
+                if st.button("Use in Database search (paired)", type="secondary", width="content"):
                     st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
                         "paired", results_heavy[0], results_light[0]
                     )
                     st.switch_page("pages/search.py")
         with prefill_btns[1]:
             if has_heavy and has_light:
-                if st.button("Use in Database search (dual unpaired)", type="secondary", use_container_width=True):
+                if st.button("Use in Database search (dual unpaired)", type="secondary", width="content"):
                     st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
                         "dual_unpaired", results_heavy[0], results_light[0]
                     )

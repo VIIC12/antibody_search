@@ -675,7 +675,7 @@ def search_page_content():
             """, unsafe_allow_html=True)
         
         with col_cancel:
-            if st.button("Cancel Search", use_container_width=True):
+            if st.button("Cancel Search", width="content"):
                 if st.session_state.search_future is not None:
                     st.session_state.search_future.cancel()
                     st.session_state.search_future = None
@@ -695,7 +695,7 @@ def search_page_content():
                 ":material/database_search: Search Database",
                 type="primary",
                 disabled=(has_validation_errors or disable_form_controls),
-                use_container_width=True
+                width="content"
             )
         elif search_status == "running":
             # Show hidden disabled submit button (required by Streamlit, but we show custom button above)
@@ -703,7 +703,7 @@ def search_page_content():
             search_submitted = st.form_submit_button(
                 ":material/database_search: Search Database",
                 disabled=True,
-                use_container_width=True
+                width="content"
             )
         else:
             # For completed/failed, show disabled submit button with status
@@ -720,7 +720,7 @@ def search_page_content():
             search_submitted = st.form_submit_button(
                 button_label,
                 disabled=True,
-                use_container_width=True
+                width="content"
             )
     
     # Show validation error (e.g. OAS-disallowed gene) right below the form, not after results
