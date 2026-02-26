@@ -41,79 +41,20 @@ services:
       start_period: 40s
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.antibody-search.rule=(Host(`172.22.180.238`) || Host(`antibody.localhost`) || Host(`localhost`)) && !PathPrefix(`/dev`)"
+      - "traefik.http.routers.antibody-search.rule=Host(`abhunter.iwe-lab.de`) && !PathPrefix(`/dev`)"
       - "traefik.http.routers.antibody-search.entrypoints=web"
       - "traefik.http.routers.antibody-search.service=antibody-search"
       - "traefik.http.services.antibody-search.loadbalancer.server.port=8501"
       - "traefik.http.routers.antibody-search.middlewares=antibody-search-headers"
       - "traefik.http.routers.antibody-search.priority=1"
-      - "traefik.http.middlewares.antibody-search-headers.headers.customrequestheaders.X-Forwarded-Proto=http"
+      - "traefik.http.middlewares.antibody-search-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
       - "traefik.http.middlewares.antibody-search-headers.headers.customrequestheaders.X-Forwarded-For="
       - "traefik.http.middlewares.antibody-search-headers.headers.customrequestheaders.X-Real-IP="
     networks:
       - antibody-search-network
       - monitoring-network
   # Development service with hot reloading, and mounted volume for development
-  antibody-search-dev:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: antibody-search-dev
-    env_file:
-      - .env
-    volumes:
-      # Mount entire app directory for development (overwrites copied files)
-      - .:/app
-      # Mount data directory for persistence
-      - ${ABHUNTER_DB_PATH}:/app/data/abhunter
-      - ./logs:/app/logs
-      # Mount download directory for large file storage
-      - ${ABHUNTER_DOWNLOAD_DIR:-./downloads}:/app/downloads
-    environment:
-      - PYTHONPATH=/app
-      - STREAMLIT_SERVER_PORT=8502
-      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
-      - STREAMLIT_SERVER_BASE_URL_PATH=/dev
-      - STREAMLIT_SERVER_RUN_ON_SAVE=true
-      - STREAMLIT_SERVER_FILE_WATCHER_TYPE=poll
-      - STREAMLIT_SERVER_FILE_WATCHER_POLL_INTERVAL=1
-      - STREAMLIT_SERVER_HEADLESS=true
-      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
-      - ABHUNTER_DB_PATH=/app/data/abhunter
-      - ABHUNTER_DOWNLOAD_DIR=/app/downloads
-    command: ["streamlit", "run", "app.py"]
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-        labels: "service,environment"
-    deploy:
-      resources:
-        limits:
-          cpus: '12.0'
-          memory: 48G
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8502/dev/_stcore/health').read()"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.antibody-search-dev.rule=(Host(`172.22.180.238`) || Host(`antibody.localhost`) || Host(`localhost`)) && PathPrefix(`/dev`)"
-      - "traefik.http.routers.antibody-search-dev.entrypoints=web"
-      - "traefik.http.routers.antibody-search-dev.service=antibody-search-dev"
-      - "traefik.http.services.antibody-search-dev.loadbalancer.server.port=8502"
-      - "traefik.http.routers.antibody-search-dev.priority=10"
-      - "traefik.http.middlewares.antibody-search-dev-headers.headers.customrequestheaders.X-Forwarded-Proto=http"
-      - "traefik.http.middlewares.antibody-search-dev-headers.headers.customrequestheaders.X-Forwarded-For="
-      - "traefik.http.middlewares.antibody-search-dev-headers.headers.customrequestheaders.X-Real-IP="
-      - "traefik.http.routers.antibody-search-dev.middlewares=antibody-search-dev-headers"
-    networks:
-      - antibody-search-network
-      - monitoring-network
+
 
   # nginx service for serving large file downloads
   nginx-downloads:
@@ -125,7 +66,7 @@ services:
       - ./logs:/var/log/nginx
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.nginx-downloads.rule=(Host(`172.22.180.238`) || Host(`antibody.localhost`) || Host(`localhost`)) && PathPrefix(`/downloads`)"
+      - "traefik.http.routers.nginx-downloads.rule=Host(`abhunter.iwe-lab.de`) && PathPrefix(`/downloads`)"
       - "traefik.http.routers.nginx-downloads.entrypoints=web"
       - "traefik.http.routers.nginx-downloads.service=nginx-downloads"
       - "traefik.http.services.nginx-downloads.loadbalancer.server.port=80"
@@ -171,9 +112,6 @@ networks:
   antibody-search-network:
     external: true
     name: antibody-search-network
-  artifact-network:
-    external: true
-    name: artifact-store_artifact-network
   monitoring-network:
     external: true
     name: monitoring-network
