@@ -17,8 +17,6 @@ from components.search.results_display import (
     get_stats_column_config
 )
 from components.search.download_utils import (
-    create_parquet_file,
-    generate_filename_base,
     prepare_stats_download,
     prepare_full_results_download_background,
     prepare_fasta_download_background
@@ -226,38 +224,45 @@ def render_stats_download_button(
     stats_df: pd.DataFrame,
     search_params: Dict[str, Any],
     is_paired: bool,
-    statistics: Optional[Dict[str, Any]] = None
+    statistics: Optional[Dict[str, Any]] = None,
+    key: Optional[str] = None,
 ) -> None:
     """
     Render download button for statistics CSV (as ZIP with search parameters).
-    
+
     Args:
         stats_df: Statistics dataframe
         search_params: Search parameters dictionary (including metadata)
         is_paired: Whether the search is paired
         statistics: Optional statistics dictionary for metadata
+        key: Optional unique Streamlit key to avoid duplicate element ID when rendered multiple times.
     """
+    # Unique key to avoid StreamlitDuplicateElementId when multiple result sets are rendered
+    widget_key = key or f"stats_download_{(statistics or {}).get('total_hits', 0)}_{hash(str(search_params))}"
+
     if stats_df.empty:
         st.button(
             "⬇ Download Statistics (ZIP)",
             disabled=True,
             width='stretch',
-            type="primary"
+            type="primary",
+            key=f"{widget_key}_disabled",
         )
         return
-    
+
     # Get selected databases from session state
     selected_databases = st.session_state.get("selected_databases", [])
     stats_zip, filename = prepare_stats_download(
         stats_df, search_params, is_paired, statistics, selected_databases
     )
-    
+
     st.download_button(
         label="⬇ Download Statistics (ZIP)",
         data=stats_zip,
         file_name=filename,
         mime="application/zip",
-        width='stretch'
+        width='stretch',
+        key=widget_key,
     )
 
 
@@ -283,10 +288,6 @@ def render_full_download_button(
         stats_df: Statistics dataframe for CSV download
         key_suffix: Optional suffix for session state keys
     """
-    import concurrent.futures
-    import time
-    from streamlit_autorefresh import st_autorefresh
-    
     # Inject CSS for spinner animation and consistent button heights
     st.markdown("""
     <style>
@@ -372,168 +373,43 @@ def render_full_download_button(
         suffix = f"{key_suffix}_" if key_suffix else ""
         download_key = f"{suffix}full_results_{statistics['total_hits']}_{hash(str(download_key_seed))}"
         
-        # Session state keys for async full results download
-        full_future_key = f"{download_key}_future"
+        # Session state keys for full results download
         full_status_key = f"{download_key}_status"
         full_result_key = f"{download_key}_result"
-        full_start_time_key = f"{download_key}_start_time"
         
         # Initialize session state
         if full_status_key not in st.session_state:
-            st.session_state[full_status_key] = "idle"  # idle, running, completed, failed
+            st.session_state[full_status_key] = "idle"  # idle, completed, failed
         if full_result_key not in st.session_state:
             st.session_state[full_result_key] = None
-        if full_start_time_key not in st.session_state:
-            st.session_state[full_start_time_key] = None
-        
-        # Get or create executor (recreate if broken)
-        executor_key = f"{download_key}_executor"
-        
-        def get_or_create_executor():
-            executor = st.session_state.get(executor_key)
-            if executor is None:
-                executor = concurrent.futures.ProcessPoolExecutor(max_workers=2)
-                st.session_state[executor_key] = executor
-            return executor
-        
-        executor = get_or_create_executor()
-        
-        # Check task status (non-blocking)
-        def check_full_results_status():
-            future = st.session_state.get(full_future_key)
-            if future is not None and future.done():
-                try:
-                    result = future.result()
-                    st.session_state[full_future_key] = None
-                    st.session_state[full_result_key] = result
-                    if result.get('success'):
-                        st.session_state[full_status_key] = "completed"
-                        st.toast("Full results table is ready for download!", icon="⬇")
-                    else:
-                        st.session_state[full_status_key] = "failed"
-                    return result
-                except (concurrent.futures.process.BrokenProcessPool, Exception) as e:
-                    # Clear broken executor
-                    if executor_key in st.session_state:
-                        try:
-                            executor = st.session_state[executor_key]
-                            executor.shutdown(wait=False)
-                        except:
-                            pass
-                        del st.session_state[executor_key]
-                    st.session_state[full_future_key] = None
-                    st.session_state[full_status_key] = "failed"
-                    st.session_state[full_result_key] = {'success': False, 'error': str(e)}
-            return None
-        
-        # Check status on every run
-        check_full_results_status()
-        
-        # Auto-refresh when generation is running
-        if st.session_state[full_status_key] == "running":
-            st_autorefresh(interval=2000, key=f"full_results_refresh_{download_key}")
         
         status = st.session_state[full_status_key]
-        
-        # Estimate phase based on elapsed time
-        #! TODO Does this ever get used from here?
-        def estimate_phase(elapsed: float) -> str:
-            if elapsed < 3:
-                return "Initializing..."
-            elif elapsed < 10:
-                return "Searching database..."
-            elif elapsed < 30:
-                return "Processing results..."
-            elif elapsed < 60:
-                return "Creating file..."
-            else:
-                return "Finalizing..."
         
         # Button labels
         button_label = "⬇ Download Full Results Table"
         new_button_label = "⬇ Download FASTA"
         
-        # Session state keys for async new download (FASTA)
+        # Session state keys for FASTA download
         new_download_key = f"{suffix}new_download_{statistics['total_hits']}_{hash(str(download_key_seed))}"
-        new_future_key = f"{new_download_key}_future"
         new_status_key = f"{new_download_key}_status"
         new_result_key = f"{new_download_key}_result"
-        new_start_time_key = f"{new_download_key}_start_time"
         
         # Initialize session state for FASTA download
         if new_status_key not in st.session_state:
-            st.session_state[new_status_key] = "idle"  # idle, running, completed, failed
+            st.session_state[new_status_key] = "idle"  # idle, completed, failed
         if new_result_key not in st.session_state:
             st.session_state[new_result_key] = None
-        if new_start_time_key not in st.session_state:
-            st.session_state[new_start_time_key] = None
-        
-        # Get or create executor for FASTA (recreate if broken)
-        fasta_executor_key = f"{new_download_key}_executor"
-        
-        def get_or_create_fasta_executor():
-            executor = st.session_state.get(fasta_executor_key)
-            if executor is None:
-                executor = concurrent.futures.ProcessPoolExecutor(max_workers=2)
-                st.session_state[fasta_executor_key] = executor
-            return executor
-        
-        # Check task status for FASTA download (non-blocking)
-        def check_new_download_status():
-            future = st.session_state.get(new_future_key)
-            if future is not None and future.done():
-                try:
-                    result = future.result()
-                    st.session_state[new_future_key] = None
-                    st.session_state[new_result_key] = result
-                    if result.get('success'):
-                        st.session_state[new_status_key] = "completed"
-                        st.toast("New download is ready!", icon="⬇")
-                    else:
-                        st.session_state[new_status_key] = "failed"
-                    return result
-                except (concurrent.futures.process.BrokenProcessPool, Exception) as e:
-                    # Clear broken executor
-                    if fasta_executor_key in st.session_state:
-                        try:
-                            executor = st.session_state[fasta_executor_key]
-                            executor.shutdown(wait=False)
-                        except:
-                            pass
-                        del st.session_state[fasta_executor_key]
-                    st.session_state[new_future_key] = None
-                    st.session_state[new_status_key] = "failed"
-                    st.session_state[new_result_key] = {'success': False, 'error': str(e)}
-            return None
-        
-        # Check status on every run
-        check_new_download_status()
-        
-        # Auto-refresh when FASTA generation is running
-        if st.session_state[new_status_key] == "running":
-            st_autorefresh(interval=2000, key=f"new_download_refresh_{new_download_key}")
         
         new_status = st.session_state[new_status_key]
-        
-        # Estimate phase based on elapsed time for FASTA
-        def estimate_new_phase(elapsed: float) -> str:
-            if elapsed < 3:
-                return "Initializing..."
-            elif elapsed < 10:
-                return "Processing..."
-            elif elapsed < 30:
-                return "Generating..."
-            elif elapsed < 60:
-                return "Finalizing..."
-            else:
-                return "Almost done..."
         
         # Use column layout to place Statistics CSV, Full Results, and new button side by side
         col_stats, col_full, col_new, _spacer = st.columns([1.5, 1.5, 1.5, 5.5])
         
         # Statistics CSV download button (left column)
         with col_stats:
-            render_stats_download_button(stats_df, search_params, is_paired, statistics)
+            render_stats_download_button(
+                stats_df, search_params, is_paired, statistics, key=f"{download_key}_stats"
+            )
         
         # Full Results download button (middle column)
         with col_full:
@@ -543,71 +419,18 @@ def render_full_download_button(
                     width='stretch',
                     key=f"{download_key}_button"
                 ):
-                    # Get fresh executor (in case previous one was broken)
-                    executor = get_or_create_executor()
-                    try:
-                        # Submit background task (pass search_params with metadata)
-                        future = executor.submit(
-                            prepare_full_results_download_background,
-                            loadable_databases,
-                            search_params_with_metadata,  # Includes selected_databases
-                            is_paired,
-                            chain_label
-                        )
-                        st.session_state[full_future_key] = future
-                        st.session_state[full_start_time_key] = time.time()
-                        st.session_state[full_status_key] = "running"
-                        st.rerun()
-                    except concurrent.futures.process.BrokenProcessPool:
-                        # Recreate executor and retry
-                        if executor_key in st.session_state:
-                            try:
-                                old_executor = st.session_state[executor_key]
-                                old_executor.shutdown(wait=False)
-                            except:
-                                pass
-                            del st.session_state[executor_key]
-                        executor = get_or_create_executor()
-                        future = executor.submit(
-                            prepare_full_results_download_background,
+                    with st.spinner("Preparing full results download..."):
+                        result = prepare_full_results_download_background(
                             loadable_databases,
                             search_params_with_metadata,
                             is_paired,
                             chain_label
                         )
-                        st.session_state[full_future_key] = future
-                        st.session_state[full_start_time_key] = time.time()
-                        st.session_state[full_status_key] = "running"
-                        st.rerun()
-            
-            elif status == "running":
-                elapsed = time.time() - st.session_state[full_start_time_key] if st.session_state[full_start_time_key] else 0
-                phase = estimate_phase(elapsed)
-                
-                # Custom button with CSS spinner
-                st.markdown(f"""
-                <div style="width: 100%; min-height: 38.4px; display: flex; align-items: center;">
-                    <button disabled style="
-                        width: 100%;
-                        padding: 0.5rem 1rem;
-                        background-color: rgb(49, 51, 63);
-                        color: rgb(250, 250, 250);
-                        border: 1px solid rgb(49, 51, 63);
-                        border-radius: 0.25rem;
-                        cursor: not-allowed;
-                        display: inline-flex;
-                        align-items: center;
-                        justify-content: center;
-                        gap: 8px;
-                        font-size: 0.875rem;
-                        min-height: 38.4px;
-                        box-sizing: border-box;
-                    ">
-                        <div class="spinner-dark"></div>
-                        <span>{phase}</span>
-                    </button>
-                </div>
-                """, unsafe_allow_html=True)
+                    st.session_state[full_result_key] = result
+                    st.session_state[full_status_key] = "completed" if result.get("success") else "failed"
+                    if result.get("success"):
+                        st.toast("Full results table is ready for download!", icon="⬇")
+                    st.rerun()
             
             elif status == "completed":
                 result = st.session_state[full_result_key]
@@ -645,18 +468,8 @@ def render_full_download_button(
                 result = st.session_state[full_result_key]
                 error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
                 if st.button("🔄 Retry", key=f"{download_key}_retry", width='stretch'):
-                    # Clear broken executor if it exists
-                    if executor_key in st.session_state:
-                        try:
-                            old_executor = st.session_state[executor_key]
-                            old_executor.shutdown(wait=False)
-                        except:
-                            pass
-                        del st.session_state[executor_key]
                     st.session_state[full_status_key] = "idle"
                     st.session_state[full_result_key] = None
-                    st.session_state[full_start_time_key] = None
-                    st.session_state[full_future_key] = None
                     st.rerun()
                 else:
                     st.error(f"❌ {error_msg}")
@@ -669,71 +482,18 @@ def render_full_download_button(
                     width='stretch',
                     key=f"{new_download_key}_button"
                 ):
-                    # Get fresh executor (in case previous one was broken)
-                    fasta_executor = get_or_create_fasta_executor()
-                    try:
-                        # Submit background task
-                        future = fasta_executor.submit(
-                            prepare_fasta_download_background,
+                    with st.spinner("Preparing FASTA download..."):
+                        result = prepare_fasta_download_background(
                             loadable_databases,
                             search_params_with_metadata,
                             is_paired,
                             chain_label
                         )
-                        st.session_state[new_future_key] = future
-                        st.session_state[new_start_time_key] = time.time()
-                        st.session_state[new_status_key] = "running"
-                        st.rerun()
-                    except concurrent.futures.process.BrokenProcessPool:
-                        # Recreate executor and retry
-                        if fasta_executor_key in st.session_state:
-                            try:
-                                old_executor = st.session_state[fasta_executor_key]
-                                old_executor.shutdown(wait=False)
-                            except:
-                                pass
-                            del st.session_state[fasta_executor_key]
-                        fasta_executor = get_or_create_fasta_executor()
-                        future = fasta_executor.submit(
-                            prepare_fasta_download_background,
-                            loadable_databases,
-                            search_params_with_metadata,
-                            is_paired,
-                            chain_label
-                        )
-                        st.session_state[new_future_key] = future
-                        st.session_state[new_start_time_key] = time.time()
-                        st.session_state[new_status_key] = "running"
-                        st.rerun()
-            
-            elif new_status == "running":
-                elapsed = time.time() - st.session_state[new_start_time_key] if st.session_state[new_start_time_key] else 0
-                phase = estimate_new_phase(elapsed)
-                
-                # Custom button with CSS spinner
-                st.markdown(f"""
-                <div style="width: 100%; min-height: 38.4px; display: flex; align-items: center;">
-                    <button disabled style="
-                        width: 100%;
-                        padding: 0.5rem 1rem;
-                        background-color: rgb(49, 51, 63);
-                        color: rgb(250, 250, 250);
-                        border: 1px solid rgb(49, 51, 63);
-                        border-radius: 0.25rem;
-                        cursor: not-allowed;
-                        display: inline-flex;
-                        align-items: center;
-                        justify-content: center;
-                        gap: 8px;
-                        font-size: 0.875rem;
-                        min-height: 38.4px;
-                        box-sizing: border-box;
-                    ">
-                        <div class="spinner-dark"></div>
-                        <span>{phase}</span>
-                    </button>
-                </div>
-                """, unsafe_allow_html=True)
+                    st.session_state[new_result_key] = result
+                    st.session_state[new_status_key] = "completed" if result.get("success") else "failed"
+                    if result.get("success"):
+                        st.toast("FASTA download is ready!", icon="⬇")
+                    st.rerun()
             
             elif new_status == "completed":
                 result = st.session_state[new_result_key]
@@ -774,18 +534,8 @@ def render_full_download_button(
                 result = st.session_state[new_result_key]
                 error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
                 if st.button("🔄 Retry", key=f"{new_download_key}_retry", width='stretch'):
-                    # Clear broken executor if it exists
-                    if fasta_executor_key in st.session_state:
-                        try:
-                            old_executor = st.session_state[fasta_executor_key]
-                            old_executor.shutdown(wait=False)
-                        except:
-                            pass
-                        del st.session_state[fasta_executor_key]
                     st.session_state[new_status_key] = "idle"
                     st.session_state[new_result_key] = None
-                    st.session_state[new_start_time_key] = None
-                    st.session_state[new_future_key] = None
                     st.rerun()
                 else:
                     st.error(f"❌ {error_msg}")
