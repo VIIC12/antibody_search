@@ -590,21 +590,25 @@ def fetch_plotting_data(
     for base_col in chain_base_cols:
         if base_col in engine.schema.get('chain_columns', {}):
             plotting_columns.extend(engine.schema['chain_columns'][base_col])
-    # Restrict to columns that exist in the schema (valid for SELECT)
+    # Restrict to columns that exist in the schema (for post-search selection)
     available_columns = [c for c in plotting_columns if c in engine.schema.get('available_columns', [])]
     if not available_columns:
-        available_columns = None  # fall back to SELECT * if none matched
-    
-    # Execute search with full_results=True, limit to plotting limit, and only fetch plotting columns
+        available_columns = None
+
+    # Execute search with full_results=True and limit (do not pass columns= to avoid engine compatibility issues)
     sequences_df, _, _ = engine.search(
         **search_kwargs,
         full_results=True,
         limit=PLOTTING_DATA_LIMIT,
-        columns=available_columns
     )
-    
+
     if sequences_df.empty:
         return sequences_df, {}
+    # Keep only plotting columns to reduce memory for downstream
+    if available_columns:
+        cols = [c for c in available_columns if c in sequences_df.columns]
+        if cols:
+            sequences_df = sequences_df[cols].copy()
 
     # Fetch CDR AA distributions (overall per CDR, not per V-family) for spider plots
     aa_distributions = fetch_cdr_aa_distribution(

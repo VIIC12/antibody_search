@@ -5,6 +5,7 @@ This module provides functions for preparing and packaging search results
 for download.
 """
 
+import csv
 import gzip
 import io
 import json
@@ -12,26 +13,19 @@ import hashlib
 import zipfile
 import tempfile
 import os
-import time
 import uuid
 import logging
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any, List, Callable
+from typing import Optional, Tuple, Dict, Any, List
 
-try:
-    import fcntl
-except ImportError:
-    fcntl = None  # Windows: no file lock; cache may be filled twice for same query
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 # Set up global logger
 logger = logging.getLogger(__name__)
 
 from components.search.results_display import (
-    format_results_dataframe,
-    get_exclude_columns
+    get_exclude_columns,
+    get_column_rename_mapping,
 )
 from components.search.search_execution import execute_search
 from components.search.results_plotting import build_plotting_where_clause
@@ -39,10 +33,6 @@ from src.search_engine import AntibodySearchEngine
 
 # Threshold for large files (5MB)
 LARGE_FILE_THRESHOLD = 5 * 1024 * 1024  # 5MB in bytes
-# Query result cache: chunk size when filling cache, lock wait timeout (seconds)
-# 100k rows per chunk to avoid OOM; 1M rows per chunk causes OOM in Docker/constrained memory.
-QUERY_CACHE_CHUNK_SIZE = 1000000
-QUERY_CACHE_LOCK_TIMEOUT = 300
 
 # Load .env once so ABHUNTER_DOWNLOAD_DIR is set when this module is used (e.g. from Streamlit or scripts)
 _env_loaded = False
@@ -61,38 +51,6 @@ def _ensure_env_loaded() -> None:
     except ImportError:
         pass
     _env_loaded = True
-
-
-def generate_filename_base(is_paired: bool) -> str:
-    """
-    Generate base filename for download files.
-    
-    Args:
-        is_paired: Whether this is a paired search
-        
-    Returns:
-        Base filename string
-    """
-    return "abdb_sequences_paired" if is_paired else "abdb_sequences_unpaired"
-
-
-def prepare_download_data(
-    df: pd.DataFrame,
-    is_paired: bool,
-    exclude_cols: Optional[set] = None
-) -> pd.DataFrame:
-    """
-    Prepare dataframe for download by excluding columns and renaming.
-    
-    Args:
-        df: Input dataframe with search results
-        is_paired: Whether this is a paired search
-        exclude_cols: Optional set of columns to exclude
-        
-    Returns:
-        Formatted dataframe ready for download
-    """
-    return format_results_dataframe(df, is_paired, exclude_cols)
 
 
 def _serialize_search_params(search_params: Dict[str, Any]) -> str:
@@ -118,253 +76,13 @@ def _get_download_directory() -> Path:
     return Path(raw).resolve()
 
 
-def _build_query_cache_key(
-    database_paths: List[str],
-    table_name: str,
-    where_clause: str
-) -> str:
-    """
-    Build a stable cache key for a query result from database_paths, table_name, and where_clause.
-    """
-    payload = json.dumps(
-        {"paths": sorted(database_paths), "table": table_name, "where": where_clause},
-        sort_keys=True,
-        default=str,
-    )
-    return hashlib.sha256(payload.encode()).hexdigest()[:16]
-
-
-def _get_query_cache_directory() -> Path:
-    """
-    Get the directory for caching full query results (Parquet files).
-    Uses ABHUNTER_QUERY_CACHE_DIR if set, otherwise ABHUNTER_DOWNLOAD_DIR/.query_cache.
-    """
-    _ensure_env_loaded()
-    raw = os.getenv("ABHUNTER_QUERY_CACHE_DIR")
-    if raw:
-        cache_dir = Path(raw).resolve()
-    else:
-        cache_dir = _get_download_directory() / ".query_cache"
-    cache_dir.mkdir(parents=True, exist_ok=True, mode=0o775)
-    return cache_dir
-
-
-def _is_valid_parquet_file(path: Path) -> bool:
-    """Return True if path exists and is a valid Parquet file (has proper footer)."""
-    if not path.exists() or path.stat().st_size == 0:
-        return False
-    try:
-        with pq.ParquetFile(path) as _:
-            pass
-        return True
-    except Exception:
-        return False
-
-
-def _get_or_create_cached_result_parquet(
-    database_paths: List[str],
-    table_name: str,
-    where_clause: str,
-    engine,
-    progress_callback: Optional[Callable[[int], None]] = None,
-) -> Optional[Path]:
-    """
-    Return path to a Parquet file containing the full query result, filling the cache if needed.
-    Uses a file lock so only one process runs the query; others wait and then read the cache.
-    Returns None if the query returns no rows (no file written).
-    On lock timeout, runs the query to a temp file and returns that path (caller may delete after use).
-    """
-    cache_dir = _get_query_cache_directory()
-    cache_key = _build_query_cache_key(database_paths, table_name, where_clause)
-    parquet_path = cache_dir / f"{cache_key}.parquet"
-    lock_path = cache_dir / f"{cache_key}.lock"
-
-    # Cache hit: file exists and is valid Parquet (reject incomplete/corrupt files)
-    if _is_valid_parquet_file(parquet_path):
-        return parquet_path
-    if parquet_path.exists():
-        parquet_path.unlink(missing_ok=True)
-
-    lock_acquired = False
-    lock_file = None
-
-    if fcntl is not None:
-        lock_path.touch(exist_ok=True)
-        lock_file = open(lock_path, "a")
-        deadline = time.monotonic() + QUERY_CACHE_LOCK_TIMEOUT
-        while time.monotonic() < deadline:
-            try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                lock_acquired = True
-                break
-            except (BlockingIOError, OSError):
-                time.sleep(1)
-        if not lock_acquired:
-            lock_file.close()
-            lock_file = None
-            # Fall back to temp file: run query without caching
-            temp_path = None
-            try:
-                fd, temp_path = tempfile.mkstemp(suffix=".parquet", prefix="abquery_")
-                os.close(fd)
-                # Use LIMIT/OFFSET so only one chunk is in memory at a time
-                _fill_parquet_from_query_limit_offset(
-                    engine, table_name, where_clause, Path(temp_path),
-                    progress_callback=progress_callback,
-                )
-                if Path(temp_path).stat().st_size == 0:
-                    Path(temp_path).unlink(missing_ok=True)
-                    return None
-                return Path(temp_path)
-            except Exception:
-                if temp_path is not None and Path(temp_path).exists():
-                    Path(temp_path).unlink(missing_ok=True)
-                raise
-
-    if lock_acquired or fcntl is None:
-        try:
-            # Double-check after acquiring lock: another process may have filled it
-            if _is_valid_parquet_file(parquet_path):
-                return parquet_path
-            if parquet_path.exists():
-                parquet_path.unlink(missing_ok=True)
-            # Use LIMIT/OFFSET (not streaming) so only one chunk is in memory at a time
-            _fill_parquet_from_query_limit_offset(
-                engine, table_name, where_clause, parquet_path,
-                progress_callback=progress_callback,
-            )
-            if not _is_valid_parquet_file(parquet_path):
-                parquet_path.unlink(missing_ok=True)
-                return None
-            return parquet_path
-        finally:
-            if lock_file is not None and fcntl is not None:
-                try:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-                except (OSError, AttributeError):
-                    pass
-                lock_file.close()
-
-    return None
-
-
-def _fill_parquet_from_query(
-    engine, table_name: str, where_clause: str, out_path: Path,
-    progress_callback: Optional[Callable[[int], None]] = None,
-) -> None:
-    """
-    Run a single streaming query and write chunks to Parquet. Uses DuckDB's
-    fetch_df_chunk on the connection (execute returns the connection) to avoid
-    LIMIT/OFFSET and repeated scans. Falls back to LIMIT/OFFSET if streaming fails.
-    Writes raw table columns (no formatting). If no rows, writes nothing.
-    progress_callback(rows_written) is called after each chunk.
-    """
-    query_base = f"SELECT * FROM {table_name} WHERE {where_clause}"
-    conn = engine.conn
-    writer = None  # pq.ParquetWriter, set when first chunk is received
-    schema = None
-    rows_written = 0
-    try:
-        conn.execute(query_base)
-        # vectors_per_chunk: DuckDB fetches in units of ~2048 rows; 50 gives ~100k rows per chunk
-        vectors_per_chunk = max(1, QUERY_CACHE_CHUNK_SIZE // 2048)
-        while True:
-            chunk_df = conn.fetch_df_chunk(vectors_per_chunk)
-            if chunk_df.empty:
-                break
-            if writer is None:
-                schema = pa.Schema.from_pandas(chunk_df, preserve_index=False)
-                fields = [pa.field(f.name, f.type, nullable=True) for f in schema]
-                schema = pa.schema(fields)
-                writer = pq.ParquetWriter(out_path, schema, compression="zstd")
-            table = pa.Table.from_pandas(chunk_df)
-            try:
-                table = table.cast(schema)
-            except Exception:
-                unified = pa.unify_schemas([schema, table.schema])
-                table = table.cast(unified)
-            writer.write_table(table)
-            rows_written += len(chunk_df)
-            if progress_callback is not None:
-                progress_callback(rows_written)
-            else:
-                prev_blocks = (rows_written - len(chunk_df)) // QUERY_CACHE_CHUNK_SIZE
-                if rows_written // QUERY_CACHE_CHUNK_SIZE > prev_blocks:
-                    logger.info("Caching query result: %s rows written", rows_written)
-    except (AttributeError, TypeError) as e:
-        logger.warning(
-            "Streaming query failed (%s), falling back to LIMIT/OFFSET: %s",
-            type(e).__name__,
-            e,
-        )
-        if writer is not None:
-            try:
-                writer.close()
-            except Exception:
-                pass
-            out_path.unlink(missing_ok=True)
-        _fill_parquet_from_query_limit_offset(
-            engine, table_name, where_clause, out_path,
-            progress_callback=progress_callback,
-        )
-        return
-    finally:
-        if writer is not None:
-            try:
-                writer.close()
-            except Exception:
-                out_path.unlink(missing_ok=True)
-        if out_path.exists() and out_path.stat().st_size == 0:
-            out_path.unlink(missing_ok=True)
-
-
-def _fill_parquet_from_query_limit_offset(
-    engine, table_name: str, where_clause: str, out_path: Path,
-    progress_callback: Optional[Callable[[int], None]] = None,
-) -> None:
-    """
-    Fallback: run query with LIMIT/OFFSET in chunks and write to Parquet.
-    Used when streaming (fetch_df_chunk) is not available or fails.
-    progress_callback(rows_written) is called after each chunk.
-    """
-    CHUNK_SIZE = QUERY_CACHE_CHUNK_SIZE
-    query_base = f"SELECT * FROM {table_name} WHERE {where_clause}"
-    first_df = engine.conn.execute(f"{query_base} LIMIT {CHUNK_SIZE}").df()
-    if first_df.empty:
-        return
-    schema = pa.Schema.from_pandas(first_df, preserve_index=False)
-    fields = [pa.field(f.name, f.type, nullable=True) for f in schema]
-    schema = pa.schema(fields)
-    writer = pq.ParquetWriter(out_path, schema, compression="zstd")
-    chunk_df = first_df
-    offset = 0
-    rows_written = 0
-    while True:
-        if chunk_df.empty:
-            break
-        table = pa.Table.from_pandas(chunk_df)
-        try:
-            table = table.cast(schema)
-        except Exception:
-            unified = pa.unify_schemas([schema, table.schema])
-            table = table.cast(unified)
-        writer.write_table(table)
-        rows_written += len(chunk_df)
-        if progress_callback is not None:
-            progress_callback(rows_written)
-        else:
-            prev_blocks = (rows_written - len(chunk_df)) // QUERY_CACHE_CHUNK_SIZE
-            if rows_written // QUERY_CACHE_CHUNK_SIZE > prev_blocks:
-                logger.info("Caching query result: %s rows written", rows_written)
-        offset += CHUNK_SIZE
-        if len(chunk_df) < CHUNK_SIZE:
-            break
-        chunk_df = engine.conn.execute(
-            f"{query_base} LIMIT {CHUNK_SIZE} OFFSET {offset}"
-        ).df()
-    writer.close()
-    if out_path.exists() and out_path.stat().st_size == 0:
-        out_path.unlink(missing_ok=True)
+def _count_csv_gz_rows(csv_gz_path: Path) -> int:
+    """Count data rows in a gzip-compressed CSV (header line is excluded)."""
+    count = 0
+    with gzip.open(csv_gz_path, "rt", encoding="utf-8") as f:
+        for i, _ in enumerate(f):
+            count = i + 1
+    return max(0, count - 1)  # subtract header
 
 
 def _generate_download_token() -> str:
@@ -402,20 +120,23 @@ def _get_download_path(
     # Generate unique token
     token = _generate_download_token()
     
-    # Determine file extension from original filename or file_type
-    if original_filename and '.' in original_filename:
-        ext = original_filename.split('.')[-1]
+    ext = file_type
+    # Use consistent prefix from original_filename (e.g. ABHunter_FASTA_paired_<hash>) so large
+    # file downloads get the same naming as small; append token for uniqueness.
+    if original_filename and original_filename.endswith("." + ext):
+        base = original_filename[: -len(ext) - 1]
+    elif original_filename and "." in original_filename:
+        base = original_filename.rsplit(".", 1)[0]
     else:
-        ext = file_type
-    
-    # Generate filename with token
-    filename = f"{token}.{ext}"
+        base = original_filename or ""
+    if base:
+        filename = f"{base}_{token}.{ext}"
+    else:
+        filename = f"{token}.{ext}"
     file_path = download_dir / filename
-    
-    # Generate download URL
-    # Use relative path that nginx will serve
+
+    # Generate download URL (nginx serves /downloads/)
     download_url = f"/downloads/{filename}"
-    
     return token, file_path, download_url
 
 
@@ -532,45 +253,6 @@ def _build_where_clause_from_params(
     return ' AND '.join(conditions) if conditions else "1=1"
 
 
-def create_parquet_file(
-    dataframe: pd.DataFrame,
-    _filename_base: str,
-    search_params: Dict[str, Any],
-    chain_label: str,
-    is_paired: bool = False
-) -> Tuple[bytes, str]:
-    """
-    Create a Parquet file in memory with a unique filename.
-    
-    Args:
-        dataframe: DataFrame to save as Parquet
-        _filename_base: Deprecated base name parameter (retained for compatibility)
-        search_params: Search parameters dictionary (including metadata)
-        chain_label: Sequence grouping label ("paired", "heavy", or "light")
-        is_paired: Whether this is a paired search (for filename)
-        
-    Returns:
-        Parquet file contents as bytes along with the filename
-    """
-    # Prepare data for download
-    download_data = prepare_download_data(dataframe, is_paired)
-    
-    # Create Parquet file in memory with ZSTD compression
-    parquet_buffer = io.BytesIO()
-    table = pa.Table.from_pandas(download_data)
-    pq.write_table(table, parquet_buffer, compression="zstd")
-    parquet_buffer.seek(0)
-
-    identifier = _build_search_identifier({
-        "search_params": search_params,
-        "chain_label": chain_label,
-        "is_paired": is_paired
-    })
-    filename = f"ABHunter_sequences_{chain_label}_{identifier}.parquet"
-
-    return parquet_buffer.getvalue(), filename
-
-
 def prepare_stats_download(
     stats_df: pd.DataFrame,
     search_params: Dict[str, Any],
@@ -639,23 +321,138 @@ def prepare_stats_download(
     return zip_data, filename
 
 
-def _convert_parquet_to_csv_gz(parquet_path: Path, csv_gz_path: Path) -> None:
+def _build_copy_select_columns(schema_column_names: List[str], is_paired: bool) -> str:
     """
-    Convert a Parquet file to gzip-compressed CSV by streaming batches directly
-    into a gzip writer. Avoids writing uncompressed CSV to disk.
+    Build the SELECT clause for DuckDB COPY so exported CSV matches formatted download
+    (excluded columns removed, renames applied). Column names are quoted for SQL safety.
     """
-    parquet_file = pq.ParquetFile(parquet_path)
-    first_batch = True
-    with gzip.open(csv_gz_path, "wt", encoding="utf-8") as f_out:
-        for batch in parquet_file.iter_batches(batch_size=6291456):
-            chunk_df = batch.to_pandas()
-            chunk_df.to_csv(
-                f_out,
-                header=first_batch,
-                index=False,
-            )
-            first_batch = False
-    parquet_path.unlink()
+    exclude = get_exclude_columns()
+    rename = get_column_rename_mapping(is_paired)
+    parts = []
+    for col in schema_column_names:
+        if col in exclude:
+            continue
+        alias = rename.get(col, col)
+        q = '"'
+        if alias != col:
+            parts.append(f'{q}{col}{q} AS {q}{alias}{q}')
+        else:
+            parts.append(f'{q}{col}{q}')
+    return ", ".join(parts)
+
+
+def _copy_query_to_csv_gz_duckdb(
+    conn,
+    table_name: str,
+    where_clause: str,
+    csv_gz_path: Path,
+    is_paired: bool,
+) -> None:
+    """
+    Export query result directly to gzip-compressed CSV using DuckDB native COPY.
+    No intermediate cache: streams from the table/view straight to CSV.gz.
+    """
+    df = conn.execute(
+        f"SELECT * FROM {table_name} WHERE {where_clause} LIMIT 1"
+    ).df()
+    schema_names = list(df.columns)
+    select_clause = _build_copy_select_columns(schema_names, is_paired)
+    if not select_clause:
+        raise ValueError("No columns to export after applying exclude list")
+    conn.execute("SET preserve_insertion_order = false")
+    conn.execute("SET enable_progress_bar = true")
+    sql = (
+        f"COPY (SELECT {select_clause} FROM {table_name} WHERE {where_clause}) "
+        f"TO ? (HEADER, DELIMITER ',', COMPRESSION GZIP)"
+    )
+    conn.execute(sql, [str(csv_gz_path.resolve())])
+
+
+def _copy_query_sequence_columns_to_csv(
+    conn,
+    table_name: str,
+    where_clause: str,
+    csv_path: Path,
+    seq_columns: List[str],
+) -> None:
+    """
+    Export only sequence columns from the live query to CSV via DuckDB COPY.
+    No row_number() window (faster); row index is used as hit_id in _csv_to_fasta_files.
+    """
+    cols = ", ".join(f'"{c}"' for c in seq_columns)
+    conn.execute("SET preserve_insertion_order = false")
+    conn.execute("SET enable_progress_bar = true")
+    sql = (
+        f"COPY (SELECT {cols} FROM {table_name} WHERE {where_clause}) "
+        f"TO ? (HEADER, DELIMITER ',')"
+    )
+    conn.execute(sql, [str(csv_path.resolve())])
+
+
+def _csv_to_fasta_files(
+    csv_path: Path,
+    is_paired: bool,
+    seq_columns: List[str],
+    chain_label: str,
+) -> Dict[str, str]:
+    """
+    Read CSV (no hit_id column; row number NR-1 is used as id) and extract sequences as FASTA
+    using system commands (awk) for speed.
+    Returns dict of chain_type -> FASTA content string.
+    """
+    logger.info(f"Converting CSV {csv_path} to FASTA files")
+    import subprocess
+
+    fasta_files: Dict[str, str] = {}
+    path_str = str(csv_path)
+
+    if is_paired:
+        # One file with heavy and light entries; id = NR-1 (data row index)
+        heavy_awk = r'''
+NR==1 { hcol=0; lcol=0; for(i=1;i<=NF;i++){ if($i=="sequence_alignment_aa_heavy") hcol=i; if($i=="sequence_alignment_aa_light") lcol=i }; next }
+hcol>0 && NF>=hcol && $(hcol)!="" { printf ">%s_heavy\n%s\n", NR-1, $(hcol) }
+lcol>0 && NF>=lcol && $(lcol)!="" { printf ">%s_light\n%s\n", NR-1, $(lcol) }
+'''
+        logger.info(f"Heavy chain awk script: {heavy_awk}")
+        out = subprocess.run(
+            ["awk", "-F", ",", heavy_awk, path_str],
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout
+        if out.strip():
+            fasta_files["paired"] = out
+    else:
+        if len(seq_columns) == 2:
+            for chain in ["heavy", "light"]:
+                awk_script = f'''
+NR==1 {{ scol=0; for(i=1;i<=NF;i++){{ if($i=="sequence_alignment_aa_{chain}") scol=i }}; next }}
+scol>0 && NF>=scol && $(scol)!="" {{ printf ">%s_{chain}\\n%s\\n", NR-1, $(scol) }}
+'''
+                out = subprocess.run(
+                    ["awk", "-F", ",", awk_script, path_str],
+                    text=True,
+                    capture_output=True,
+                    check=True,
+                ).stdout
+                if out.strip():
+                    fasta_files[chain] = out
+        else:
+            col = seq_columns[0]
+            awk_script = f'''
+NR==1 {{ scol=0; for(i=1;i<=NF;i++){{ if($i=="{col}") scol=i }}; next }}
+scol>0 && NF>=scol && $(scol)!="" {{ printf ">%s_{chain_label}\\n%s\\n", NR-1, $(scol) }}
+'''
+            out = subprocess.run(
+                ["awk", "-F", ",", awk_script, path_str],
+                text=True,
+                capture_output=True,
+                check=True,
+            ).stdout
+            if out.strip():
+                fasta_files[chain_label] = out
+    logger.info(f"Generated FASTA files:\n{fasta_files.keys()}")
+    return fasta_files
 
 
 def prepare_full_results_download_background(
@@ -716,8 +513,6 @@ def prepare_full_results_download_background(
         
         # Import functions from this module
         from components.search.download_utils import (
-            create_parquet_file,
-            generate_filename_base,
             _build_search_identifier,
             LARGE_FILE_THRESHOLD,
             _get_download_path
@@ -749,24 +544,8 @@ def prepare_full_results_download_background(
             engine, search_params_copy, is_paired, unpaired_chain_type
         )
         
-        # Determine table name
         table_name = "antibodies"
-        
-        # Get or create cached full result (single query; shared with FASTA download)
-        cached_parquet_path = _get_or_create_cached_result_parquet(
-            database_paths, table_name, where_clause, engine
-        )
-        if hasattr(engine, "conn"):
-            engine.conn.close()
-        if cached_parquet_path is None:
-            return {
-                "success": False,
-                "error": "No sequences found to download.",
-            }
-        cache_dir = _get_query_cache_directory()
-        is_temp_path = cached_parquet_path.resolve().parent != cache_dir.resolve()
-        
-        # Generate token and file path for formatted output (parquet then converted to CSV)
+
         search_params_with_metadata = dict(search_params)
         identifier = _build_search_identifier({
             "search_params": search_params_with_metadata,
@@ -774,57 +553,25 @@ def prepare_full_results_download_background(
             "is_paired": is_paired,
         })
         base_filename = f"ABHunter_sequences_{chain_label}_{identifier}"
-        parquet_filename = f"{base_filename}.parquet"
         csv_gz_filename = f"{base_filename}.csv.gz"
-        token, file_path, _ = _get_download_path(parquet_filename, "parquet")
-        
-        # Read cached Parquet in chunks, format for download, write to temp Parquet
-        parquet_file = pq.ParquetFile(cached_parquet_path)
-        writer = None
-        schema = None
-        sequence_count = 0
-        try:
-            for batch in parquet_file.iter_batches(batch_size=QUERY_CACHE_CHUNK_SIZE):
-                chunk_df = batch.to_pandas()
-                if chunk_df.empty:
-                    continue
-                chunk_formatted = prepare_download_data(chunk_df, is_paired)
-                chunk_table = pa.Table.from_pandas(chunk_formatted)
-                if schema is None:
-                    schema = chunk_table.schema
-                    fields = [pa.field(f.name, f.type, nullable=True) for f in schema]
-                    schema = pa.schema(fields)
-                    writer = pq.ParquetWriter(file_path, schema, compression="zstd")
-                try:
-                    chunk_table = chunk_table.cast(schema)
-                except Exception:
-                    unified = pa.unify_schemas([schema, chunk_table.schema])
-                    chunk_table = chunk_table.cast(unified)
-                if writer is not None:
-                    writer.write_table(chunk_table)
-                sequence_count += len(chunk_df)
-                logger.debug(
-                    "Background full results download: Processed chunk. Total: %s",
-                    sequence_count,
-                )
-        finally:
-            if writer is not None:
-                writer.close()
-        if is_temp_path and cached_parquet_path.exists():
-            cached_parquet_path.unlink(missing_ok=True)
-        
-        if sequence_count == 0:
+        token, csv_gz_path, download_url = _get_download_path(csv_gz_filename, "csv.gz")
+
+        _copy_query_to_csv_gz_duckdb(
+            engine.conn, table_name, where_clause, csv_gz_path, is_paired
+        )
+        if hasattr(engine, "conn"):
+            engine.conn.close()
+
+        # Count data rows from the exported file (one pass; no separate COUNT(*) scan)
+        sequence_count = _count_csv_gz_rows(csv_gz_path)
+        if not sequence_count:
+            if csv_gz_path.exists():
+                csv_gz_path.unlink(missing_ok=True)
             return {"success": False, "error": "No sequences found to download."}
-        
-        # Convert formatted Parquet to gzip-compressed CSV for download
-        os.chmod(file_path, 0o644)
-        csv_gz_path = file_path.with_suffix(".csv.gz")
-        _convert_parquet_to_csv_gz(file_path, csv_gz_path)
-        
+
         os.chmod(csv_gz_path, 0o644)
         file_size_bytes = csv_gz_path.stat().st_size
-        download_url = f"/downloads/{token}.csv.gz"
-        
+
         logger.info(f"Background full results download: Completed. File size: {file_size_bytes} bytes. Sequences: {sequence_count}")
         
         # Check if file is too large for direct download
@@ -1186,27 +933,13 @@ def prepare_fasta_download_background(
             engine, search_params_copy, is_paired, unpaired_chain_type
         )
         
-        # Determine table name
         table_name = "antibodies"
-        
-        # Get or create cached full result (single query; shared with full results download)
-        cached_parquet_path = _get_or_create_cached_result_parquet(
-            database_paths, table_name, where_clause, engine
-        )
-        if hasattr(engine, "conn"):
-            engine.conn.close()
-        if cached_parquet_path is None:
-            return {
-                "success": False,
-                "error": "No sequences found to download.",
-            }
-        cache_dir = _get_query_cache_directory()
-        is_temp_path = cached_parquet_path.resolve().parent != cache_dir.resolve()
-        
-        # Infer sequence columns from cached Parquet schema
-        parquet_file = pq.ParquetFile(cached_parquet_path)
-        schema = parquet_file.schema_arrow
-        all_columns = schema.names
+
+        # Infer sequence columns from table schema (LIMIT 1), no cache Parquet
+        df = engine.conn.execute(
+            f"SELECT * FROM {table_name} WHERE {where_clause} LIMIT 1"
+        ).df()
+        all_columns = list(df.columns)
         if is_paired:
             seq_columns = ["sequence_alignment_aa_heavy", "sequence_alignment_aa_light"]
         else:
@@ -1219,151 +952,81 @@ def prepare_fasta_download_background(
             elif "sequence_alignment_aa_light" in all_columns:
                 seq_columns = ["sequence_alignment_aa_light"]
             else:
-                if is_temp_path and cached_parquet_path.exists():
-                    cached_parquet_path.unlink(missing_ok=True)
+                if hasattr(engine, "conn"):
+                    engine.conn.close()
                 return {
                     "success": False,
                     "error": "No sequence columns found in database.",
                 }
         seq_columns = [c for c in seq_columns if c in all_columns]
         if not seq_columns:
-            if is_temp_path and cached_parquet_path.exists():
-                cached_parquet_path.unlink(missing_ok=True)
+            if hasattr(engine, "conn"):
+                engine.conn.close()
             return {
                 "success": False,
                 "error": "No sequence columns found in database.",
             }
-        
-        # Create temporary files for FASTA content (to avoid memory issues)
-        fasta_files = {}
-        temp_files = {}
-        
-        try:
-            # Create temporary files for each FASTA file
-            if is_paired:
-                temp_files["paired"] = tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8")
-            else:
-                if len(seq_columns) == 2:
-                    temp_files["heavy"] = tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8")
-                    temp_files["light"] = tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8")
-                else:
-                    temp_files[chain_label] = tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8")
-            
-            hit_number = 1
-            for batch in parquet_file.iter_batches(columns=seq_columns, batch_size=100000):
-                chunk_df = batch.to_pandas()
-                if chunk_df.empty:
-                    continue
-                if is_paired:
-                    for _, row in chunk_df.iterrows():
-                        heavy_seq = row.get("sequence_alignment_aa_heavy")
-                        light_seq = row.get("sequence_alignment_aa_light")
-                        if pd.notna(heavy_seq) and heavy_seq:
-                            temp_files["paired"].write(f">{hit_number}_heavy\n")
-                            temp_files["paired"].write(f"{heavy_seq}\n")
-                        if pd.notna(light_seq) and light_seq:
-                            temp_files["paired"].write(f">{hit_number}_light\n")
-                            temp_files["paired"].write(f"{light_seq}\n")
-                        hit_number += 1
-                else:
-                    if len(seq_columns) == 2:
-                        for _, row in chunk_df.iterrows():
-                            heavy_seq = row.get("sequence_alignment_aa_heavy")
-                            light_seq = row.get("sequence_alignment_aa_light")
-                            if pd.notna(heavy_seq) and heavy_seq:
-                                temp_files["heavy"].write(f">{hit_number}_heavy\n")
-                                temp_files["heavy"].write(f"{heavy_seq}\n")
-                            if pd.notna(light_seq) and light_seq:
-                                temp_files["light"].write(f">{hit_number}_light\n")
-                                temp_files["light"].write(f"{light_seq}\n")
-                            hit_number += 1
-                    else:
-                        seq_col = seq_columns[0]
-                        for _, row in chunk_df.iterrows():
-                            seq = row.get(seq_col)
-                            if pd.notna(seq) and seq:
-                                temp_files[chain_label].write(f">{hit_number}_{chain_label}\n")
-                                temp_files[chain_label].write(f"{seq}\n")
-                                hit_number += 1
-                logger.debug("Background FASTA download: Processed chunk. Hit number: %s", hit_number)
-            
-            if is_temp_path and cached_parquet_path.exists():
-                cached_parquet_path.unlink(missing_ok=True)
-            
-            # Close temp files and read content
-            for key, temp_file in temp_files.items():
-                temp_file.close()
-                with open(temp_file.name, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    if content.strip():
-                        fasta_files[key] = content
-                # Clean up temp file
-                os.unlink(temp_file.name)
-            
-            if not fasta_files:
-                return {
-                    'success': False,
-                    'error': 'No sequences available for selected chain types.'
-                }
-            
-            # Generate filename first
-            identifier = _build_search_identifier({
-                "search_params": search_params_copy,
-                "chain_label": chain_label,
-                "is_paired": is_paired,
-                "selected_databases": sorted(selected_databases_formatted),
-            })
-            
-            if len(fasta_files) > 1:
-                filename = f"ABHunter_FASTA_{identifier}.zip"
-            else:
-                chain_name = list(fasta_files.keys())[0]
-                filename = f"ABHunter_FASTA_{chain_name}_{identifier}.zip"
-            
-            # Get download path for streaming write
-            token, file_path, download_url = _get_download_path(filename, "zip")
 
-            # Create ZIP file directly on disk (not in memory)
-            try:
-                zip_fp = zipfile.ZipFile(file_path, 'w', zipfile.ZIP_DEFLATED)
-            except PermissionError as e:
-                download_dir = _get_download_directory()
-                raise PermissionError(
-                    f"Cannot write to download directory: {download_dir}. "
-                    "Ensure the directory exists and is writable by this process. "
-                    "In Docker, set ABHUNTER_DOWNLOAD_DIR=/app/downloads and mount the same host path "
-                    "(e.g. ./downloads) with write access; fix host permissions if needed (e.g. chmod 775 ./downloads)."
-                ) from e
-            with zip_fp as zip_file:
-                # Add FASTA files
-                for chain_type, fasta_content in fasta_files.items():
-                    fasta_filename = f"sequences_{chain_type}.fasta"
-                    zip_file.writestr(fasta_filename, fasta_content.encode('utf-8'))
-                
-                # Add search parameters JSON file
-                search_params_with_metadata = dict(search_params)
-                search_params_json = json.dumps(search_params_with_metadata, indent=2, sort_keys=True, default=str)
-                zip_file.writestr("search_parameters.json", search_params_json.encode('utf-8'))
-            
-            # Set file permissions to be readable by nginx
-            os.chmod(file_path, 0o644)
-            
-            # Count total sequences
-            total_sequences = sum(content.count('>') for content in fasta_files.values())
-            file_size_bytes = file_path.stat().st_size
-            
-            logger.info(f"Background FASTA download: Completed. File size: {file_size_bytes} bytes. Sequences: {total_sequences}")
-            
-        except Exception as e:
-            # Clean up temp files on error
-            for temp_file in temp_files.values():
-                try:
-                    temp_file.close()
-                    if os.path.exists(temp_file.name):
-                        os.unlink(temp_file.name)
-                except:
-                    pass
-            raise  # Re-raise to be caught by outer except
+        fd, temp_csv_path = tempfile.mkstemp(suffix=".csv")
+        os.close(fd)
+        temp_csv_path = Path(temp_csv_path)
+        try:
+            _copy_query_sequence_columns_to_csv(
+                engine.conn, table_name, where_clause, temp_csv_path, seq_columns
+            )
+            if hasattr(engine, "conn"):
+                engine.conn.close()
+            fasta_files = _csv_to_fasta_files(temp_csv_path, is_paired, seq_columns, chain_label)
+        finally:
+            if temp_csv_path.exists():
+                temp_csv_path.unlink(missing_ok=True)
+
+        if not fasta_files:
+            return {
+                'success': False,
+                'error': 'No sequences available for selected chain types.'
+            }
+
+        # Generate filename first
+        identifier = _build_search_identifier({
+            "search_params": search_params_copy,
+            "chain_label": chain_label,
+            "is_paired": is_paired,
+            "selected_databases": sorted(selected_databases_formatted),
+        })
+
+        if len(fasta_files) > 1:
+            filename = f"ABHunter_FASTA_{identifier}.zip"
+        else:
+            chain_name = list(fasta_files.keys())[0]
+            filename = f"ABHunter_FASTA_{chain_name}_{identifier}.zip"
+
+        # Get download path for streaming write
+        token, file_path, download_url = _get_download_path(filename, "zip")
+
+        try:
+            zip_fp = zipfile.ZipFile(file_path, 'w', zipfile.ZIP_DEFLATED)
+        except PermissionError as e:
+            download_dir = _get_download_directory()
+            raise PermissionError(
+                f"Cannot write to download directory: {download_dir}. "
+                "Ensure the directory exists and is writable by this process. "
+                "In Docker, set ABHUNTER_DOWNLOAD_DIR=/app/downloads and mount the same host path "
+                "(e.g. ./downloads) with write access; fix host permissions if needed (e.g. chmod 775 ./downloads)."
+            ) from e
+        with zip_fp as zip_file:
+            for chain_type, fasta_content in fasta_files.items():
+                fasta_filename = f"sequences_{chain_type}.fasta"
+                zip_file.writestr(fasta_filename, fasta_content.encode('utf-8'))
+            search_params_with_metadata = dict(search_params)
+            search_params_json = json.dumps(search_params_with_metadata, indent=2, sort_keys=True, default=str)
+            zip_file.writestr("search_parameters.json", search_params_json.encode('utf-8'))
+
+        os.chmod(file_path, 0o644)
+        total_sequences = sum(content.count('>') for content in fasta_files.values())
+        file_size_bytes = file_path.stat().st_size
+        del fasta_files  # Release large in-memory data before return so worker exits quickly
+        logger.info(f"Background FASTA download: Completed. File size: {file_size_bytes} bytes. Sequences: {total_sequences}")
         
         # Check if file is too large for direct download
         if file_size_bytes > LARGE_FILE_THRESHOLD:
