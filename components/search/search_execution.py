@@ -28,7 +28,7 @@ def _log_debug_event(location, message, data=None):
     except Exception:
         pass
 
-from search_engine import AntibodySearchEngine
+from src.search_engine import AntibodySearchEngine
 from components.search.search_forms import validate_gene_range, validate_gene_range_oas
 
 logger = logging.getLogger(__name__)

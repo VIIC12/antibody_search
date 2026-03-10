@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional, Union, List
 import logging
 
-from search_engine import AntibodySearchEngine
+from src.search_engine import AntibodySearchEngine
 
 logger = logging.getLogger(__name__)
 

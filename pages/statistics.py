@@ -5,6 +5,10 @@ import plotly.graph_objects as go
 import plotly.express as px
 from pathlib import Path
 
+PLOTLY_DISPLAY_CONFIG = {
+    "displayModeBar": False,
+}
+
 # Override page title (inherits other settings from app.py)
 st.set_page_config(page_title="ABHunter - Statistics", layout="wide")
 
@@ -248,7 +252,7 @@ if vh_marginals is not None:
             margin=dict(l=100, r=50, t=100, b=100)
         )
         
-        st.plotly_chart(fig_observed, config={'displayModeBar': True})
+        st.plotly_chart(fig_observed, config=PLOTLY_DISPLAY_CONFIG)
     
     # Step 5: Pairing Correction Ratio
     st.markdown("### Step 5: Pairing Correction Ratio")
@@ -319,7 +323,7 @@ if vh_marginals is not None:
                 margin=dict(l=80, r=20, t=60, b=80)
             )
             
-            st.plotly_chart(fig_ratio, config={'displayModeBar': True})
+            st.plotly_chart(fig_ratio, config=PLOTLY_DISPLAY_CONFIG)
         
         with col2:
             st.markdown("#### Observed - Expected Difference")
@@ -355,7 +359,7 @@ if vh_marginals is not None:
                 margin=dict(l=80, r=20, t=60, b=80)
             )
             
-            st.plotly_chart(fig_diff, config={'displayModeBar': True})
+            st.plotly_chart(fig_diff, config=PLOTLY_DISPLAY_CONFIG)
     
     # Step 6: Unpaired Population Anchor
     st.markdown("### Step 6: Unpaired Population Anchor")
@@ -418,7 +422,7 @@ if vh_marginals is not None:
             margin=dict(l=60, r=20, t=80, b=60)
         )
         
-        st.plotly_chart(fig_vh_comparison, config={'displayModeBar': True})
+        st.plotly_chart(fig_vh_comparison, config=PLOTLY_DISPLAY_CONFIG)
     
     if vl_marginals is not None and light_unpaired is not None:
         vl_merged = vl_marginals.merge(
@@ -456,7 +460,7 @@ if vh_marginals is not None:
             margin=dict(l=60, r=20, t=80, b=100)
         )
         
-        st.plotly_chart(fig_vl_comparison, config={'displayModeBar': True})
+        st.plotly_chart(fig_vl_comparison, config=PLOTLY_DISPLAY_CONFIG)
     
     # Step 7: Adjusted Pairing Surface
     st.markdown("### Step 7: Adjusted Pairing Surface")
@@ -548,7 +552,7 @@ if vh_marginals is not None:
                 margin=dict(l=80, r=20, t=60, b=80)
             )
             
-            st.plotly_chart(fig_h_to_l, config={'displayModeBar': True})
+            st.plotly_chart(fig_h_to_l, config=PLOTLY_DISPLAY_CONFIG)
         
         with col2:
             st.markdown("#### Light-to-Heavy (l_to_h)")
@@ -585,7 +589,7 @@ if vh_marginals is not None:
                 margin=dict(l=80, r=20, t=60, b=80)
             )
             
-            st.plotly_chart(fig_l_to_h, config={'displayModeBar': True})
+            st.plotly_chart(fig_l_to_h, config=PLOTLY_DISPLAY_CONFIG)
     
     # Summary
     st.markdown("---")
