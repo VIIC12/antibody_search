@@ -20,6 +20,7 @@ env/
 logs/
 *.egg-info/
 ENV/
+uv.lock
 
 # Database Files
 data/

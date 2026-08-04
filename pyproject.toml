@@ -19,6 +19,8 @@ dependencies = [
     # Testing & Validation
     "pytest>=7.4.0",
     "pytest-benchmark>=4.0.0",
+    "streamlit-autorefresh>=1.0.1",
+    "plotly>=6.9.0",
 ]
 
 [project.optional-dependencies]
