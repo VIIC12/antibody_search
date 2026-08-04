@@ -298,8 +298,8 @@ def create_paired_search_form(disabled: bool = False) -> Dict[str, Any]:
 
 def search_page_content():
     """Main search page content."""
-    st.title(":material/vaccines: AntibodyHunter")
-    st.markdown("#### :grey[High-Performance Antibody Database Search]")
+    st.title(":material/vaccines: ABHunter")
+    st.markdown("#### :grey[Explore and filter the antibody repertoire of healthy-humans from the OAS database in real-time]")
     
     # Print database path once when server starts (only on first call)
     if 'db_path_printed' not in st.session_state:
