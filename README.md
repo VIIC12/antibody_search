@@ -1,42 +1,38 @@
-GoogleDoc: https://docs.google.com/document/d/1BVCAJVQurnfQZvjDsTJ6hv-I6SYsuBtdR76jlq3Z0-A/edit?tab=t.0
+# ABHunter - Real-Time Exploration of the Billion-Scale Human Repertoire for Precursor Frequency Analysis and Rational Antibody Design
 
-Dev-Server from IWE: http://172.22.180.238/
-
-# ABHunter - Optimized Antibody Database Search
-
-We introduce ABHUNTER, a database search tool that systematically analyzes antibody sequence and population repertoire data to identify individuals possessing the necessary gene segments and paratope features for bnAb development. By quantifying the accessibility of bnAb precursors, ABHUNTER facilitates the prioritization of bnAb lineages with high therapeutic and vaccine potential, enabling rational design of broadly effective germline-targeting interventions.
+In this work, we developed ABHunter, a framework designed for the exploration and filtering of the 1.86-billion-sequence healthy-human subset of the [Observed Antibody Space (OAS)](https://opig.stats.ox.ac.uk/webapps/oas/) in a matter of seconds. Our tool is accessible through any standard web browser [abhunter.iwe-lab.de](abhunter.iwe-lab.de) and supports deeper, custom analysis through local installation that was previously impractical, making the datasets curated by Olsen et al. and Kovaltsuk et al. broadly accessible.
 
 ### For local execution w/o docker
 
-#### Installation
+#### Prerequisites
 ```bash
 # Only once for installation:
-# Create virtual environment
-python3 -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate
-
-# clone repository, go into the antibody_search directory
-git clone https://github.com/VIIC12/antibody_search.git
+# Clone the repository
+git clone --branch master git@github.com:VIIC12/antibody_search.git
 cd antibody_search
 
+# Create virtual environment
+uv venv
+
+# Activate virtual environment
+source .venv/bin/activate
+
 # Install dependencies
-pip install -r requirements.txt
+uv sync 
+
+# Download and convert OAS files to Parquet format
+python scripts/update_from_oas.py --healthy_humans --download-and-convert
 ```
 
-#### Execution
+#### Run the web interface
 ```bash
-export ABHUNTER_DB_PATH=./data
-streamlit run app.py
+uv run streamlit run app.py
+# Open the "Local URL" link in your browser
 ```
-then open the link in your browser
 
 # Overview
 
 ## Architecture
-
-High-performance antibody sequence search tool using DuckDB and Parquet
 ```
 antibody_search/               # Self-contained antibody_search directory
 ├── app.py                     # Streamlit web interface (main entry)
@@ -49,6 +45,10 @@ antibody_search/               # Self-contained antibody_search directory
 ├── src/
 │   └── search_engine.py       # DuckDB query engine
 │
+├── components/
+│   └── search/                # Search components
+│       ├── ... *.py           # Search components
+│
 ├── scripts/
 │   └── convert_to_parquet.py  # CSV.gz → Parquet converter
 │
@@ -60,28 +60,61 @@ antibody_search/               # Self-contained antibody_search directory
 │
 ├── tests/                     # Validation tests
 │
-├── docs/                      # Documentation
-│
 └── venv/                      # Virtual environment (gitignored)
 ```
-
-## Quick Start
-
-### 1. Install Dependencies
+## Customization
 ```bash
-pip install -r requirements.txt
-```
+# custom database path (default: project data/)
+export ABHUNTER_DB_PATH=./data
 
-### 2. Convert Sample Data
-```bash
-python scripts/convert_to_parquet.py --input ../Server/DB
-```
-
-### 3. Run Web Interface
-```bash
-streamlit run app.py
+# custom IgBLAST directory (default: project igblast/)
+export ABHUNTER_IGBLAST_PATH=./igblast
 ```
 
 ## License
+ABHunter is a free open-source software licensed under the MIT License. The ABHunter server components are a free open-source software licensed under the GNU GPLv3 License.
 
-## Author
+## Citation
+If you use this repository code or data in your work, please cite the relavant work as below:
+```bibtex
+@unpublished{Schlegel2026,
+    title = {"Real-Time Exploration of the Billion-Scale Human Repertoire for Precursor Frequency Analysis and Rational Antibody Design},
+    author = {Tom U. Schlegel and Jannis de Riz and Jakob R. Riccabona and Franz Dietzmeyer and Jens Meiler and Clara T. Schoeder and Torben Schiffner},
+    year = {2026},
+   doi = {to appear},
+   journal = {to appear},
+   pages = {to appear},
+   volume = {to appear},
+   url = {to appear},
+   year = {2026},
+   publisher = {to appear},
+   note    = {under submission}
+}
+
+@article{Olsen2022,
+   title = {Observed Antibody Space: A diverse database of cleaned, annotated, and translated unpaired and paired antibody sequences},
+   author = {Tobias H. Olsen and Fergus Boyles and Charlotte M. Deane},
+   doi = {10.1002/pro.4205},
+   journal = {Protein Science},
+   pages = {141-146},
+   volume = {31},
+   url = {https://doi.org/10.1002/pro.4205},
+   year = {2022},
+   publisher = {John Wiley \& Sons, Ltd}
+}
+
+@article{Kovaltsuk2018,
+   title = {Observed Antibody Space: A Resource for Data Mining Next-Generation Sequencing of Antibody Repertoires},
+   author = {Aleksandr Kovaltsuk and Jinwoo Leem and Sebastian Kelm and James Snowden and Charlotte M Deane and Konrad Krawczyk},
+   doi = {10.4049/jimmunol.1800708},
+   journal = {The Journal of Immunology},
+   pages = {2502-2509},
+   volume = {201},
+   url = {https://doi.org/10.4049/jimmunol.1800708},
+   year = {2018},
+    publisher = {Oxford Academic}
+}
+```
+
+## Acknowledgments
+We thank the OAS authors for curating and making their dataset available to the community. Additionally, we would like to thank Xin Yu for his [detailed instructions](https://github.com/xinyu-dev/igblast) on how to set up the stand-alone IgBLAST application igblastn.
