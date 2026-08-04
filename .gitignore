@@ -24,6 +24,7 @@ uv.lock
 
 # Database Files
 data/
+!data/oas_json_index.pkl
 
 #igblast
 backup/

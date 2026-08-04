@@ -17,8 +17,11 @@ uv venv
 # Activate virtual environment
 source .venv/bin/activate
 
+# Install dependencies
+uv sync 
+
 # Download and convert OAS files to Parquet format
-python scripts/update_from_oas.py
+python scripts/update_from_oas.py --healthy_humans --download-and-convert
 ```
 
 #### Run the web interface

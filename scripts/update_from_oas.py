@@ -24,7 +24,7 @@ os.environ['NUMEXPR_MAX_THREADS'] = str(os.cpu_count())
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    datefmt='%Y-%m-%d %H:%M:%S',
 )
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,6 @@ def parse_directory_listing(html_content: str, base_url: str) -> List[FileInfo]:
     
     # Pattern to match table rows in Apache directory listing
     # Format: <tr><td>...</td><td><a href="filename">filename</a></td><td align="right">date</td><td align="right">size</td></tr>
-    # This matches the exact table structure with proper row boundaries
     pattern = r'<tr><td[^>]*><img[^>]*></td><td><a href="([^"]+)">[^<]+</a></td><td align="right">(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s*</td><td align="right">(\d+[KMG]?|-)\s*</td>'
     
     for match in re.finditer(pattern, html_content, re.DOTALL):
@@ -138,21 +137,18 @@ def get_study_directories(base_url: str, directory: str) -> List[tuple]:
         return []
 
 
-def get_json_files_from_study(base_url: str, study_path: str, is_paired: bool = True) -> List[FileInfo]:
+def get_json_files_from_study(base_url: str, study_path: str) -> List[FileInfo]:
     """
     Get JSON metadata files from a specific study.
-    
-    Automatically detects whether to use json/ or json_paired/ subdirectory.
-    
+        
     Args:
         base_url: Base URL for the OAS server
         study_path: Path to the study directory
-        is_paired: Whether this is a paired study
     
     Returns list of FileInfo objects for JSON files.
     """
     # Try both possible subdirectory names
-    json_subdirs = ["json_paired/", "json/"] if is_paired else ["json/", "json_paired/"]
+    json_subdirs = ["json_paired/", "json/"]
     
     for json_subdir in json_subdirs:
         json_url = urljoin(base_url, f"{study_path}/{json_subdir}")
@@ -215,7 +211,7 @@ def update_json_index_incrementally(directories: List[str] = None) -> Dict[str, 
     
     Returns updated complete index.
     """
-    logger.info("🔄 Updating JSON index incrementally...")
+    logger.info("Updating JSON index incrementally...")
     
     # Load existing index
     existing_index = load_json_index()
@@ -246,7 +242,7 @@ def update_json_index_incrementally(directories: List[str] = None) -> Dict[str, 
     }
     
     for directory, is_paired in directories_to_scan:
-        logger.info(f"📁 Checking {directory}...")
+        logger.info(f"Checking {directory}...")
         
         # Get all study directories
         study_dirs = get_study_directories(OAS_BASE_URL, directory)
@@ -262,23 +258,23 @@ def update_json_index_incrementally(directories: List[str] = None) -> Dict[str, 
                 stats['studies_unchanged'] += 1
                 continue
             
-            logger.info(f"  📂 Processing: {study_dir}")
+            logger.info(f"  Processing: {study_dir}")
             
             # Get current JSON files from server
-            current_json_files = get_json_files_from_study(OAS_BASE_URL, study_path, is_paired)
+            current_json_files = get_json_files_from_study(OAS_BASE_URL, study_path)
             
             if not current_json_files:
-                logger.warning(f"    ⚠️  No JSON files found in {study_path}")
+                logger.warning(f"    No JSON files found in {study_path}")
                 continue
             
             if not cached_study:
                 # New study - parse all files
                 stats['studies_new'] += 1
-                logger.info(f"    🆕 New study - parsing all {len(current_json_files)} JSON files")
+                logger.info(f"    New study - parsing all {len(current_json_files)} JSON files")
                 
                 metadata = {}
                 for json_file in current_json_files:
-                    logger.debug(f"    📄 Parsing: {json_file.name}")
+                    logger.debug(f"    Parsing: {json_file.name}")
                     parsed_metadata = parse_metadata_json(json_file.url)
                     if parsed_metadata:
                         metadata[json_file.name] = parsed_metadata
@@ -303,7 +299,7 @@ def update_json_index_incrementally(directories: List[str] = None) -> Dict[str, 
                     current_json_files, cached_study.json_files
                 )
                 
-                logger.info(f"    📊 Files: {len(new_files)} new, {len(changed_files)} changed, {len(unchanged_files)} unchanged")
+                logger.info(f"    Files: {len(new_files)} new, {len(changed_files)} changed, {len(unchanged_files)} unchanged")
                 
                 if not new_files and not changed_files:
                     # No file changes, just update timestamp
@@ -323,7 +319,7 @@ def update_json_index_incrementally(directories: List[str] = None) -> Dict[str, 
                 
                 files_to_parse = new_files + changed_files
                 for json_file in files_to_parse:
-                    logger.debug(f"    📄 Parsing: {json_file.name}")
+                    logger.debug(f"    Parsing: {json_file.name}")
                     parsed_metadata = parse_metadata_json(json_file.url)
                     if parsed_metadata:
                         updated_metadata[json_file.name] = parsed_metadata
@@ -343,20 +339,20 @@ def update_json_index_incrementally(directories: List[str] = None) -> Dict[str, 
                 updated_index[study_path] = study_info
     
     # Log statistics
-    logger.info(f"🎉 Incremental update complete!")
-    logger.info(f"  📊 Studies checked: {stats['studies_checked']}")
-    logger.info(f"  🆕 New studies: {stats['studies_new']}")
-    logger.info(f"  📝 Updated studies: {stats['studies_updated']}")
-    logger.info(f"  ⏭️  Unchanged studies: {stats['studies_unchanged']}")
-    logger.info(f"  📄 Files parsed: {stats['files_parsed']}")
-    logger.info(f"  ⏭️  Files unchanged: {stats['files_unchanged']}")
+    logger.info(f"Incremental update complete!")
+    logger.info(f"  Studies checked: {stats['studies_checked']}")
+    logger.info(f"  New studies: {stats['studies_new']}")
+    logger.info(f"  Updated studies: {stats['studies_updated']}")
+    logger.info(f"  Unchanged studies: {stats['studies_unchanged']}")
+    logger.info(f"  Files parsed: {stats['files_parsed']}")
+    logger.info(f"  Files unchanged: {stats['files_unchanged']}")
     
     total_json_files = sum(len(study.json_files) for study in updated_index.values())
     total_with_metadata = sum(len(study.metadata) for study in updated_index.values())
     
-    logger.info(f"  📊 Total studies: {len(updated_index)}")
-    logger.info(f"  📄 Total JSON files: {total_json_files}")
-    logger.info(f"  📋 JSON files with metadata: {total_with_metadata}")
+    logger.info(f"  Total studies: {len(updated_index)}")
+    logger.info(f"  Total JSON files: {total_json_files}")
+    logger.info(f"  JSON files with metadata: {total_with_metadata}")
     
     return updated_index
 
@@ -407,7 +403,7 @@ def build_complete_json_index(directories: List[str] = None) -> Dict[str, StudyI
     if directories is None:
         directories = ['paired', 'unpaired']
     
-    logger.info(f"🔍 Building JSON index from OAS server for directories: {', '.join(directories)}")
+    logger.info(f"Building JSON index from OAS server for directories: {', '.join(directories)}")
     
     complete_index = {}
     
@@ -419,32 +415,32 @@ def build_complete_json_index(directories: List[str] = None) -> Dict[str, StudyI
         directories_to_scan.append((UNPAIRED_DIR, False))
     
     for directory, is_paired in directories_to_scan:
-        logger.info(f"📁 Scanning {directory}...")
+        logger.info(f"Scanning {directory}...")
         
         # Get all study directories
         study_dirs = get_study_directories(OAS_BASE_URL, directory)
         
         for study_dir, last_modified in study_dirs:
             study_path = f"{directory}{study_dir}"
-            logger.info(f"  📂 Processing: {study_dir}")
+            logger.info(f"  Processing: {study_dir}")
             
             # Get JSON files from this study
-            json_files = get_json_files_from_study(OAS_BASE_URL, study_path, is_paired)
+            json_files = get_json_files_from_study(OAS_BASE_URL, study_path)
             
             if not json_files:
-                logger.warning(f"    ⚠️  No JSON files found in {study_path}")
+                logger.warning(f"    No JSON files found in {study_path}")
                 continue
             
             # Parse metadata for each JSON file
             metadata = {}
             for json_file in json_files:
-                logger.debug(f"    📄 Parsing: {json_file.name}")
+                logger.debug(f"    Parsing: {json_file.name}")
                 
                 parsed_metadata = parse_metadata_json(json_file.url)
                 if parsed_metadata:
                     metadata[json_file.name] = parsed_metadata
                 else:
-                    logger.debug(f"    ❌ Failed to parse: {json_file.name}")
+                    logger.debug(f"    Failed to parse: {json_file.name}")
             
             # Store study information
             study_info = StudyInfo(
@@ -457,16 +453,16 @@ def build_complete_json_index(directories: List[str] = None) -> Dict[str, StudyI
             
             complete_index[study_path] = study_info
             
-            logger.info(f"    ✅ Indexed {len(metadata)} JSON files with metadata")
+            logger.info(f"    Indexed {len(metadata)} JSON files with metadata")
     
-    logger.info(f"🎉 Complete JSON index built!")
-    logger.info(f"  📊 Total studies indexed: {len(complete_index)}")
+    logger.info(f"Complete JSON index built!")
+    logger.info(f"  Total studies indexed: {len(complete_index)}")
     
     total_json_files = sum(len(study.json_files) for study in complete_index.values())
     total_with_metadata = sum(len(study.metadata) for study in complete_index.values())
     
-    logger.info(f"  📄 Total JSON files: {total_json_files}")
-    logger.info(f"  📋 JSON files with metadata: {total_with_metadata}")
+    logger.info(f"  Total JSON files: {total_json_files}")
+    logger.info(f"  JSON files with metadata: {total_with_metadata}")
     
     return complete_index
 
@@ -482,7 +478,7 @@ def load_json_index() -> Dict[str, StudyInfo]:
     
     if index_file.exists():
         try:
-            logger.info(f"📂 Loading existing JSON index from {index_file}")
+            logger.info(f"Loading existing JSON index from {index_file}")
             with open(index_file, 'rb') as f:
                 index_data = pickle.load(f)
                 
@@ -542,12 +538,26 @@ def save_json_index(index: Dict[str, StudyInfo]):
             'total_json_files': sum(len(study.json_files) for study in index.values()),
             'total_with_metadata': sum(len(study.metadata) for study in index.values())
         }
-        
+
+        # Compute total number of sequences indexed
+        total_sequences = 0
+        for study in index.values():
+            for meta in study.metadata.values():
+                if 'Total sequences' in meta and meta['Total sequences'] is not None:
+                    try:
+                        val = meta['Total sequences']
+                        if isinstance(val, (int, float)):
+                            total_sequences += int(val)
+                        elif isinstance(val, str) and val.isdigit():
+                            total_sequences += int(val)
+                    except Exception:
+                        continue
+
         with open(index_file, 'wb') as f:
             pickle.dump(index_data, f)
-        
-        logger.info(f"💾 JSON index saved to {index_file}")
-        logger.info(f"  📊 {len(index)} studies, {index_data['total_json_files']} JSON files")
+
+        logger.info(f"JSON index saved to {index_file}")
+        logger.info(f"  {len(index)} studies, {index_data['total_json_files']} JSON files, {total_sequences:,} total sequences indexed")
         
     except Exception as e:
         logger.error(f"Failed to save JSON index: {e}")
@@ -565,14 +575,14 @@ def study_needs_update(study_path: str, current_timestamp: str, cached_study: St
     Returns True if study needs update.
     """
     if not cached_study:
-        logger.debug(f"  📝 New study: {study_path}")
+        logger.debug(f"  New study: {study_path}")
         return True
     
     if current_timestamp != cached_study.last_modified:
-        logger.debug(f"  📝 Modified study: {study_path} ({cached_study.last_modified} -> {current_timestamp})")
+        logger.debug(f"  Modified study: {study_path} ({cached_study.last_modified} -> {current_timestamp})")
         return True
     
-    logger.debug(f"  ⏭️  Unchanged study: {study_path}")
+    logger.debug(f"  Unchanged study: {study_path}")
     return False
 
 
@@ -822,7 +832,7 @@ def calculate_total_size_for_criteria(index: Dict, filters: Dict[str, str], base
     Returns:
         Dictionary with statistics about matching files
     """
-    logger.info("🔍 Calculating file sizes for matching files...")
+    logger.info("Calculating file sizes for matching files...")
     
     matching_files = []
     total_size_bytes = 0
@@ -842,7 +852,7 @@ def calculate_total_size_for_criteria(index: Dict, filters: Dict[str, str], base
             continue
         
         studies_processed += 1
-        logger.debug(f"📂 Processing study: {study_path}")
+        logger.debug(f"Processing study: {study_path}")
         
         # Get CSV.gz files for this study
         try:
@@ -868,12 +878,12 @@ def calculate_total_size_for_criteria(index: Dict, filters: Dict[str, str], base
                     total_size_bytes += file_size
                     logger.debug(f"  ✓ {csv_filename}: {file_size / (1024*1024):.1f} MB")
                 else:
-                    logger.warning(f"  ⚠️  CSV file not found: {csv_filename}")
+                    logger.warning(f"  CSV file not found: {csv_filename}")
                     
         except Exception as e:
-            logger.error(f"  ❌ Failed to get CSV files for {study_path}: {e}")
+            logger.error(f"  Failed to get CSV files for {study_path}: {e}")
     
-    logger.info(f"📊 File size calculation complete:")
+    logger.info(f"File size calculation complete:")
     logger.info(f"  Matching files: {len(matching_files)}")
     logger.info(f"  Studies processed: {studies_processed}")
     
@@ -900,14 +910,14 @@ def filter_and_display_matches(index: Dict[str, StudyInfo], filters: Dict[str, s
         filters: Filter criteria
         verbose: If True, show detailed file information. If False, show summary only.
     """
-    logger.info("🔍 Filtering studies based on criteria...")
+    logger.info("Filtering studies based on criteria...")
     
     # Show active filters
     active_filters = {k: v for k, v in filters.items() if v is not None}
     if active_filters:
-        logger.info(f"📋 Active filters: {active_filters}")
+        logger.info(f"Active filters: {active_filters}")
     else:
-        logger.info("📋 No filters specified - showing all studies")
+        logger.info("No filters specified - showing all studies")
     
     matching_studies = []
     total_matching_files = 0
@@ -967,7 +977,7 @@ def filter_and_display_matches(index: Dict[str, StudyInfo], filters: Dict[str, s
     size_results = calculate_total_size_for_criteria(index, filters, OAS_BASE_URL)
     
     # Display results
-    logger.info(f"\n📊 Filter Results:")
+    logger.info(f"Filter Results:")
     logger.info(f"  Matching studies: {len(matching_studies)}")
     logger.info(f"  Matching JSON files: {total_matching_files}")
     logger.info(f"  Total unique sequences: {total_matching_sequences:,}")
@@ -976,12 +986,12 @@ def filter_and_display_matches(index: Dict[str, StudyInfo], filters: Dict[str, s
     # Show warning if some files are missing "Total sequences" value
     if files_missing_total > 0:
         missing_percentage = (files_missing_total / total_matching_files * 100) if total_matching_files > 0 else 0
-        logger.warning(f"\n⚠️  WARNING: {files_missing_total} out of {total_matching_files} matching files ({missing_percentage:.1f}%) are missing the 'Total sequences' value.")
+        logger.warning(f"WARNING: {files_missing_total} out of {total_matching_files} matching files ({missing_percentage:.1f}%) are missing the 'Total sequences' value.")
         logger.warning(f"   The 'Total sequences' sum shown above ({total_matching_total_sequences:,}) is INCOMPLETE")
         logger.warning(f"   and does not include sequences from these {files_missing_total} files.")
     
     # Display file size information
-    logger.info(f"\n💾 File Size Information:")
+    logger.info(f"File Size Information:")
     logger.info(f"  Total matching files: {size_results['total_files']}")
     logger.info(f"  Total file size: {size_results['total_size_gb']:.2f} GB ({size_results['total_size_mb']:.1f} MB)")
     
@@ -1007,12 +1017,12 @@ def filter_and_display_matches(index: Dict[str, StudyInfo], filters: Dict[str, s
                 logger.info("")
         else:
             # Show summary only
-            logger.info(f"\n📋 Matching Studies Summary:")
+            logger.info(f"Matching Studies Summary:")
             for i, (study_path, study_info, matching_files) in enumerate(matching_studies):
                 logger.info(f"  {i+1}. {study_path} ({'Paired' if study_info.is_paired else 'Unpaired'}) - {len(matching_files)} matching files")
-            logger.info(f"\n💡 Use --verbose to see detailed file information")
+            logger.info(f"Use --verbose to see detailed file information")
     else:
-        logger.info("❌ No studies match the specified criteria")
+        logger.info("No studies match the specified criteria")
     
     return matching_studies
 
@@ -1077,13 +1087,13 @@ def preview_download_plan(matching_studies: List, output_dir: Path):
         matching_studies: List of matching studies from filter_and_display_matches
         output_dir: Directory where Parquet files would be stored
     """
-    logger.info("🔍 Analyzing download plan...")
+    logger.info("Analyzing download plan...")
     
     file_status = check_existing_files(matching_studies, output_dir)
     
     total_files = len(file_status['existing']) + len(file_status['new']) + len(file_status['updated'])
     
-    logger.info(f"\n📊 Download Plan Summary:")
+    logger.info(f"\nDownload Plan Summary:")
     logger.info(f"  Total matching files: {total_files}")
     logger.info(f"  Files already exist: {len(file_status['existing'])}")
     logger.info(f"  New files to download: {len(file_status['new'])}")
@@ -1091,7 +1101,7 @@ def preview_download_plan(matching_studies: List, output_dir: Path):
     
     # Calculate file sizes for new files that would be downloaded
     if file_status['new']:
-        logger.info(f"\n📥 New files to download (with sizes):")
+        logger.info(f"\nNew files to download (with sizes):")
         total_download_size_mb = 0
         
         for file_info in file_status['new'][:10]:  # Show first 10
@@ -1124,24 +1134,20 @@ def preview_download_plan(matching_studies: List, output_dir: Path):
         
         if len(file_status['new']) > 10:
             logger.info(f"  ... and {len(file_status['new']) - 10} more files")
-        
-        if total_download_size_mb > 0:
-            total_download_size_gb = total_download_size_mb / 1024
-            logger.info(f"\n💾 Estimated download size: {total_download_size_gb:.2f} GB ({total_download_size_mb:.1f} MB)")
     
     if file_status['existing']:
-        logger.info(f"\n✅ Files already downloaded:")
+        logger.info(f"\nFiles already downloaded:")
         for file_info in file_status['existing'][:5]:  # Show first 5
             logger.info(f"  • {file_info['parquet_filename']} ({file_info['metadata'].get('Species', 'N/A')})")
         if len(file_status['existing']) > 5:
             logger.info(f"  ... and {len(file_status['existing']) - 5} more")
     
     if file_status['updated']:
-        logger.info(f"\n🔄 Files to update:")
+        logger.info(f"\nFiles to update:")
         for file_info in file_status['updated']:
             logger.info(f"  • {file_info['parquet_filename']} ({file_info['metadata'].get('Species', 'N/A')})")
     
-    logger.info(f"\n💡 Use --download-and-convert to actually download and convert the files.")
+    logger.info(f"\nUse --download-and-convert to actually download and convert the files.")
 
 
 def limit_matching_studies(matching_studies: List, max_files: int) -> tuple:
@@ -1192,14 +1198,14 @@ def download_and_convert_study_files(matching_studies: List, tmp_dir: Path, outp
     
     Returns True if all conversions successful.
     """
-    logger.info("📥 Starting download and conversion workflow...")
+    logger.info("Starting download and conversion workflow...")
     
     # Apply file limit if specified
     if max_files is not None:
         matching_studies, total_before, total_after = limit_matching_studies(matching_studies, max_files)
-        logger.info(f"📊 File limit applied: {max_files} files (out of {total_before} matching files)")
+        logger.info(f"File limit applied: {max_files} files (out of {total_before} matching files)")
         if total_before > total_after:
-            logger.info(f"   ⚠️  Limiting download to first {total_after} files")
+            logger.info(f"    Limiting download to first {total_after} files")
     
     # Import conversion functions from convert_to_parquet.py
     import sys
@@ -1216,7 +1222,7 @@ def download_and_convert_study_files(matching_studies: List, tmp_dir: Path, outp
     total_parquet_mb = 0.0
     
     for study_path, study_info, matching_files in matching_studies:
-        logger.info(f"📂 Processing study: {study_path}")
+        logger.info(f"Processing study: {study_path}")
         
         # Get the study directory name
         study_dir = study_path.split('/')[-1]
@@ -1240,7 +1246,7 @@ def download_and_convert_study_files(matching_studies: List, tmp_dir: Path, outp
             
             # Check if file already exists
             if parquet_path.exists():
-                logger.info(f"  ⏭️  Skipping {parquet_filename} (already exists)")
+                logger.info(f"  Skipping {parquet_filename} (already exists)")
                 skipped_files += 1
                 continue
             
@@ -1263,7 +1269,7 @@ def download_and_convert_study_files(matching_studies: List, tmp_dir: Path, outp
             
             # Try each possible URL until one works
             downloaded = False
-            logger.info(f"  📥 Downloading: {csv_filename}")
+            logger.info(f"  Downloading: {csv_filename}")
             for csv_url in csv_urls:
                 try:
                     response = requests.get(csv_url, timeout=60)
@@ -1273,10 +1279,10 @@ def download_and_convert_study_files(matching_studies: List, tmp_dir: Path, outp
                         f.write(response.content)
                     
                     file_size_mb = temp_csv_path.stat().st_size / (1024 * 1024)
-                    logger.info(f"    ✅ Downloaded: {file_size_mb:.1f} MB")
+                    logger.info(f"    Downloaded: {file_size_mb:.1f} MB")
                     
                     # Convert immediately to Parquet using the imported function
-                    logger.info(f"    🔄 Converting to Parquet...")
+                    logger.info(f"    Converting to Parquet...")
                     stats = convert_file(temp_csv_path, output_dir, extraction_level=1)
                     
                     if "error" not in stats:
@@ -1291,11 +1297,11 @@ def download_and_convert_study_files(matching_studies: List, tmp_dir: Path, outp
                         total_downloaded_mb += csv_size_mb
                         total_parquet_mb += parquet_size_mb
                         
-                        logger.info(f"    ✅ Converted successfully: {stats['rows']} rows, {csv_size_mb:.1f}MB → {parquet_size_mb:.1f}MB ({compression_ratio:.1f}x compression)")
+                        logger.info(f"    Converted successfully: {stats['rows']} rows, {csv_size_mb:.1f}MB → {parquet_size_mb:.1f}MB ({compression_ratio:.1f}x compression)")
                         downloaded = True
                         break  # Success, no need to try other URLs
                     else:
-                        logger.error(f"    ❌ Conversion failed: {stats['error']}")
+                        logger.error(f"    Conversion failed: {stats['error']}")
                         break  # Conversion failed, no point trying other URLs
                     
                 except Exception as e:
@@ -1303,7 +1309,7 @@ def download_and_convert_study_files(matching_studies: List, tmp_dir: Path, outp
                     continue
             
             if not downloaded:
-                logger.error(f"    ❌ Failed to download {csv_filename} from any URL")
+                logger.error(f"    Failed to download {csv_filename} from any URL")
                 # Clean up temp file if it exists
                 if temp_csv_path.exists():
                     temp_csv_path.unlink()
@@ -1312,35 +1318,35 @@ def download_and_convert_study_files(matching_studies: List, tmp_dir: Path, outp
             # Delete the CSV.gz file immediately after successful conversion (unless keep_csv is True)
             if temp_csv_path.exists():
                 if keep_csv:
-                    logger.debug(f"    💾 Kept CSV file: {csv_filename}")
+                    logger.debug(f"    Kept CSV file: {csv_filename}")
                 else:
                     temp_csv_path.unlink()
-                    logger.debug(f"    🗑️  Deleted temporary file: {csv_filename}")
+                    logger.debug(f"    Deleted temporary file: {csv_filename}")
             
             total_files += 1
         
         # Remove empty study temp directory
         try:
             study_tmp_dir.rmdir()
-            logger.debug(f"    🗑️  Removed empty temp directory: {study_dir}")
+            logger.debug(f"    Removed empty temp directory: {study_dir}")
         except OSError:
             pass  # Directory not empty or doesn't exist
     
     # Create metadata files for all converted files at the end
     if conversion_stats:
-        logger.info("📋 Creating metadata files for converted Parquet files...")
+        logger.info("Creating metadata files for converted Parquet files...")
         create_metadata_table(conversion_stats, output_dir)
     
     # Show compression summary
     if successful_conversions > 0:
         overall_compression = total_downloaded_mb / total_parquet_mb if total_parquet_mb > 0 else 1.0
-        logger.info(f"\n📊 Compression Summary:")
-        logger.info(f"  📥 Total downloaded (CSV.gz): {total_downloaded_mb:.1f} MB")
-        logger.info(f"  📦 Total converted (Parquet): {total_parquet_mb:.1f} MB")
-        logger.info(f"  🗜️  Overall compression ratio: {overall_compression:.1f}x")
-        logger.info(f"  💾 Space saved: {total_downloaded_mb - total_parquet_mb:.1f} MB ({(1 - total_parquet_mb/total_downloaded_mb)*100:.1f}%)")
+        logger.info(f"\nCompression Summary:")
+        logger.info(f"  Total downloaded (CSV.gz): {total_downloaded_mb:.1f} MB")
+        logger.info(f"  Total converted (Parquet): {total_parquet_mb:.1f} MB")
+        logger.info(f"  Overall compression ratio: {overall_compression:.1f}x")
+        logger.info(f"  Space saved: {total_downloaded_mb - total_parquet_mb:.1f} MB ({(1 - total_parquet_mb/total_downloaded_mb)*100:.1f}%)")
     
-    logger.info(f"🎉 Processing complete! Processed {total_files} files, {successful_conversions} successful conversions, {skipped_files} files already existed")
+    logger.info(f"Processing complete! Processed {total_files} files, {successful_conversions} successful conversions, {skipped_files} files already existed")
     return successful_conversions > 0 or skipped_files > 0
 
 
@@ -1360,7 +1366,7 @@ def convert_to_parquet(downloaded_files: List[Path], output_dir: Path) -> bool:
         logger.warning("No files to convert")
         return False
     
-    logger.info("🔄 Converting CSV.gz files to Parquet format...")
+    logger.info("Converting CSV.gz files to Parquet format...")
     
     # Create temporary directory for conversion
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -1386,14 +1392,14 @@ def convert_to_parquet(downloaded_files: List[Path], output_dir: Path) -> bool:
             result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path.cwd())
             
             if result.returncode == 0:
-                logger.info("✅ Conversion successful!")
+                logger.info("Conversion successful!")
                 logger.info("Conversion output:")
                 for line in result.stdout.split('\n'):
                     if line.strip():
                         logger.info(f"  {line}")
                 return True
             else:
-                logger.error("❌ Conversion failed!")
+                logger.error("Conversion failed!")
                 logger.error("Error output:")
                 for line in result.stderr.split('\n'):
                     if line.strip():
@@ -1401,7 +1407,7 @@ def convert_to_parquet(downloaded_files: List[Path], output_dir: Path) -> bool:
                 return False
                 
         except Exception as e:
-            logger.error(f"❌ Failed to run conversion: {e}")
+            logger.error(f"Failed to run conversion: {e}")
             return False
 
 
@@ -1411,11 +1417,11 @@ def inspect_index():
     index_metadata = load_json_index_metadata()
     
     if not index:
-        print("❌ No index found!")
+        print("No index found!")
         return
     
     # Display index update information
-    print(f"📊 JSON Index Statistics:")
+    print(f"JSON Index Statistics:")
     
     if index_metadata and 'built_at' in index_metadata:
         built_at_str = index_metadata['built_at']
@@ -1446,14 +1452,14 @@ def inspect_index():
             
             # Always warn that index may not be up to date (since --inspect doesn't check server)
             if age.days > 0:
-                print(f"  ⚠️  WARNING: Index may not be up to date (last updated {age_str} ago)!")
+                print(f"  WARNING: Index may not be up to date (last updated {age_str} ago)!")
             else:
-                print(f"  ⚠️  WARNING: Index may not be up to date!")
+                print(f"  WARNING: Index may not be up to date!")
             print(f"     Run the script without --inspect to check for updates on the OAS server.")
         except (ValueError, TypeError) as e:
             print(f"  Last updated: {built_at_str} (could not parse timestamp)")
     else:
-        print(f"  ⚠️  WARNING: Index metadata not available (may be from older version)")
+        print(f"  WARNING: Index metadata not available (may be from older version)")
         print(f"     Index may not be up to date!")
         print(f"     Run the script without --inspect to update the index and check for new files.")
     
@@ -1507,7 +1513,7 @@ def inspect_index():
     print(f"  Total sequences: {total_sequences:,}")
     
     # Show available filter options
-    print(f"\n🔍 Available Filter Options:")
+    print(f"\nAvailable Filter Options:")
     
     # Collect all unique values for each filter field
     field_values = {
@@ -1527,7 +1533,7 @@ def inspect_index():
     # Display available values for each field
     for field, values in field_values.items():
         sorted_values = sorted(list(values))
-        print(f"\n  📋 {field}:")
+        print(f"\n  {field}:")
         print(f"     Total unique values: {len(sorted_values)}")
         
         # Show all values, grouped in lines of 5
@@ -1537,7 +1543,7 @@ def inspect_index():
             print(f"     {', '.join(quoted_values)}")
     
     # Show some examples
-    print(f"\n📋 Sample studies:")
+    print(f"\nSample studies:")
     for i, (study_path, study) in enumerate(list(index.items())[:5]):
         print(f"  {i+1}. {study_path}")
         print(f"     Type: {'Paired' if study.is_paired else 'Unpaired'}")
@@ -1551,38 +1557,39 @@ def inspect_index():
 def main():
     """Main function - Step 1: Build/Update JSON index with incremental updates."""
     parser = argparse.ArgumentParser(
-        description='OAS Database Update Script v2 - Step 1: Build/Update JSON Index',
+        description='Update from OAS script - Step 1: Build/Update JSON Index',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Step 1: Build or update JSON index of all studies on OAS server.
+            Step 1: Build or update JSON index of all studies on OAS server.
 
-This step:
-- Scans all studies in paired/ and unpaired/ directories
-- Downloads and parses JSON metadata files (incrementally if index exists)
-- Builds/updates a complete index with metadata for fast searching
-- Saves the index to data/oas_json_index.pkl
-- Always shows file size information for matching files
+            This step:
+            - Scans all studies in paired/ and unpaired/ directories
+            - Downloads and parses JSON metadata files
+            - Builds/updates a complete index with metadata
+            - Saves the index to data/oas_json_index.pkl
 
-Incremental updates:
-- Only processes studies that have changed based on directory timestamps
-- Only re-parses JSON files that are new or have been modified
-- Much faster for regular updates
+            Incremental updates:
+            - Only processes studies that have changed based on directory timestamps
+            - Only re-parses JSON files that are new or have been modified
 
-Examples:
-  # Update index incrementally (default behavior) - shows file sizes
-  python scripts/update_from_oas.py
-  
-  # Force complete rebuild of the index - shows file sizes
-  python scripts/update_from_oas.py --rebuild
-  
-  # Inspect current index statistics
-  python scripts/update_from_oas.py --inspect
-  
-  # Search with filters and see file sizes
-  python scripts/update_from_oas.py --species "human" --chain "heavy"
-  
-  # Download only first 10 matching files (for testing)
-  python scripts/update_from_oas.py --species "human" --download-and-convert --max-files 10
+            Examples:
+            # Update index incrementally (default behavior) - shows file sizes
+            python scripts/update_from_oas.py
+            
+            # Force complete rebuild of the index - shows file sizes
+            python scripts/update_from_oas.py --rebuild
+            
+            # Inspect current index statistics
+            python scripts/update_from_oas.py --inspect
+            
+            # Search with filters and see file sizes
+            python scripts/update_from_oas.py --species "human" --chain "heavy"
+            
+            # Healthy humans preset (species=human, disease=None, vaccine=None, all chains/isotypes)
+            python scripts/update_from_oas.py --healthy_humans --preview
+            
+            # Download only first 10 matching files (for testing)
+            python scripts/update_from_oas.py --species "human" --download-and-convert --max-files 10
         """
     )
     
@@ -1593,6 +1600,13 @@ Examples:
     )
     
     # Filtering arguments
+    parser.add_argument(
+        '--healthy_humans',
+        '--healthy-humans',
+        action='store_true',
+        help='Preset filters for healthy humans: species=human, disease=None, vaccine=None, all chains and isotypes. Cannot be combined with --species/--disease/--vaccine/--chain/--isotype.'
+    )
+    
     parser.add_argument(
         '--species',
         type=str,
@@ -1685,8 +1699,28 @@ Examples:
         inspect_index()
         return
     
+    if args.healthy_humans:
+        conflicting = [
+            name for name, value in [
+                ('--species', args.species),
+                ('--disease', args.disease),
+                ('--vaccine', args.vaccine),
+                ('--chain', args.chain),
+                ('--isotype', args.isotype),
+            ] if value is not None
+        ]
+        if conflicting:
+            parser.error(
+                f"--healthy_humans cannot be combined with filter flags: {', '.join(conflicting)}"
+            )
+        args.species = 'human'
+        args.disease = 'None'
+        args.vaccine = 'None'
+        args.chain = None
+        args.isotype = None
+    
     logger.info("="*60)
-    logger.info("ABDB V3.0 - OAS Database Update Script v2")
+    logger.info("ABHunter - Update from OAS script: Download and update local databse from the Observed Antibody Space (OAS) database")
     logger.info("Step 1: Build/Update JSON Index with Incremental Updates")
     logger.info("="*60)
     
@@ -1701,36 +1735,36 @@ Examples:
     }
     
     indexing_directories = determine_indexing_scope(filters)
-    logger.info(f"🎯 Selective indexing: {', '.join(indexing_directories)} directories")
+    logger.info(f"Selective indexing: {', '.join(indexing_directories)} directories")
     
     existing_index = load_json_index()
     
     # Always run Step 1: Update/rebuild index
     if args.rebuild:
-        logger.info("🔨 Force rebuilding index for selected directories...")
+        logger.info("Force rebuilding index for selected directories...")
         complete_index = build_complete_json_index(indexing_directories)
     else:
         if existing_index:
-            logger.info("🔄 Updating existing index incrementally...")
+            logger.info("Updating existing index incrementally...")
             complete_index = update_json_index_incrementally(indexing_directories)
         else:
-            logger.info("🆕 No existing index found, building index for selected directories...")
+            logger.info("No existing index found, building index for selected directories...")
             complete_index = build_complete_json_index(indexing_directories)
     
     # Save the index
     save_json_index(complete_index)
     
-    logger.info("🎉 Step 1 complete! JSON index is ready for searching.")
+    logger.info("Step 1 complete! Index is up to date and ready for use.")
     
     # Step 2: Apply filters and show matching studies/files
     
     # Validate search criteria first
     validation_errors = validate_search_criteria(complete_index, filters)
     if validation_errors:
-        logger.error("\n❌ Search criteria validation failed:")
+        logger.error("\nSearch criteria validation failed:")
         for error in validation_errors:
             logger.error(f"  • {error}")
-        logger.error("\n💡 Please check your search criteria and try again.")
+        logger.error("\nPlease check your search criteria and try again.")
         logger.error("   Use --inspect to see all available filter options.")
         return
     
@@ -1738,8 +1772,8 @@ Examples:
     matching_studies = filter_and_display_matches(complete_index, filters, args.verbose)
     
     if matching_studies:
-        logger.info(f"\n✅ Found {len(matching_studies)} studies with matching criteria")
-        logger.info("📋 These studies contain JSON files that match your filter criteria")
+        logger.info(f"Found {len(matching_studies)} studies with matching criteria")
+        logger.info("These studies contain JSON files that match your filter criteria")
         
         if args.preview:
             logger.info("\n" + "="*60)
@@ -1749,9 +1783,9 @@ Examples:
             # Apply file limit if specified for preview
             if args.max_files is not None:
                 matching_studies, total_before, total_after = limit_matching_studies(matching_studies, args.max_files)
-                logger.info(f"📊 File limit applied: {args.max_files} files (out of {total_before} matching files)")
+                logger.info(f"File limit applied: {args.max_files} files (out of {total_before} matching files)")
                 if total_before > total_after:
-                    logger.info(f"   ⚠️  Preview shows first {total_after} files only")
+                    logger.info(f"   Preview shows first {total_after} files only")
             
             # Create output directory path for checking
             output_dir = Path(args.output_dir)
@@ -1776,14 +1810,14 @@ Examples:
                 success = download_and_convert_study_files(matching_studies, tmp_dir, output_dir, args.keep_csv, args.max_files)
                 
                 if success:
-                    logger.info(f"\n🎉 Complete workflow finished!")
-                    logger.info(f"📁 Converted files saved to: {output_dir}")
+                    logger.info(f"\nComplete workflow finished!")
+                    logger.info(f"Converted files saved to: {output_dir}")
                     if args.keep_csv:
-                        logger.info(f"💾 CSV.gz files kept in: {tmp_dir}")
+                        logger.info(f"CSV.gz files kept in: {tmp_dir}")
                     else:
-                        logger.info(f"📊 Files processed with immediate cleanup")
+                        logger.info(f"Files processed with immediate cleanup")
                 else:
-                    logger.error("❌ Download and conversion failed!")
+                    logger.error("Download and conversion failed!")
                     
             finally:
                 # Clean up temporary directory (unless keep_csv is True)
@@ -1791,16 +1825,16 @@ Examples:
                     import shutil
                     try:
                         shutil.rmtree(tmp_dir)
-                        logger.info(f"🗑️  Cleaned up temporary directory: {tmp_dir}")
+                        logger.info(f"Cleaned up temporary directory: {tmp_dir}")
                     except Exception as e:
-                        logger.warning(f"⚠️  Could not clean up temp directory: {e}")
+                        logger.warning(f"Could not clean up temp directory: {e}")
                 elif args.keep_csv:
-                    logger.info(f"💾 Temporary directory preserved: {tmp_dir}")
+                    logger.info(f"Temporary directory preserved: {tmp_dir}")
         else:
-            logger.info("💡 Next step: Use --preview to see what would be downloaded, or --download-and-convert to download and convert matching CSV.gz files to Parquet")
+            logger.info("Next step: Use --preview to see what would be downloaded, or --download-and-convert to download and convert matching CSV.gz files to Parquet")
     else:
-        logger.info("\n❌ No studies match the specified criteria")
-        logger.info("💡 Try adjusting your filter criteria or use --inspect to see available options")
+        logger.info("\nNo studies match the specified criteria")
+        logger.info("Try adjusting your filter criteria or use --inspect to see available options")
 
 
 if __name__ == "__main__":
