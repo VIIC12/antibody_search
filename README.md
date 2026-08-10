@@ -12,13 +12,13 @@ git clone --branch master git@github.com:VIIC12/antibody_search.git
 cd antibody_search
 
 # Create virtual environment
-uv venv
+python3 -m venv .venv
 
 # Activate virtual environment
 source .venv/bin/activate
 
 # Install dependencies
-uv sync 
+pip install -r requirements.txt
 
 # Download and convert OAS files to Parquet format
 python scripts/update_from_oas.py --healthy_humans --download-and-convert
@@ -26,7 +26,7 @@ python scripts/update_from_oas.py --healthy_humans --download-and-convert
 
 #### Run the web interface
 ```bash
-uv run streamlit run app.py
+python -m streamlit run app.py
 # Open the "Local URL" link in your browser
 ```
 
