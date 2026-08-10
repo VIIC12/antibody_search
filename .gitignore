@@ -17,6 +17,8 @@ build/
 dist/
 env/
 .env
+.server_env/
+.server_analysis_env/
 logs/
 *.egg-info/
 ENV/
