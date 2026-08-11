@@ -13,3 +13,4 @@ backgroundColor="black"
 enableCORS=false
 enableXsrfProtection=false
 headless=true
+enableStaticServing = true

@@ -15,7 +15,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from components.search.styling import render_chain_heading, render_heavy_light_heading
+from components.search.styling import render_chain_heading
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -1588,16 +1588,20 @@ def render_paired_v_gene_heatmap(
     if (heatmap_df.values.sum() == 0):
         return
 
+    # Heatmpap VHxVL
     fig = px.imshow(
         heatmap_df,
         labels=dict(x="Light V Gene", y="Heavy V Gene", color="Pair Count"),
-        color_continuous_scale=[(0.0, "#F8FAFC"), (0.5, "#818CF8"), (1.0, "#4338CA")],
+        color_continuous_scale=[(0.0, "#F8F8F8"), (0.5, "#D8DEE9"), (1.0, "#4C6085")],
         aspect="auto"
     )
 
+    fig.update_xaxes(showline=True, linewidth=1, linecolor='black', mirror=True)
+    fig.update_yaxes(showline=True, linewidth=1, linecolor='black', mirror=True)
+
     fig.update_layout(
         title={
-            "text": "Heavy vs Light V Gene Pairing",
+            "text": "V<sub>H</sub> × V<sub>L</sub> Gene Pairing",
             "x": 0.5,
             "xanchor": "center",
             "font": {"size": 18}
@@ -1608,7 +1612,13 @@ def render_paired_v_gene_heatmap(
         coloraxis_colorbar=dict(title="Pairs")
     )
 
-    render_heavy_light_heading("Heavy × Light V Gene Pairing", level=4)
+    st.markdown(
+        "<h4 style='margin-top: 0.5rem; margin-bottom: 0.5rem;'>"
+        "<img src='app/static/icons/paired.png' style='width:55px; height:55px; margin-right:4px; vertical-align:middle;' />"
+        "Heavy × Light V Gene Pairing</h4>",
+        unsafe_allow_html=True,
+    )
+
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
     if collector is not None:
@@ -1684,13 +1694,16 @@ def render_paired_j_gene_heatmap(
     fig = px.imshow(
         heatmap_df,
         labels=dict(x="Light J Gene", y="Heavy J Gene", color="Pair Count"),
-        color_continuous_scale=[(0.0, "#F8FAFC"), (0.5, "#818CF8"), (1.0, "#4338CA")],
+        color_continuous_scale=[(0.0, "#F8F8F8"), (0.5, "#F7D5DB"), (1.0, "#CB4154")],
         aspect="auto"
     )
 
+    fig.update_xaxes(showline=True, linewidth=1, linecolor='black', mirror=True)
+    fig.update_yaxes(showline=True, linewidth=1, linecolor='black', mirror=True)
+
     fig.update_layout(
         title={
-            "text": "Heavy vs Light J Gene Pairing",
+            "text": "J<sub>H</sub> × J<sub>L</sub> Gene Pairing",
             "x": 0.5,
             "xanchor": "center",
             "font": {"size": 18}
@@ -1701,7 +1714,13 @@ def render_paired_j_gene_heatmap(
         coloraxis_colorbar=dict(title="Pairs")
     )
 
-    render_heavy_light_heading("Heavy × Light J Gene Pairing", level=4)
+    st.markdown(
+        "<h4 style='margin-top: 0.5rem; margin-bottom: 0.5rem;'>"
+        "<img src='app/static/icons/paired.png' style='width:55px; height:55px; margin-right:4px; vertical-align:middle;' />"
+        "Heavy × Light J Gene Pairing</h4>",
+        unsafe_allow_html=True,
+    )
+
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
     if collector is not None:

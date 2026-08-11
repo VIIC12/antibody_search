@@ -13,7 +13,7 @@ ICON_SIZE_PX = 55
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 HEAVY_COLOR = "#89AAE7FF"
-LIGHT_COLOR = "#CB4154"
+LIGHT_COLOR = "#3F3839"
 
 
 def get_chain_color(chain: str) -> str:
@@ -72,45 +72,6 @@ def render_chain_heading(
         st.markdown(
             f"<h{level} style='color: {color}; margin-top: {margin_top}; margin-bottom: {margin_bottom};'>"
             f"{icon_prefix}{text}</h{level}>",
-            unsafe_allow_html=True,
-        )
-
-
-# Icon size for dual (Heavy × Light) headings - smaller than single-chain headings
-HEAVY_LIGHT_ICON_SIZE_PX = 28
-
-
-def render_heavy_light_heading(
-    text: str,
-    *,
-    level: int = 4,
-    margin_top: str = "0.5rem",
-    margin_bottom: str = "0.5rem",
-) -> None:
-    """Render a heading with both Heavy and Light chain icons (same as database selection)."""
-    heavy_path = PROJECT_ROOT / "public/images/icons/heavy.png"
-    light_path = PROJECT_ROOT / "public/images/icons/light.png"
-    size = HEAVY_LIGHT_ICON_SIZE_PX
-    gap = "4px"
-
-    if heavy_path.is_file() and light_path.is_file():
-        heavy_b64 = base64.b64encode(heavy_path.read_bytes()).decode("utf-8")
-        light_b64 = base64.b64encode(light_path.read_bytes()).decode("utf-8")
-        img_style = (
-            f"width:{size}px; height:{size}px; "
-            f"margin-right:{gap}; vertical-align:middle;"
-        )
-        st.markdown(
-            f"<h{level} style='margin-top: {margin_top}; margin-bottom: {margin_bottom};'>"
-            f"<img src='data:image/png;base64,{heavy_b64}' style='{img_style}' />"
-            f"<img src='data:image/png;base64,{light_b64}' style='{img_style}' />"
-            f"{text}</h{level}>",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            f"<h{level} style='margin-top: {margin_top}; margin-bottom: {margin_bottom};'>"
-            f"{text}</h{level}>",
             unsafe_allow_html=True,
         )
 
