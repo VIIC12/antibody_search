@@ -310,7 +310,7 @@ def render_database_selection(
     
     # Check if at least one database is selected
     if not selected_databases:
-        st.warning("⚠️ Please select at least one database to search")
+        st.warning("Please select at least one database to search", icon=":material/warning:")
         return None, None, False
     
     loadable_databases = [db for db in selected_databases if not _is_inferred_path(db)]
@@ -485,12 +485,7 @@ def display_database_status(
     if overlay_databases:
         selected_db_info.append("• Paired/Inferred (overlay)")
     
-    tooltip_text = (
-        f"Active Databases ({len(loadable_databases)} + overlay {len(overlay_databases)}):\n" + "\n".join(selected_db_info)
-        if loadable_databases or overlay_databases else "No databases selected"
-    )
-    
-    st.metric("Total Sequences", f"{total_selected_sequences:,}", help=tooltip_text)
+    st.metric("Total Selected Sequences", f"{total_selected_sequences:,}")
     
     # Additional sidebar content for database management
     with st.sidebar:

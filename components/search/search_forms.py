@@ -402,13 +402,13 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
             disabled=disabled
         )
         if v and not validate_gene_input(v):
-            st.error(GEN_ERROR_TEXT)
+            st.error(GEN_ERROR_TEXT, icon=":material/error:")
             v_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}IGHV Gene")
         elif v:
             range_ok, range_err = validate_gene_range(v, "ighv")
             if not range_ok and range_err:
-                st.error(f"❌ {range_err}")
+                st.error(f"{range_err}", icon=":material/error:")
                 v_valid = False
                 validation_errors.append(f"{'Heavy ' if prefix else ''}IGHV Gene")
     
@@ -422,13 +422,13 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
             disabled=disabled
         )
         if d and not validate_gene_input(d):
-            st.error(GEN_ERROR_TEXT)
+            st.error(GEN_ERROR_TEXT, icon=":material/error:")
             d_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}IGHD Gene")
         elif d:
             range_ok, range_err = validate_gene_range(d, "ighd")
             if not range_ok and range_err:
-                st.error(f"❌ {range_err}")
+                st.error(f"{range_err}", icon=":material/error:")
                 d_valid = False
                 validation_errors.append(f"{'Heavy ' if prefix else ''}IGHD Gene")
     
@@ -442,13 +442,13 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
             disabled=disabled
         )
         if j and not validate_gene_input(j):
-            st.error(GEN_ERROR_TEXT)
+            st.error(GEN_ERROR_TEXT, icon=":material/error:")
             j_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}IGHJ Gene")
         elif j:
             range_ok, range_err = validate_gene_range(j, "ighj")
             if not range_ok and range_err:
-                st.error(f"❌ {range_err}")
+                st.error(f"{range_err}", icon=":material/error:")
                 j_valid = False
                 validation_errors.append(f"{'Heavy ' if prefix else ''}IGHJ Gene")
     
@@ -490,7 +490,7 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         if cdr1_length:
             is_valid, error_msg = validate_cdr_length_input(cdr1_length)
             if not is_valid:
-                st.error(f"❌ {error_msg}")
+                st.error(f"{error_msg}", icon=":material/error:")
                 cdr1_length_valid = False
                 validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH1 Length")
             else:
@@ -510,7 +510,7 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         if cdr2_length:
             is_valid, error_msg = validate_cdr_length_input(cdr2_length)
             if not is_valid:
-                st.error(f"❌ {error_msg}")
+                st.error(f"{error_msg}", icon=":material/error:")
                 cdr2_length_valid = False
                 validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH2 Length")
             else:
@@ -530,7 +530,7 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         if cdr3_length:
             is_valid, error_msg = validate_cdr_length_input(cdr3_length)
             if not is_valid:
-                st.error(f"❌ {error_msg}")
+                st.error(f"{error_msg}", icon=":material/error:")
                 cdr3_length_valid = False
                 validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH3 Length")
             else:
@@ -575,7 +575,7 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
             disabled=disabled
         )
         if cdr1_motif and not validate_motif_input(cdr1_motif):
-            st.error(MOTIF_ERROR_TEXT)
+            st.error(MOTIF_ERROR_TEXT, icon=":material/error:")
             cdr1_motif_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH1 Motif")
         
@@ -623,7 +623,7 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
             disabled=disabled
         )
         if cdr2_motif and not validate_motif_input(cdr2_motif):
-            st.error(MOTIF_ERROR_TEXT)
+            st.error(MOTIF_ERROR_TEXT, icon=":material/error:")
             cdr2_motif_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH2 Motif")
         
@@ -671,7 +671,7 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
             disabled=disabled
         )
         if cdr3_motif and not validate_motif_input(cdr3_motif):
-            st.error(MOTIF_ERROR_TEXT)
+            st.error(MOTIF_ERROR_TEXT, icon=":material/error:")
             cdr3_motif_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH3 Motif")
         
@@ -758,13 +758,13 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
             disabled=disabled
         )
         if light_v and not validate_gene_input(light_v, "Light IGLV/KV Gene"):
-            st.error(GEN_LKVJ_ERROR_TEXT)
+            st.error(GEN_LKVJ_ERROR_TEXT, icon=":material/error:")
             light_v_valid = False
             validation_errors.append("Light IGLV/KV Gene")
         elif light_v:
             range_ok, range_err = validate_gene_range(light_v, "light_v")
             if not range_ok and range_err:
-                st.error(f"❌ {range_err}")
+                st.error(f"{range_err}", icon=":material/error:")
                 light_v_valid = False
                 validation_errors.append("Light IGLV/KV Gene")
     
@@ -778,13 +778,13 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
             disabled=disabled
         )
         if light_j and not validate_gene_input(light_j, "Light IGLJ Gene"):
-            st.error(GEN_LKVJ_ERROR_TEXT)
+            st.error(GEN_LKVJ_ERROR_TEXT, icon=":material/error:")
             light_j_valid = False
             validation_errors.append("Light IGLJ Gene")
         elif light_j:
             range_ok, range_err = validate_gene_range(light_j, "light_j")
             if not range_ok and range_err:
-                st.error(f"❌ {range_err}")
+                st.error(f"{range_err}", icon=":material/error:")
                 light_j_valid = False
                 validation_errors.append("Light IGLJ Gene")
     
@@ -822,7 +822,7 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
         if light_cdr1_length:
             is_valid, error_msg = validate_cdr_length_input(light_cdr1_length)
             if not is_valid:
-                st.error(f"❌ {error_msg}")
+                st.error(f"{error_msg}", icon=":material/error:")
                 light_cdr1_length_valid = False
                 validation_errors.append("Light CDRL1 Length")
             else:
@@ -842,7 +842,7 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
         if light_cdr2_length:
             is_valid, error_msg = validate_cdr_length_input(light_cdr2_length)
             if not is_valid:
-                st.error(f"❌ {error_msg}")
+                st.error(f"{error_msg}", icon=":material/error:")
                 light_cdr2_length_valid = False
                 validation_errors.append("Light CDRL2 Length")
             else:
@@ -862,7 +862,7 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
         if light_cdr3_length:
             is_valid, error_msg = validate_cdr_length_input(light_cdr3_length)
             if not is_valid:
-                st.error(f"❌ {error_msg}")
+                st.error(f"{error_msg}", icon=":material/error:")
                 light_cdr3_length_valid = False
                 validation_errors.append("Light CDRL3 Length")
             else:
@@ -903,7 +903,7 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
             disabled=disabled
         )
         if light_cdr1_motif and not validate_motif_input(light_cdr1_motif):
-            st.error(MOTIF_ERROR_TEXT)
+            st.error(MOTIF_ERROR_TEXT, icon=":material/error:")
             light_cdr1_motif_valid = False
             validation_errors.append("Light CDRL1 Motif")
         
@@ -947,7 +947,7 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
             disabled=disabled
         )
         if light_cdr2_motif and not validate_motif_input(light_cdr2_motif):
-            st.error(MOTIF_ERROR_TEXT)
+            st.error(MOTIF_ERROR_TEXT, icon=":material/error:")
             light_cdr2_motif_valid = False
             validation_errors.append("Light CDRL2 Motif")
         
@@ -991,7 +991,7 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
             disabled=disabled
         )
         if light_cdr3_motif and not validate_motif_input(light_cdr3_motif):
-            st.error(MOTIF_ERROR_TEXT)
+            st.error(MOTIF_ERROR_TEXT, icon=":material/error:")
             light_cdr3_motif_valid = False
             validation_errors.append("Light CDRL3 Motif")
         

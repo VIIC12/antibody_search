@@ -18,7 +18,7 @@ from components.search.search_execution import (
     validate_search_criteria,
     execute_search_with_stats
 )
-# Import module first so any dependency failure shows the real error (not "cannot import name")
+
 import components.search.results_rendering as _results_rendering
 render_search_results = _results_rendering.render_search_results
 render_dual_unpaired_results = _results_rendering.render_dual_unpaired_results
@@ -29,10 +29,6 @@ from components.test_utils import (
     perform_database_search_background,
     perform_dual_unpaired_search_background
 )
-
-
-# Override page title (inherits other settings from app.py)
-st.set_page_config(page_title="ABHunter - Database Search")
 
 # Inject CSS for spinner animation and hide disabled form buttons
 st.markdown("""
@@ -687,7 +683,7 @@ def search_page_content():
     
     with st.form("search_form"):
         if validation_errors:
-            st.error(f"❌ **Please fix the following errors before searching:** {', '.join(validation_errors)}")
+            st.error(f"**Please fix the following serach filters before searching:** {', '.join(validation_errors)}", icon=":material/error:")
         
         # Always show a submit button (required by Streamlit forms)
         if search_status == "idle":
@@ -903,7 +899,7 @@ def search_page_content():
                 
                 # Show full traceback in expander for debugging
                 if traceback_str:
-                    with st.expander("🔍 Show full error details"):
+                    with st.expander("Show full error details"):
                         st.code(traceback_str, language='python')
                 
                 # Also print to stderr for terminal logging
@@ -940,10 +936,6 @@ def search_page_content():
         heavy_info = dual_form_data['heavy']
         light_info = dual_form_data['light']
         
-        if not heavy_info.get('valid', True) or not light_info.get('valid', True):
-            st.error("❌ Please fix the invalid inputs (marked in red) before searching")
-            return
-        
         heavy_valid, heavy_error = validate_search_criteria(heavy_info['search_params'], False)
         light_valid, light_error = validate_search_criteria(light_info['search_params'], False)
         if not heavy_valid or not light_valid:
@@ -977,10 +969,6 @@ def search_page_content():
         st.session_state.search_result = None
         st.session_state.search_status = "running"
         st.rerun()
-        return
-    
-    if not search_params.get('valid', True):
-        st.error("❌ Please fix the invalid inputs (marked in red) before searching")
         return
     
     is_valid, error_message = validate_search_criteria(search_params, is_paired)

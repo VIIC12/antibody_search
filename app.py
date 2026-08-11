@@ -75,7 +75,7 @@ def main():
     
     # Global page configuration - applies to all pages by default
     st.set_page_config(
-        page_title="ABHunter - Antibody Database Search",  # Default title
+        page_title="ABHunter - Antibody Database Search",
         page_icon=':material/vaccines:',
         layout="wide",
         initial_sidebar_state="expanded",
