@@ -29,6 +29,29 @@ LIGHT_V_LAMBDA_OAS_DISALLOWED_UNPAIRED = {11}           # IGLV11
 LIGHT_V_LAMBDA_OAS_DISALLOWED_PAIRED = {1, 11}          # IGLV1, IGLV11
 LIGHT_J_LAMBDA_OAS_DISALLOWED = {4, 5}                  # IGLJ4, IGLJ5
 
+# Help text and placeholder, examples and error text
+# Heavy (VDJ)
+GEN_VD_PLACEHOLDER = "e.g., 1 or 1-* or 3-5 or 1-3,4,5"
+GEN_VD_HELP_TEXT = "Single: 3 or 3-23 | Multiple: 3,4-* or 3-20,3-22"
+GEN_J_PLACEHOLDER = "e.g., 4 or 4,5"
+GEN_J_HELP_TEXT = "Single: 4 | Multiple: 4,5"
+GEN_ERROR_TEXT = "Invalid character(s)! Allowed are: 0123456789 - , and *"
+
+# Light (VJ)
+GEN_LKV_PLACEHOLDER = "e.g., 1 or L1-2,K2"
+GEN_LKV_HELP_TEXT = "Single: L4 | Multiple: 4,K5 | Define Lambda or Kappa with L or K prefix. | IGLV 1-11 (Lambda), IGKV 1-7 (Kappa)"
+GEN_LKJ_PLACEHOLDER = "e.g., 2 or L2,K4"
+GEN_LKJ_HELP_TEXT = "Single: L4 | Multiple: 4,K5 | Define Lambda or Kappa with L or K prefix. | IGLJ 1-7 (Lambda), IGKJ 1-5 (Kappa)"
+GEN_LKVJ_ERROR_TEXT = "Invalid character(s)! Allowed are: 0123456789 - , * L and K"
+
+# CDR length
+CDR_LENGTH_PLACEHOLDER = "e.g., 2 or 2-5 or >2 or <=2"
+CDR_LENGTH_HELP_TEXT = "Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10"
+
+# Motif
+MOTIF_PLACEHOLDER = "e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT or .{6}*[FI]W.{2}*"
+MOTIF_HELP_TEXT = ". for one character, \* for 0-many, {n} for exactly n chars, {n-m} for n to m chars, .{n}* for at least n chars, [ACD] for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY"
+MOTIF_ERROR_TEXT = "Invalid character(s)! Allowed are ACDEFGHIKLMNPQRSTVWY and placeholders, see help text for details."
 
 def _parse_gene_tokens(gene_str: str) -> List[int]:
     """Parse comma/pipe separated gene tokens and return the first number from each (family or gene number)."""
@@ -373,13 +396,13 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         v_valid = True
         v = st.text_input(
             "IGHV Gene",
-            placeholder="e.g., 3 or 3,4 or 3-23*01",
-            help="Single: 3 or 3-23 | Multiple: 3,4 or 3-20,3-22",
+            placeholder=GEN_VD_PLACEHOLDER,
+            help=GEN_VD_HELP_TEXT,
             key=v_key,
             disabled=disabled
         )
         if v and not validate_gene_input(v):
-            st.error("❌ Only: numbers, **-** , **|** **\\***")
+            st.error(GEN_ERROR_TEXT)
             v_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}IGHV Gene")
         elif v:
@@ -393,13 +416,13 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         d_valid = True
         d = st.text_input(
             "IGHD Gene",
-            placeholder="e.g., 2 or 2-21 or 2,3",
-            help="Single: 2 or 2-21 | Multiple: 2,3 or 2-15,2-21",
+            placeholder=GEN_VD_PLACEHOLDER,
+            help=GEN_VD_HELP_TEXT,
             key=d_key,
             disabled=disabled
         )
         if d and not validate_gene_input(d):
-            st.error("❌ Only: numbers, **-** , **|** **\\***")
+            st.error(GEN_ERROR_TEXT)
             d_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}IGHD Gene")
         elif d:
@@ -413,13 +436,13 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         j_valid = True
         j = st.text_input(
             "IGHJ Gene",
-            placeholder="e.g., 4 or 4,5",
-            help="Single: 4 | Multiple: 4,5",
+            placeholder=GEN_J_PLACEHOLDER,
+            help=GEN_J_HELP_TEXT,
             key=j_key,
             disabled=disabled
         )
         if j and not validate_gene_input(j):
-            st.error("❌ Only: numbers, **-** , **|** **\\***")
+            st.error(GEN_ERROR_TEXT)
             j_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}IGHJ Gene")
         elif j:
@@ -459,8 +482,8 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         cdr1_length_valid = True
         cdr1_length = st.text_input(
             "CDRH1 Length",
-            placeholder="e.g., 2, 2-5, >2, <5, >=2, <=10",
-            help="Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10",
+            placeholder=CDR_LENGTH_PLACEHOLDER,
+            help=CDR_LENGTH_HELP_TEXT,
             key=cdr1_length_key,
             disabled=disabled
         )
@@ -479,8 +502,8 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         cdr2_length_valid = True
         cdr2_length = st.text_input(
             "CDRH2 Length",
-            placeholder="e.g., 2, 2-5, >2, <5, >=2, <=10",
-            help="Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10",
+            placeholder=CDR_LENGTH_PLACEHOLDER,
+            help=CDR_LENGTH_HELP_TEXT,
             key=cdr2_length_key,
             disabled=disabled
         )
@@ -499,8 +522,8 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         cdr3_length_valid = True
         cdr3_length = st.text_input(
             "CDRH3 Length",
-            placeholder="e.g., 2, 2-5, >2, <5, >=2, <=10",
-            help="Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10",
+            placeholder=CDR_LENGTH_PLACEHOLDER,
+            help=CDR_LENGTH_HELP_TEXT,
             key=cdr3_length_key,
             disabled=disabled
         )
@@ -546,13 +569,13 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         cdr1_motif_valid = True
         cdr1_motif = st.text_input(
             "CDRH1 Sequence Motif",
-            placeholder="e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT",
-            help='"." for one character, "*" for 0-many, "{n}" for exactly n chars, "{n-m}" for n to m chars, "[ABC]" for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY',
+            placeholder=MOTIF_PLACEHOLDER,
+            help=MOTIF_HELP_TEXT,
             key=cdr1_motif_key,
             disabled=disabled
         )
         if cdr1_motif and not validate_motif_input(cdr1_motif):
-            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.**, **\\***, **{n}**, **{n-m}**, and **[ABC]** for explicit alternatives")
+            st.error(MOTIF_ERROR_TEXT)
             cdr1_motif_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH1 Motif")
         
@@ -594,13 +617,13 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         cdr2_motif_valid = True
         cdr2_motif = st.text_input(
             "CDRH2 Sequence Motif",
-            placeholder="e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT",
-            help='"." for one character, "*" for 0-many, "{n}" for exactly n chars, "{n-m}" for n to m chars, "[ABC]" for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY',
+            placeholder=MOTIF_PLACEHOLDER,
+            help=MOTIF_HELP_TEXT,
             key=cdr2_motif_key,
             disabled=disabled
         )
         if cdr2_motif and not validate_motif_input(cdr2_motif):
-            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.**, **\\***, **{n}**, **{n-m}**, and **[ABC]** for explicit alternatives")
+            st.error(MOTIF_ERROR_TEXT)
             cdr2_motif_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH2 Motif")
         
@@ -642,13 +665,13 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
         cdr3_motif_valid = True
         cdr3_motif = st.text_input(
             "CDRH3 Sequence Motif",
-            placeholder="e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT",
-            help='"." for one character, "*" for 0-many, "{n}" for exactly n chars, "{n-m}" for n to m chars, "[ABC]" for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY',
+            placeholder=MOTIF_PLACEHOLDER,
+            help=MOTIF_HELP_TEXT,
             key=cdr3_motif_key,
             disabled=disabled
         )
         if cdr3_motif and not validate_motif_input(cdr3_motif):
-            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.**, **\\***, **{n}**, **{n-m}**, and **[ABC]** for explicit alternatives")
+            st.error(MOTIF_ERROR_TEXT)
             cdr3_motif_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH3 Motif")
         
@@ -729,13 +752,13 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
         light_v_valid = True
         light_v = st.text_input(
             "IGLV/KV Gene",
-            placeholder="e.g., 1-2 or 1 or L2 or K2",
-            help="IGLV 1-11 (Lambda), IGKV 1-7 (Kappa). L2 = Lambda only, K2 = Kappa only, 2 = both. Multiple: 1,2 or 1-2,1-3",
+            placeholder=GEN_LKV_PLACEHOLDER,
+            help=GEN_LKV_HELP_TEXT,
             key=f"{prefix}v_input",
             disabled=disabled
         )
         if light_v and not validate_gene_input(light_v, "Light IGLV/KV Gene"):
-            st.error("❌ Only: numbers, **-** , **|** **\\***, and **L/K** for Lambda/Kappa")
+            st.error(GEN_LKVJ_ERROR_TEXT)
             light_v_valid = False
             validation_errors.append("Light IGLV/KV Gene")
         elif light_v:
@@ -749,13 +772,13 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
         light_j_valid = True
         light_j = st.text_input(
             "IGLJ/KJ Gene",
-            placeholder="e.g., 2 or L2 or K2",
-            help="IGLJ 1-7 (Lambda), IGKJ 1-5 (Kappa). L2 = Lambda only, K2 = Kappa only. K6/K7 are invalid (no IGKJ6/7).",
+            placeholder=GEN_LKJ_PLACEHOLDER,
+            help=GEN_LKJ_HELP_TEXT,
             key=f"{prefix}j_input",
             disabled=disabled
         )
         if light_j and not validate_gene_input(light_j, "Light IGLJ Gene"):
-            st.error("❌ Only: numbers, **-** , **|** **\\***, and **L/K** for Lambda/Kappa")
+            st.error(GEN_LKVJ_ERROR_TEXT)
             light_j_valid = False
             validation_errors.append("Light IGLJ Gene")
         elif light_j:
@@ -791,8 +814,8 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
         light_cdr1_length_valid = True
         light_cdr1_length = st.text_input(
             "CDRL1 Length",
-            placeholder="e.g., 2, 2-5, >2, <5, >=2, <=10",
-            help="Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10",
+            placeholder=CDR_LENGTH_PLACEHOLDER,
+            help=CDR_LENGTH_HELP_TEXT,
             key=f"{prefix}cdr1_length_input",
             disabled=disabled
         )
@@ -811,8 +834,8 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
         light_cdr2_length_valid = True
         light_cdr2_length = st.text_input(
             "CDRL2 Length",
-            placeholder="e.g., 2, 2-5, >2, <5, >=2, <=10",
-            help="Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10",
+            placeholder=CDR_LENGTH_PLACEHOLDER,
+            help=CDR_LENGTH_HELP_TEXT,
             key=f"{prefix}cdr2_length_input",
             disabled=disabled
         )
@@ -831,8 +854,8 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
         light_cdr3_length_valid = True
         light_cdr3_length = st.text_input(
             "CDRL3 Length",
-            placeholder="e.g., 2, 2-5, >2, <5, >=2, <=10",
-            help="Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10",
+            placeholder=CDR_LENGTH_PLACEHOLDER,
+            help=CDR_LENGTH_HELP_TEXT,
             key=f"{prefix}cdr3_length_input",
             disabled=disabled
         )
@@ -874,13 +897,13 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
         light_cdr1_motif_valid = True
         light_cdr1_motif = st.text_input(
             "CDRL1 Sequence Motif",
-            placeholder="e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT",
-            help='"." for one character, "*" for 0-many, "{n}" for exactly n chars, "{n-m}" for n to m chars, "[ABC]" for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY',
+            placeholder=MOTIF_PLACEHOLDER,
+            help=MOTIF_HELP_TEXT,
             key=f"{prefix}cdr1_motif_input",
             disabled=disabled
         )
         if light_cdr1_motif and not validate_motif_input(light_cdr1_motif):
-            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.**, **\\***, **{n}**, **{n-m}**, and **[ABC]** for explicit alternatives")
+            st.error(MOTIF_ERROR_TEXT)
             light_cdr1_motif_valid = False
             validation_errors.append("Light CDRL1 Motif")
         
@@ -918,13 +941,13 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
         light_cdr2_motif_valid = True
         light_cdr2_motif = st.text_input(
             "CDRL2 Sequence Motif",
-            placeholder="e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT",
-            help='"." for one character, "*" for 0-many, "{n}" for exactly n chars, "{n-m}" for n to m chars, "[ABC]" for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY',
+            placeholder=MOTIF_PLACEHOLDER,
+            help=MOTIF_HELP_TEXT,
             key=f"{prefix}cdr2_motif_input",
             disabled=disabled
         )
         if light_cdr2_motif and not validate_motif_input(light_cdr2_motif):
-            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.**, **\\***, **{n}**, **{n-m}**, and **[ABC]** for explicit alternatives")
+            st.error(MOTIF_ERROR_TEXT)
             light_cdr2_motif_valid = False
             validation_errors.append("Light CDRL2 Motif")
         
@@ -962,13 +985,13 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
         light_cdr3_motif_valid = True
         light_cdr3_motif = st.text_input(
             "CDRL3 Sequence Motif",
-            placeholder="e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT",
-            help='"." for one character, "*" for 0-many, "{n}" for exactly n chars, "{n-m}" for n to m chars, "[ABC]" for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY',
+            placeholder=MOTIF_PLACEHOLDER,
+            help=MOTIF_HELP_TEXT,
             key=f"{prefix}cdr3_motif_input",
             disabled=disabled
         )
         if light_cdr3_motif and not validate_motif_input(light_cdr3_motif):
-            st.error("❌ Only: amino acids (ACDEFGHIKLMNPQRSTVWY), **.**, **\\***, **{n}**, **{n-m}**, and **[ABC]** for explicit alternatives")
+            st.error(MOTIF_ERROR_TEXT)
             light_cdr3_motif_valid = False
             validation_errors.append("Light CDRL3 Motif")
         
