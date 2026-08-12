@@ -16,7 +16,7 @@ from components.search.database_utils import (
     check_metadata_freshness,
     get_database_structure
 )
-from components.search.styling import render_chain_heading
+from components.search.styling import icon_heading
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,7 @@ def render_database_selection(
     # Heavy Chain selection
     with col1:
         prev_heavy_selected = st.session_state.get('heavy_main_prev', False)
-        render_chain_heading("Heavy Chain", "heavy", level=3, icon="🧬", margin_top="0", margin_bottom="0.5rem")
+        icon_heading("heavy", "Heavy Chain", level=3)
         # Build label with inferred indicator if available
         heavy_label = f"Heavy Chain ({heavy_total_sequences:,} sequences)"
         if has_inferred_overlay:
@@ -187,7 +187,7 @@ def render_database_selection(
     # Light Chain selection
     with col2:
         light_total_sequences = sum(info['sequence_count'] for info in db_structure['Light'].values())
-        render_chain_heading("Light Chain", "light", level=3, icon="🔬", margin_top="0", margin_bottom="0.5rem")
+        icon_heading("light", "Light Chain", level=3)
         # Build label with inferred indicator if available
         light_label = f"Light Chain ({light_total_sequences:,} sequences)"
         if has_inferred_overlay:
@@ -244,7 +244,7 @@ def render_database_selection(
     
     # Paired selection
     with col3:
-        render_chain_heading("Paired", "heavy", level=3, icon="🔗", margin_top="0", margin_bottom="0.5rem", use_chain_color=False)
+        icon_heading("paired", "Paired", level=3)
         if selection_locked:
             paired_help = DB_SELECTION_LOCK_MESSAGE
         elif paired_conflict_disabled:

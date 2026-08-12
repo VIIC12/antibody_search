@@ -15,7 +15,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from components.search.styling import render_chain_heading
+from components.search.styling import icon_heading
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -1507,7 +1507,7 @@ def render_paired_plots(
     
     aa_distributions = aa_distributions or {}
     with col1:
-        render_chain_heading("Heavy Chain", "heavy", level=4, icon="🧬")
+        icon_heading("heavy", "Heavy Chain", level=4, margin_top=0.5)
         render_heavy_chain_plots(
             sequences_df, search_params, prefix="heavy_", collector=collector,
             aa_distributions=aa_distributions,
@@ -1515,7 +1515,7 @@ def render_paired_plots(
         )
     
     with col2:
-        render_chain_heading("Light Chain", "light", level=4, icon="🔬")
+        icon_heading("light", "Light Chain", level=4, margin_top=0.5)
         render_light_chain_plots(
             sequences_df, search_params, prefix="light_", collector=collector,
             aa_distributions=aa_distributions,
@@ -1611,13 +1611,7 @@ def render_paired_v_gene_heatmap(
         yaxis=dict(autorange="reversed"),
         coloraxis_colorbar=dict(title="Pairs")
     )
-
-    st.markdown(
-        "<h4 style='margin-top: 0.5rem; margin-bottom: 0.5rem;'>"
-        "<img src='app/static/icons/paired.png' style='width:55px; height:55px; margin-right:4px; vertical-align:middle;' />"
-        "Heavy × Light V Gene Pairing</h4>",
-        unsafe_allow_html=True,
-    )
+    icon_heading("paired", "Heavy × Light V Gene Pairing", level=4, margin_top=0.5)
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
@@ -1714,13 +1708,7 @@ def render_paired_j_gene_heatmap(
         coloraxis_colorbar=dict(title="Pairs")
     )
 
-    st.markdown(
-        "<h4 style='margin-top: 0.5rem; margin-bottom: 0.5rem;'>"
-        "<img src='app/static/icons/paired.png' style='width:55px; height:55px; margin-right:4px; vertical-align:middle;' />"
-        "Heavy × Light J Gene Pairing</h4>",
-        unsafe_allow_html=True,
-    )
-
+    icon_heading("paired", "Heavy × Light J Gene Pairing", level=4, margin_top=0.5)
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
     if collector is not None:

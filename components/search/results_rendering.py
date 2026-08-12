@@ -27,7 +27,7 @@ from components.search.results_plotting import (
     render_subject_hits_boxplot,
 )
 from src.search_engine import AntibodySearchEngine
-from components.search.styling import render_chain_heading
+from components.search.styling import icon_heading
 
 
 
@@ -595,19 +595,18 @@ def render_search_criteria_display(
         col1, col2 = st.columns(2)
         
         with col1:
-            render_chain_heading("Heavy Chain", "heavy", level=4, icon="🧬")
+            icon_heading("heavy", "Heavy Chain", 4, margin_top=0.5)
             _render_chain_criteria(formatted_params, "heavy_", chain_type="Heavy")
         
-        with col2:
-            render_chain_heading("Light Chain", "light", level=4, icon="🔬")
+        with col2:  
+            icon_heading("light", "Light Chain", 4, margin_top=0.5)
             _render_chain_criteria(formatted_params, "light_", chain_type="Light")
         return
     
     chain_type = _determine_unpaired_chain_type(search_params, selected_databases)
     formatted_params = _format_query_params_for_display(search_params, False)
     prefix = "heavy_" if chain_type == "Heavy" else "light_"
-    icon = "🧬" if chain_type == "Heavy" else "🔬"
-    render_chain_heading(f"{chain_type} Chain", chain_type, level=4, icon=icon)
+    icon_heading(f"{chain_type.lower()}", f"{chain_type} Chain", 4, margin_top=0.5)
     _render_chain_criteria(formatted_params, prefix, chain_type=chain_type)
 
 
@@ -817,11 +816,11 @@ def render_dual_search_criteria_display(
     col1, col2 = st.columns(2)
     
     with col1:
-        render_chain_heading("Heavy Chain", "heavy", level=4, icon="🧬")
+        icon_heading("heavy", "Heavy Chain", 4, margin_top=0.5)
         _render_chain_criteria(heavy_params, "heavy_", chain_type="Heavy")
     
     with col2:
-        render_chain_heading("Light Chain", "light", level=4, icon="🔬")
+        icon_heading("light", "Light Chain", 4, margin_top=0.5)
         _render_chain_criteria(light_params, "light_", chain_type="Light")
 
 
@@ -831,7 +830,7 @@ def render_dual_search_parameters_expander(
 ) -> None:
     """Render expander showing heavy and light search parameters."""
     with st.expander(":material/search: Search Parameters HEAVY+LIGHT"):
-        #! TODO When does this get called?
+        # TODO When does this get called?
         st.markdown("**Selected Databases:**")
         selected_databases = st.session_state.get('selected_databases', [])
         for db_path in selected_databases:
@@ -875,7 +874,7 @@ def render_dual_unpaired_results(
     st.markdown("# :material/search_insights: Search Results")
     
     # Heavy section
-    render_chain_heading("Heavy Chain Results", "heavy", level=3, icon="🧬")
+    icon_heading("heavy", "Heavy Chain Results", 3, margin_top=0.5)
     render_statistics_metrics(heavy_result['statistics'])
     # Download buttons (Statistics CSV and Full Results) - above Sample Sequences
     render_full_download_button(
@@ -906,7 +905,7 @@ def render_dual_unpaired_results(
     st.markdown("---")
     
     # Light section
-    render_chain_heading("Light Chain Results", "light", level=3, icon="🔬")
+    icon_heading("light", "Light Chain Results", 3, margin_top=0.5)
     render_statistics_metrics(light_result['statistics'])
     # Download buttons (Statistics CSV and Full Results) - above Sample Sequences
     render_full_download_button(

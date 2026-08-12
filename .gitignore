@@ -5,6 +5,8 @@ igblast/bin/makeblastdb
 igblast/bin/blastdbcmd
 
 
+publication/
+
 # Python
 __pycache__/
 *.py[cod]
