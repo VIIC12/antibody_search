@@ -1,28 +1,14 @@
 """Styling utilities for search components."""
 
-import base64
-from pathlib import Path
-from typing import Optional
-
 import streamlit as st
-
-# Fixed spacing between logo and heading text (px) so it's consistent in narrow and wide layouts
-ICON_MARGIN_RIGHT_PX = 8
-ICON_SIZE_PX = 55
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-
-HEAVY_COLOR = "#89AAE7FF"
-LIGHT_COLOR = "#3F3839"
-
-
-def get_chain_color(chain: str) -> str:
-    """Return the hexadecimal color for the given chain type."""
-    return HEAVY_COLOR if chain.lower() == "heavy" else LIGHT_COLOR
 
 HEAVY_COLOR = "#89AAE7FF"
 PAIRED_COLOR = "#3F3839"
 LIGHT_COLOR = "#CB243D"
+
+def get_chain_color(chain: str) -> str:
+    """Return the hexadecimal color for the given chain type."""
+    return HEAVY_COLOR if chain.lower() == "heavy" else LIGHT_COLOR
 
 def icon_heading(icon: str, text: str, level: int, margin_top: float = 0):
     """
