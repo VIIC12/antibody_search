@@ -48,7 +48,6 @@ def render_results_plots(
     is_paired: bool,
     search_params: Dict[str, Any],
     engine: AntibodySearchEngine,
-    show_heading: bool = True,
     show_spider_toggle: bool = True,
 ) -> None:
     """
@@ -62,15 +61,12 @@ def render_results_plots(
         is_paired: Whether this is a paired search
         search_params: Search parameters dictionary
         engine: Search engine instance to fetch all results
-        show_heading: Whether to render the section heading inside this function
     """
     if sequences_sample_df.empty:
         return
     
-    if show_heading:
-        st.markdown("### :material/bar_chart_4_bars: Result Distributions HEAVY+LIGHT")
-        #! This does only get called if we select heavy AND light, why do we have this twice?
-    
+    st.markdown("### :material/bar_chart_4_bars: Result Distributions")
+
     # Check if we have a very large result set (will be sampled)
     total_hits = statistics.get('total_hits', 0)
     
@@ -1406,8 +1402,9 @@ def render_inferred_pairing_plots(
     # For light: V plot in first column, J plot in second column
     if chain_type == 'Heavy':
         # Heavy chain: V, D, J gene plots (3 columns)
-        # V inferred plot in column 0, J inferred plot in column 2
-        st.markdown(f"#### {heading_icon} Inferred {heading_chain} Gene Families (Overlay)")
+        # V inferred plot in column 0, J inferred plot in column 2        
+        icon_heading("paired", f"Inferred {heading_chain} chain Gene Families", level=4)
+        
         cols = st.columns(num_columns)
         
         for gene_type, (pivot_df, row_label, col_label, title, caption) in plots_to_render:
@@ -1446,7 +1443,8 @@ def render_inferred_pairing_plots(
     else:
         # Light chain: V, J gene plots (2 columns)
         # V inferred plot in column 0, J inferred plot in column 1
-        st.markdown(f"#### {heading_icon} Inferred {heading_chain} Gene Families (Overlay)")
+        icon_heading("paired", f"Inferred {heading_chain} Gene Families", level=4)
+
         cols = st.columns(num_columns)
         
         for i, (gene_type, (pivot_df, row_label, col_label, title, caption)) in enumerate(plots_to_render):

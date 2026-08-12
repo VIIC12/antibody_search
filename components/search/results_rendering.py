@@ -94,15 +94,14 @@ def render_search_results(
     )
 
     # Section 2: Result Distributions (subject statistics + plots)
-    st.markdown("### :material/bar_chart_4_bars: Result Distributions")
+    
     render_subject_statistics(stats_df, statistics)
     render_results_plots(
         sequences_sample_df,
         statistics,
         is_paired,
         search_params,
-        engine,
-        show_heading=False
+        engine
     )
     
     # Search parameters expander
@@ -829,8 +828,7 @@ def render_dual_search_parameters_expander(
     light_statistics: Dict[str, Any]
 ) -> None:
     """Render expander showing heavy and light search parameters."""
-    with st.expander(":material/search: Search Parameters HEAVY+LIGHT"):
-        # TODO When does this get called?
+    with st.expander(":material/search: Search Parameters"):
         st.markdown("**Selected Databases:**")
         selected_databases = st.session_state.get('selected_databases', [])
         for db_path in selected_databases:
