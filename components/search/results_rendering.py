@@ -248,24 +248,33 @@ def render_subject_statistics(
             st.info("Plot summary unavailable (no donors pass the sequence threshold).")
 
         toggle_col1, toggle_col2 = st.columns(2)
+        # Lock while search/plots are busy — toggling mid-run can crash the Streamlit server
+        donor_plot_toggles_locked = (
+            st.session_state.get("search_status") == "running"
+            or bool(st.session_state.get("plotting_controls_locked", False))
+        )
         with toggle_col1:
             st.toggle(
                 "Apply sequence threshold",
                 key=threshold_toggle_key,
+                disabled=donor_plot_toggles_locked,
                 help=(
                     "When enabled, only donors with enough sequences "
                     "(⌈10 ÷ overall frequency⌉) are included in the plot and Plot Summary. "
                     "When disabled, all donors with >0 sequences are used."
+                    + (" Locked while a search or plot load is in progress." if donor_plot_toggles_locked else "")
                 ),
             )
         with toggle_col2:
             st.toggle(
                 "Include zero-hit donors",
                 key=zero_hit_toggle_key,
+                disabled=donor_plot_toggles_locked,
                 help=(
                     "When enabled, donors in the selected set with zero hits "
                     "are included in the precursor-frequency plot and Plot Summary "
                     "(shown at ≤0.01). When disabled, only donors with ≥1 hit are shown."
+                    + (" Locked while a search or plot load is in progress." if donor_plot_toggles_locked else "")
                 ),
             )
 
