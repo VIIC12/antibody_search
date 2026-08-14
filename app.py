@@ -86,14 +86,17 @@ def main():
         }
     )
 
-    # Resolve logo path relative to app.py location
-    logo_path = Path(__file__).parent / "public" / "images" / "logo.gif"
-    if logo_path.exists():
-        st.logo(
-            image=str(logo_path),
-            size="large",
-            link="",
-        )
+    # st.logo expects a filesystem path (like st.image), not an app/static URL.
+    # link must be None or an http(s) URL — empty string raises an error.
+    # See: https://docs.streamlit.io/develop/api-reference/media/st.logo
+
+    st.logo(
+        image="./static/logo.gif",
+        size="large",
+        link=None,
+        icon_image=None,
+    )
+
     
     with st.sidebar:
         # Common sidebar content (About and License sections)
