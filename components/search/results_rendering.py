@@ -1054,6 +1054,7 @@ def render_dual_unpaired_results(
         search_params=light_result['search_params'],
         engine=engine,
         show_spider_toggle=False,
+        show_gene_group_control=False,
     )
     render_dual_search_parameters_expander(
         heavy_result['statistics'],

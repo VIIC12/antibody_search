@@ -23,6 +23,7 @@ from src.search_engine import AntibodySearchEngine
 
 PLOTLY_DISPLAY_CONFIG = {
     "displayModeBar": False,
+    
 }
 
 # Global configuration for plotting limits
@@ -49,6 +50,7 @@ def render_results_plots(
     search_params: Dict[str, Any],
     engine: AntibodySearchEngine,
     show_spider_toggle: bool = True,
+    show_gene_group_control: bool = True,
 ) -> None:
     """
     Render plots for search results based on available data and search parameters.
@@ -155,6 +157,7 @@ def render_results_plots(
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
             show_spider_toggle=show_spider_toggle,
+            show_gene_group_control=show_gene_group_control,
         )
 
     subject_plot_entry = st.session_state.get("latest_subject_hits_plot")
@@ -632,6 +635,106 @@ _AA_PROPERTY_GROUPS: Dict[str, Tuple[str, ...]] = {
 }
 
 SPIDER_PLOT_MODE_KEY = "cdr_spider_plot_mode"
+GENE_GROUP_MODE_KEY = "gene_plot_group_mode"
+GENE_GROUP_MODE_OPTIONS = ("Allele", "Subfamily", "Family")
+GENE_GROUP_MODE_TO_VALUE = {
+    "Allele": "allele",
+    "Subfamily": "subfamily",
+    "Family": "family",
+}
+GENE_GROUP_VALUE_TO_LABEL = {v: k for k, v in GENE_GROUP_MODE_TO_VALUE.items()}
+
+
+def _get_gene_group_mode() -> str:
+    """Return current gene plot grouping mode: allele | subfamily | family."""
+    mode = st.session_state.get(GENE_GROUP_MODE_KEY, "allele")
+    if mode not in ("allele", "subfamily", "family"):
+        return "allele"
+    return mode
+
+
+def _extract_gene_subfamily(gene_name: Any) -> Optional[str]:
+    """Strip allele suffix: IGHV3-23*01 -> IGHV3-23."""
+    if gene_name is None or (isinstance(gene_name, float) and pd.isna(gene_name)):
+        return None
+    text = str(gene_name).strip()
+    if not text:
+        return None
+    return text.split("*", 1)[0]
+
+
+def _extract_gene_family_label(gene_name: Any) -> Optional[str]:
+    """Family label: IGHV3-23*01 / IGHV3-21*02 -> IGHV3."""
+    if gene_name is None or (isinstance(gene_name, float) and pd.isna(gene_name)):
+        return None
+    family = AntibodySearchEngine._extract_v_family(str(gene_name))
+    if family:
+        return family
+    # Fallback for unexpected formats
+    return _extract_gene_subfamily(gene_name)
+
+
+def _map_gene_to_group_label(gene_name: Any, group_mode: str) -> str:
+    """Map a gene call to the label used for the selected grouping mode."""
+    if group_mode == "subfamily":
+        return _extract_gene_subfamily(gene_name) or "Unknown"
+    if group_mode == "family":
+        return _extract_gene_family_label(gene_name) or "Unknown"
+    if gene_name is None or (isinstance(gene_name, float) and pd.isna(gene_name)):
+        return "Unknown"
+    text = str(gene_name).strip()
+    return text or "Unknown"
+
+
+def _gene_plot_title_for_mode(title: str, group_mode: str) -> str:
+    """Adjust gene plot title for subfamily/family grouping."""
+    if group_mode == "subfamily":
+        return title.replace("Gene", "Subfamily")
+    if group_mode == "family":
+        return title.replace("Gene", "Family")
+    return title
+
+
+def _sync_gene_group_mode_from_widget(
+    widget_key: str = "gene_plot_group_mode_control",
+) -> str:
+    """Apply widget selection (from a prior run) before gene plots are drawn."""
+    if GENE_GROUP_MODE_KEY not in st.session_state:
+        st.session_state[GENE_GROUP_MODE_KEY] = "allele"
+    selected = st.session_state.get(widget_key)
+    if selected in GENE_GROUP_MODE_TO_VALUE:
+        st.session_state[GENE_GROUP_MODE_KEY] = GENE_GROUP_MODE_TO_VALUE[selected]
+    return _get_gene_group_mode()
+
+
+def _render_gene_group_control(*, widget_key: str = "gene_plot_group_mode_control") -> str:
+    """
+    Render grouping control below V/D/J gene plots.
+    Returns the active mode (allele | subfamily | family).
+    """
+    if GENE_GROUP_MODE_KEY not in st.session_state:
+        st.session_state[GENE_GROUP_MODE_KEY] = "allele"
+    if widget_key not in st.session_state:
+        st.session_state[widget_key] = GENE_GROUP_VALUE_TO_LABEL.get(
+            st.session_state[GENE_GROUP_MODE_KEY],
+            "Allele",
+        )
+
+    selected = st.segmented_control(
+        "Group genes by",
+        options=list(GENE_GROUP_MODE_OPTIONS),
+        key=widget_key,
+        help=(
+            "Allele: full gene calls (e.g. IGHV3-23*01). "
+            "Subfamily: alleles collapsed (e.g. IGHV3-23*01 + IGHV3-23*02 → IGHV3-23). "
+            "Family: genes collapsed (e.g. IGHV3-23 + IGHV3-21 → IGHV3)."
+        ),
+    )
+    if selected is None:
+        selected = st.session_state.get(widget_key, "Allele")
+    mode = GENE_GROUP_MODE_TO_VALUE.get(selected, "allele")
+    st.session_state[GENE_GROUP_MODE_KEY] = mode
+    return mode
 
 
 def fetch_cdr_aa_distribution(
@@ -1028,6 +1131,7 @@ def render_unpaired_plots(
     aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
     spider_mode: str = "per_aa",
     show_spider_toggle: bool = True,
+    show_gene_group_control: bool = True,
 ) -> None:
     """
     Render plots for unpaired search results.
@@ -1043,12 +1147,14 @@ def render_unpaired_plots(
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
             show_toggle=show_spider_toggle,
+            show_gene_group_control=show_gene_group_control,
         )
     else:
         render_heavy_chain_plots(
             sequences_df, search_params, prefix="", collector=collector,
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
+            show_gene_group_control=show_gene_group_control,
         )
 
     overlay_active = (
@@ -1512,6 +1618,7 @@ def render_paired_plots(
         sequences_df: Sequences dataframe
         search_params: Search parameters dictionary
     """
+    _sync_gene_group_mode_from_widget()
     col1, col2 = st.columns(2)
     
     aa_distributions = aa_distributions or {}
@@ -1521,6 +1628,7 @@ def render_paired_plots(
             sequences_df, search_params, prefix="heavy_", collector=collector,
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
+            show_gene_group_control=False,
         )
     
     with col2:
@@ -1530,7 +1638,10 @@ def render_paired_plots(
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
             show_toggle=False,
+            show_gene_group_control=False,
         )
+
+    _render_gene_group_control()
 
     # Render V and J gene pairing heatmaps side by side
     col_v, col_j = st.columns(2)
@@ -1741,6 +1852,7 @@ def render_heavy_chain_plots(
     collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
     aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
     spider_mode: str = "per_aa",
+    show_gene_group_control: bool = True,
 ) -> None:
     """
     Render Heavy chain specific plots.
@@ -1941,6 +2053,7 @@ def render_heavy_chain_plots(
     
     # Display gene plots in a row if we have any
     if gene_plots:
+        group_mode = _sync_gene_group_mode_from_widget()
         cols = st.columns(len(gene_plots))
         for i, plot_data in enumerate(gene_plots):
             with cols[i]:
@@ -1949,20 +2062,24 @@ def render_heavy_chain_plots(
                     plot_gene_distribution(
                         df,
                         col,
-                        title,
+                        _gene_plot_title_for_mode(title, group_mode),
                         is_highlighted=is_highlighted,
                         chain_type="heavy",
-                        collector=collector
+                        collector=collector,
+                        group_mode=group_mode,
                     )
                 else:
                     df, col, title = plot_data
                     plot_gene_distribution(
                         df,
                         col,
-                        title,
+                        _gene_plot_title_for_mode(title, group_mode),
                         chain_type="heavy",
-                        collector=collector
+                        collector=collector,
+                        group_mode=group_mode,
                     )
+        if show_gene_group_control:
+            _render_gene_group_control()
     
     if not plots_rendered:
         st.info("No plots available (all filters specified).")
@@ -1976,6 +2093,7 @@ def render_light_chain_plots(
     aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
     spider_mode: str = "per_aa",
     show_toggle: bool = False,
+    show_gene_group_control: bool = True,
 ) -> None:
     """
     Render Light chain specific plots.
@@ -2130,6 +2248,7 @@ def render_light_chain_plots(
     
     # Display gene plots in a row if we have any
     if gene_plots:
+        group_mode = _sync_gene_group_mode_from_widget()
         cols = st.columns(len(gene_plots))
         for i, plot_data in enumerate(gene_plots):
             with cols[i]:
@@ -2138,20 +2257,24 @@ def render_light_chain_plots(
                     plot_gene_distribution(
                         df,
                         col,
-                        title,
+                        _gene_plot_title_for_mode(title, group_mode),
                         is_highlighted=is_highlighted,
                         chain_type="light",
-                        collector=collector
+                        collector=collector,
+                        group_mode=group_mode,
                     )
                 else:
                     df, col, title = plot_data
                     plot_gene_distribution(
                         df,
                         col,
-                        title,
+                        _gene_plot_title_for_mode(title, group_mode),
                         chain_type="light",
-                        collector=collector
+                        collector=collector,
+                        group_mode=group_mode,
                     )
+        if show_gene_group_control:
+            _render_gene_group_control()
     
     if not plots_rendered:
         st.info("No plots available (all filters specified).")
@@ -2346,7 +2469,8 @@ def plot_gene_distribution(
     max_genes: int = 15,
     is_highlighted: bool = False,
     chain_type: str = "heavy",
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None
+    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
+    group_mode: str = "allele",
 ) -> None:
     """
     Plot gene distribution as a bar chart (top N genes).
@@ -2357,12 +2481,19 @@ def plot_gene_distribution(
         title: Title for the plot
         max_genes: Maximum number of genes to display (default: 15)
         is_highlighted: Whether this parameter was used in the search (for highlighting)
+        group_mode: allele | subfamily | family aggregation level
     """
     if column not in df.columns:
         return
     
-    # Get gene counts
-    gene_counts = df[column].value_counts().head(max_genes)
+    # Get gene counts (optionally aggregated by subfamily/family)
+    if group_mode in ("subfamily", "family"):
+        grouped = df[column].map(lambda g: _map_gene_to_group_label(g, group_mode))
+        gene_counts = grouped.value_counts().head(max_genes)
+        y_label = "Subfamily" if group_mode == "subfamily" else "Family"
+    else:
+        gene_counts = df[column].value_counts().head(max_genes)
+        y_label = "Gene"
     
     if len(gene_counts) == 0:
         return
@@ -2396,7 +2527,7 @@ def plot_gene_distribution(
         y=gene_counts.index,
         orientation='h',
         title=display_title,
-        labels={'x': 'Count', 'y': 'Gene'},
+        labels={'x': 'Count', 'y': y_label},
         color=gene_counts.values,
         color_continuous_scale=color_scale
     )
@@ -2408,7 +2539,7 @@ def plot_gene_distribution(
         yaxis={'categoryorder': 'total ascending'},
         title=title_config,
         xaxis_title="Count",
-        yaxis_title="Gene"
+        yaxis_title=y_label
     )
     
     fig.update_coloraxes(colorscale=color_scale, showscale=False)
@@ -2417,8 +2548,9 @@ def plot_gene_distribution(
 
     if collector is not None:
         export_df = gene_counts.reset_index()
-        export_df.columns = ["gene", "count"]
+        export_df.columns = [y_label.lower(), "count"]
         export_df["chain_type"] = chain_type
+        export_df["group_mode"] = group_mode
         collector.append((f"{chain_type}_{title}", prepare_export_figure(fig), export_df.copy()))
 
 
