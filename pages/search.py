@@ -719,7 +719,8 @@ def search_page_content():
     # Show validation error (e.g. OAS-disallowed gene) right below the form, not after results
     search_validation_error = st.session_state.pop("search_validation_error", None)
     if search_validation_error:
-        st.error(f"❌ **{search_validation_error}**")
+        st.error(f"**{search_validation_error}**", icon=":material/error:")
+
     
     # Add a small spacer to separate form from results
     st.markdown("<br>", unsafe_allow_html=True)

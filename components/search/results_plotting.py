@@ -1292,6 +1292,13 @@ def _create_inferred_heatmap(
     return (pivot_df, row_label, col_label, title, caption)
 
 
+def _apply_heatmap_axis_outline(fig: go.Figure) -> go.Figure:
+    """Draw a black box outline around a heatmap (same as paired V/J pairing plots)."""
+    fig.update_xaxes(showline=True, linewidth=1, linecolor="black", mirror=True)
+    fig.update_yaxes(showline=True, linewidth=1, linecolor="black", mirror=True)
+    return fig
+
+
 def render_inferred_pairing_plots(
     sequences_df: pd.DataFrame,
     chain_type: str,
@@ -1423,6 +1430,7 @@ def render_inferred_pairing_plots(
                         yaxis=dict(autorange="reversed"),
                         coloraxis_colorbar=dict(title="Probability (%)")
                     )
+                    _apply_heatmap_axis_outline(fig)
                     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG, key=f"inferred_{chain_type.lower()}_v_plot")
             elif gene_type == 'J':
                 with cols[2]:  # Match IGHJ plot width
@@ -1439,6 +1447,7 @@ def render_inferred_pairing_plots(
                         yaxis=dict(autorange="reversed"),
                         coloraxis_colorbar=dict(title="Probability (%)")
                     )
+                    _apply_heatmap_axis_outline(fig)
                     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG, key=f"inferred_{chain_type.lower()}_j_plot")
     else:
         # Light chain: V, J gene plots (2 columns)
@@ -1462,6 +1471,7 @@ def render_inferred_pairing_plots(
                     yaxis=dict(autorange="reversed"),
                     coloraxis_colorbar=dict(title="Probability (%)")
                 )
+                _apply_heatmap_axis_outline(fig)
                 st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG, key=f"inferred_light_{gene_type.lower()}_plot_{i}")
 
     # Add to collector if provided
@@ -1476,6 +1486,7 @@ def render_inferred_pairing_plots(
                 color_continuous_scale=color_scale,
                 aspect="auto"
             )
+            _apply_heatmap_axis_outline(fig)
             collector.append((
                 f"inferred_{heading_chain.lower()}_{gene_type.lower()}_heatmap",
                 prepare_export_figure(fig),

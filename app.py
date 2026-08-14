@@ -86,10 +86,6 @@ def main():
         }
     )
 
-    # st.logo expects a filesystem path (like st.image), not an app/static URL.
-    # link must be None or an http(s) URL — empty string raises an error.
-    # See: https://docs.streamlit.io/develop/api-reference/media/st.logo
-
     st.logo(
         image="./static/logo.gif",
         size="large",
@@ -97,7 +93,6 @@ def main():
         icon_image=None,
     )
 
-    
     with st.sidebar:
         # Common sidebar content (About and License sections)
         render_sidebar()

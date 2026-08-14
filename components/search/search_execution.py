@@ -109,7 +109,7 @@ def validate_search_criteria(search_params: Dict[str, Any], is_paired: bool) -> 
             ])
     
     if not has_criteria:
-        return False, "⚠️ Please enter at least one search criterion"
+        return False, "Please enter at least one search criterion."
     
     return True, None
 
