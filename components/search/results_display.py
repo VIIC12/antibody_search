@@ -143,10 +143,10 @@ def get_stats_column_config() -> Dict[str, Any]:
         Dictionary of Streamlit column configurations for stats
     """
     return {
-        "subject": st.column_config.TextColumn("Subject", width="medium"),
-        "total_sequences": st.column_config.NumberColumn("Total Sequences", width="medium"),
+        "subject": st.column_config.TextColumn("Subject", width="small"),
+        "total_sequences": st.column_config.NumberColumn("Total Sequences", width="small"),
         "hits": st.column_config.NumberColumn("Hits", width="small"),
         "percentage": st.column_config.NumberColumn("Percentage", width="small", format="%.2f%%"),
-        "per_million": st.column_config.NumberColumn("Hits per Million", width="medium", format="%.1f"),
+        "per_million": st.column_config.NumberColumn("Hits per Million", width="small", format="%.1f"),
     }
 

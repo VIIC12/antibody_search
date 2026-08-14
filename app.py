@@ -104,7 +104,10 @@ def main():
     statistics = st.Page("pages/statistics.py", title="Statistics", icon=":material/bar_chart:")
     imprint = st.Page("pages/imprint.py", title="Imprint", icon=":material/info:")
 
-    entry_page = st.navigation([search, igblast, statistics, imprint], position="top")
+    entry_page = st.navigation(
+        [search, igblast, statistics, imprint],
+        position="top",
+    )
 
     # Run the selected page
     entry_page.run()

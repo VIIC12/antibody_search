@@ -2411,119 +2411,208 @@ def plot_gene_distribution(
         collector.append((f"{chain_type}_{title}", prepare_export_figure(fig), export_df.copy()))
 
 
-def render_subject_hits_boxplot(
+# --- Donor precursor-frequency boxplot (publication-style axis + site box styling) ---
+
+DONOR_HPM_BIN_LABEL = "≤0.01"
+DONOR_HPM_BIN_VALUE = -2.0  # log10(0.01)
+DONOR_HPM_DEFAULT_Y_RANGE = (DONOR_HPM_BIN_VALUE - 0.10, 4.0)
+
+
+def _normalize_donor_stats_columns(stats_df: pd.DataFrame) -> pd.DataFrame:
+    df = stats_df.copy()
+    aliases = {"per_million": "hits_per_million", "total": "total_sequences"}
+    for source, target in aliases.items():
+        if source in df.columns and target not in df.columns:
+            df[target] = df[source]
+    for col in ("total_sequences", "hits", "hits_per_million", "per_million"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+
+def prepare_donor_plot_data(
     stats_df: pd.DataFrame,
-    statistics: Dict[str, Any]
-) -> None:
+    statistics: Dict[str, Any],
+    *,
+    include_zero_hit_donors: bool = True,
+    apply_sequence_threshold: bool = True,
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
-    Render donor-level hits-per-million distribution as a box plot with jittered points.
+    Prepare donor-level HPM data for the precursor-frequency plot.
 
-    Args:
-        stats_df: Statistics dataframe per subject
-        statistics: Overall statistics dictionary for the current search
+    Optionally keeps only donors above the sequence threshold and/or includes
+    zero-hit donors. Bins log10(HPM) <= -2 onto DONOR_HPM_BIN_VALUE (≤0.01).
     """
-    st.session_state.pop("latest_subject_hits_plot", None)
     statistics = statistics or {}
-
-    # Handle case where stats_df might be None (from old API)
-    if stats_df is None:
-        st.info("Subject statistics not available.")
-        return
-
-    if stats_df.empty:
-        st.info("No subject statistics available for plotting.")
-        return
-
     total_hits = statistics.get("total_hits") or 0
     total_sequences = statistics.get("total_sequences") or 0
-
     if total_hits <= 0 or total_sequences <= 0:
-        st.info("Insufficient overall statistics to render donor plot.")
-        return
+        return pd.DataFrame(), {"error": "Insufficient overall statistics"}
 
     overall_frequency = total_hits / total_sequences
-    if overall_frequency <= 0:
-        st.info("Overall frequency is zero; donor plot unavailable.")
-        return
+    required_sequences = int(np.ceil(10 / overall_frequency))
 
-    required_sequences = 10 / overall_frequency
+    df = _normalize_donor_stats_columns(stats_df)
+    if "total_sequences" in df.columns:
+        df = df[df["total_sequences"] > 0].copy()
 
-    filtered_df = stats_df.copy()
+    if apply_sequence_threshold:
+        filtered = df[df["total_sequences"] >= required_sequences].copy()
+    else:
+        filtered = df.copy()
 
-    # Normalize column names expected downstream
-    column_aliases = {
-        "per_million": "hits_per_million",
-        "total": "total_sequences",
+    n_zero_in_pool = int((filtered["hits"] == 0).sum()) if "hits" in filtered.columns else 0
+
+    if not include_zero_hit_donors and "hits" in filtered.columns:
+        filtered = filtered[filtered["hits"] > 0].copy()
+
+    filtered["hits_per_million"] = np.where(
+        filtered["total_sequences"] > 0,
+        filtered["hits"].astype(float) / filtered["total_sequences"].astype(float) * 1e6,
+        np.nan,
+    )
+
+    hpm = filtered["hits_per_million"].astype(float).to_numpy()
+    log_vals = np.full(hpm.shape, float("-inf"), dtype=float)
+    positive = hpm > 0
+    log_vals[positive] = np.log10(hpm[positive])
+    filtered["orig_log10_hits"] = log_vals
+    filtered["is_binned"] = log_vals <= DONOR_HPM_BIN_VALUE
+    filtered["log10_hits"] = np.where(filtered["is_binned"], DONOR_HPM_BIN_VALUE, log_vals)
+
+    meta = {
+        "overall_frequency": overall_frequency,
+        "required_sequences": required_sequences,
+        "apply_sequence_threshold": apply_sequence_threshold,
+        "n_input": len(df),
+        "n_after_threshold": int((df["total_sequences"] >= required_sequences).sum()),
+        "n_plotted": len(filtered),
+        "n_zero_hit_included": int((filtered["hits"] == 0).sum()) if "hits" in filtered.columns else 0,
+        "n_zero_hit_above_threshold": n_zero_in_pool,
+        "include_zero_hit_donors": include_zero_hit_donors,
+        "n_binned_le_0_01": int(filtered["is_binned"].sum()) if len(filtered) else 0,
+        "bin_label": DONOR_HPM_BIN_LABEL,
+        "bin_value": DONOR_HPM_BIN_VALUE,
+        "y_range": DONOR_HPM_DEFAULT_Y_RANGE,
     }
+    return filtered, meta
 
-    for source, target in column_aliases.items():
-        if source in filtered_df.columns and target not in filtered_df.columns:
-            filtered_df[target] = filtered_df[source]
 
-    required_columns = {"total_sequences", "hits", "hits_per_million"}
-    missing_columns = required_columns.difference(filtered_df.columns)
-    if missing_columns:
-        # Debug: Show what columns we actually have
-        available_cols = list(filtered_df.columns)
-        st.warning(
-            f"Subject statistics missing required fields for donor plotting.\n"
-            f"Required: {required_columns}\n"
-            f"Available: {available_cols}\n"
-            f"Missing: {missing_columns}"
-        )
-        return
+def _fmt_donor_hpm(value: float) -> str:
+    if value is None or not np.isfinite(value):
+        return "—"
+    if value == 0:
+        return "0"
+    if abs(value) >= 1000:
+        return f"{value:,.4g}"
+    return f"{value:.4g}"
 
-    numeric_cols = ["total_sequences", "hits", "hits_per_million"]
-    for col in numeric_cols:
-        if col in filtered_df.columns:
-            filtered_df[col] = pd.to_numeric(filtered_df[col], errors="coerce")
 
-    filtered_df = filtered_df[filtered_df["total_sequences"] >= required_sequences]
-    filtered_df = filtered_df[filtered_df["hits"] > 0]
-    filtered_df = filtered_df[filtered_df["hits_per_million"] > 0]
+def compute_donor_plot_summary_stats(
+    filtered_df: pd.DataFrame,
+    meta: Dict[str, Any],
+) -> pd.DataFrame:
+    """Summary metrics for donors included in the precursor-frequency plot."""
+    if filtered_df is None or filtered_df.empty:
+        return pd.DataFrame(columns=["Metric", "Value"])
 
-    if filtered_df.empty:
-        st.info("No donors meet the minimum sequence threshold for plotting.")
-        return
+    n = len(filtered_df)
+    n_zero = int((filtered_df["hits"] == 0).sum()) if "hits" in filtered_df.columns else 0
+    zero_pct = (100.0 * n_zero / n) if n else 0.0
+    threshold = meta.get("required_sequences", float("nan"))
+    include_zeros = meta.get("include_zero_hit_donors", True)
+    n_zero_above = meta.get("n_zero_hit_above_threshold", n_zero)
 
-    y_values = filtered_df["hits_per_million"].astype(float)
+    linear = filtered_df["hits_per_million"].astype(float).to_numpy()
+    lin_mean = float(np.nanmean(linear))
+    lin_median = float(np.nanmedian(linear))
+    lin_q1, lin_q3 = [float(x) for x in np.nanpercentile(linear, [25, 75])]
+    lin_iqr = lin_q3 - lin_q1
+
+    if include_zeros:
+        zero_hit_value = f"{n_zero:,} ({zero_pct:.1f}%)"
+    else:
+        zero_hit_value = f"excluded ({n_zero_above:,})"
+
+    apply_threshold = meta.get("apply_sequence_threshold", True)
+    if apply_threshold and np.isfinite(threshold):
+        threshold_value = f"≥ {int(threshold):,} sequences"
+    elif np.isfinite(threshold):
+        threshold_value = f"not applied (all donors; ref. ≥ {int(threshold):,})"
+    else:
+        threshold_value = "—"
+
+    rows = [
+        ("Donors in plot", f"{n:,}"),
+        ("Sequence threshold", threshold_value),
+        ("Zero-hit donors", zero_hit_value),
+        ("Mean", f"{_fmt_donor_hpm(lin_mean)} /M"),
+        ("Median", f"{_fmt_donor_hpm(lin_median)} /M"),
+        (
+            "IQR",
+            f"{_fmt_donor_hpm(lin_iqr)}  [Q1={_fmt_donor_hpm(lin_q1)}, Q3={_fmt_donor_hpm(lin_q3)}]",
+        ),
+    ]
+    return pd.DataFrame(rows, columns=["Metric", "Value"])
+
+
+def _donor_hpm_tick_label(log_val: float) -> str:
+    if int(round(log_val)) == int(DONOR_HPM_BIN_VALUE):
+        return DONOR_HPM_BIN_LABEL
+    ival = int(round(log_val))
+    if ival == -1:
+        return "0.1"
+    if ival == 0:
+        return "1"
+    if ival > 0:
+        return f"{10 ** ival:,}"
+    return ""
+
+
+def _resolve_donor_hpm_y_axis_range(
+    log10_hits: np.ndarray,
+    *,
+    min_upper: float = 2.0,
+) -> Tuple[float, float]:
+    """Floor at ≤0.01; upper ≥100, expanding when data exceeds that."""
+    finite = np.asarray(log10_hits, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    data_max = float(np.max(finite)) if finite.size else DONOR_HPM_BIN_VALUE
+    upper = max(float(min_upper), float(np.ceil(data_max - 1e-12)))
+    return (DONOR_HPM_BIN_VALUE - 0.10, upper)
+
+
+def build_donor_hits_figure(
+    filtered_df: pd.DataFrame,
+    meta: Dict[str, Any],
+    *,
+    title: Optional[str] = None,
+    height: int = 420,
+    margin: Optional[Dict[str, int]] = None,
+    dynamic_y_max: bool = True,
+) -> Optional[go.Figure]:
+    """Build the precursor-frequency donor boxplot (log10 axis with ≤0.01 bin)."""
+    if filtered_df is None or filtered_df.empty:
+        return None
+
+    y_values = filtered_df["log10_hits"].astype(float)
     donor_labels = filtered_df.get("subject", pd.Series(index=filtered_df.index, dtype=str)).fillna("Unknown")
+    hpm = filtered_df["hits_per_million"].astype(float)
 
-    if not (y_values > 0).all():
-        st.info("Cannot display donor distribution on a log scale due to non-positive values.")
-        return
+    required = meta.get("required_sequences", 0)
+    if dynamic_y_max:
+        y_axis_range = _resolve_donor_hpm_y_axis_range(y_values.to_numpy())
+    else:
+        y_axis_range = DONOR_HPM_DEFAULT_Y_RANGE
+    upper = int(y_axis_range[1])
+    yticks = [DONOR_HPM_BIN_VALUE] + list(range(int(DONOR_HPM_BIN_VALUE) + 1, upper + 1))
+    ticktext = [_donor_hpm_tick_label(v) for v in yticks]
 
-    # Calculate bounds with more padding to account for jittered points
-    # Use more padding (1.5x) to ensure all jittered points are visible
-    min_val = float(y_values.min())
-    max_val = float(y_values.max())
-    
-    lower_bound = min_val * 0.8
-    upper_bound = max_val * 1.5
-    
-    # Ensure lower_bound is positive (for log scale) but don't force a fixed minimum
-    # Use a small fraction of the minimum value if needed to avoid log(0)
-    if lower_bound <= 0:
-        lower_bound = min_val * 0.1  # Use 10% of min if calculated bound is <= 0
-    
-    if upper_bound <= lower_bound:
-        upper_bound = lower_bound * 2.0
-
-    log_min = float(np.log10(lower_bound))
-    log_max = float(np.log10(upper_bound))
-    if log_max - log_min < 2.0:
-        padding = (2.0 - (log_max - log_min)) / 2.0
-        log_min -= padding
-        log_max += padding
-    yaxis_range = [log_min, log_max]
-
-    tick_exponents = np.arange(np.floor(log_min), np.ceil(log_max) + 1, 1, dtype=int)
-    tick_vals = np.power(10.0, tick_exponents)
-    tick_text = [f"10^{exp}" for exp in tick_exponents]
-
-    customdata = pd.DataFrame({
-        "subject": donor_labels,
-    }).to_numpy()
+    if title is None:
+        title = (
+            f"Precursor Frequency by Donor"
+            f"<br><sup>Donors with ≥ {required:,} sequences</sup>"
+        )
 
     fig = go.Figure()
     fig.add_trace(
@@ -2531,56 +2620,160 @@ def render_subject_hits_boxplot(
             y=y_values,
             name="Donors",
             boxpoints="all",
-            jitter=0.2,
+            jitter=0.4,
             pointpos=0,
             marker=dict(
-                size=8, 
-                color='rgba(31, 119, 180, 1.0)'  # Opaque blue points
+                size=8,
+                opacity=0.85,
+                line=dict(width=0.2, color="grey"),
+                color="rgb(76, 96, 133)",
             ),
-            line=dict(color='rgba(31, 119, 180, 0.5)', width=1),  # Transparent line
-            fillcolor='rgba(76, 96, 133, 0.2)',  # Transparent box fill
-            customdata=customdata,
+            line=dict(color="rgba(76, 96, 133, 0.5)", width=1),
+            fillcolor="rgba(76, 96, 133, 0.2)",
+            customdata=np.column_stack(
+                [
+                    donor_labels.to_numpy(),
+                    hpm.to_numpy(),
+                ]
+            ),
             hovertemplate=(
-                "Subject: %{customdata[0]}<br>Hits/Million: %{y:,.2f}<extra></extra>"
+                "Subject: %{customdata[0]}<br>"
+                "Hits/Million: %{customdata[1]:,.4g}<extra></extra>"
             ),
         )
     )
-
-    subtitle_text = (
-        f"Showing donors with ≥ {required_sequences:,.0f} sequences "
-        f"(threshold = 10 ÷ overall frequency)."
-    )
-    subtitle_html = (
-        "<span style='font-weight: normal; font-size: 10px;'>"
-        f"{subtitle_text}"
-        "</span>"
-    )
-
     fig.update_layout(
         title={
-            "text": f"Per-Million Hits by Donor<br><sup>{subtitle_html}</sup>",
+            "text": title,
             "x": 0.5,
             "xanchor": "center",
         },
         showlegend=False,
-        height=230,
-        boxgroupgap=0.6,
-        margin=dict(l=20, r=20, t=45, b=15),
+        height=height,
+        boxgroupgap=0.3,
+        margin=margin or dict(l=70, r=20, t=70, b=30),
         template="plotly_white",
         yaxis=dict(
-            title="Hits per Million",
-            type="log",
-            range=yaxis_range,
+            title="Precursor Frequency (Per Million)",
+            type="linear",
+            range=list(y_axis_range),
             tickmode="array",
-            tickvals=tick_vals,
-            ticktext=tick_text,
+            tickvals=yticks,
+            ticktext=ticktext,
+            gridcolor="rgba(0,0,0,0.15)",
+            zeroline=False,
         ),
     )
+    return fig
+
+
+def render_subject_hits_boxplot(
+    stats_df: pd.DataFrame,
+    statistics: Dict[str, Any],
+    filtered_df: Optional[pd.DataFrame] = None,
+    meta: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    Render donor-level hits-per-million distribution.
+
+    Keeps zero-hit donors that pass the sequence threshold (when enabled),
+    recomputes HPM, bins values ≤0.01 onto a fixed log10 axis, and shows a
+    box + jittered points.
+
+    Args:
+        stats_df: Statistics dataframe per subject
+        statistics: Overall statistics dictionary for the current search
+        filtered_df: Optional precomputed plot-ready donor frame
+        meta: Optional metadata from prepare_donor_plot_data
+    """
+    st.session_state.pop("latest_subject_hits_plot", None)
+    statistics = statistics or {}
+
+    # Handle case where stats_df might be None (from old API)
+    if stats_df is None and filtered_df is None:
+        st.info("Subject statistics not available.")
+        return
+
+    if filtered_df is None:
+        if stats_df is None or stats_df.empty:
+            st.info("No subject statistics available for plotting.")
+            return
+
+        total_hits = statistics.get("total_hits") or 0
+        total_sequences = statistics.get("total_sequences") or 0
+
+        if total_hits <= 0 or total_sequences <= 0:
+            st.info("Insufficient overall statistics to render donor plot.")
+            return
+
+        overall_frequency = total_hits / total_sequences
+        if overall_frequency <= 0:
+            st.info("Overall frequency is zero; donor plot unavailable.")
+            return
+
+        # Need at least subject/hits/total_sequences; HPM is recomputed for the plot
+        working_df = stats_df.copy()
+        column_aliases = {
+            "per_million": "hits_per_million",
+            "total": "total_sequences",
+        }
+        for source, target in column_aliases.items():
+            if source in working_df.columns and target not in working_df.columns:
+                working_df[target] = working_df[source]
+
+        required_columns = {"total_sequences", "hits"}
+        missing_columns = required_columns.difference(working_df.columns)
+        if missing_columns:
+            available_cols = list(working_df.columns)
+            st.warning(
+                f"Subject statistics missing required fields for donor plotting.\n"
+                f"Required: {required_columns}\n"
+                f"Available: {available_cols}\n"
+                f"Missing: {missing_columns}"
+            )
+            return
+
+        filtered_df, meta = prepare_donor_plot_data(working_df, statistics)
+        if meta.get("error"):
+            st.info(meta["error"])
+            return
+
+    meta = meta or {}
+    if meta.get("error"):
+        st.info(meta["error"])
+        return
+
+    if filtered_df is None or filtered_df.empty:
+        st.info("No donors meet the minimum sequence threshold for plotting.")
+        return
+
+    fig = build_donor_hits_figure(
+        filtered_df,
+        meta,
+        title="Precursor Frequency by Donor",
+        height=380,
+        margin=dict(l=50, r=20, t=45, b=15),
+    )
+    if fig is None:
+        st.info("Unable to render donor plot.")
+        return
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
-    export_df = filtered_df[["subject", "total_sequences", "hits", "hits_per_million"]].copy()
-    export_df["hits_per_million_millions"] = export_df["hits_per_million"] / 1_000_000
+    export_cols = [
+        c for c in [
+            "subject",
+            "total_sequences",
+            "hits",
+            "hits_per_million",
+            "log10_hits",
+            "is_binned",
+        ]
+        if c in filtered_df.columns
+    ]
+    export_df = filtered_df[export_cols].copy()
+    if "hits_per_million" in export_df.columns:
+        export_df["hits_per_million_millions"] = export_df["hits_per_million"] / 1_000_000
 
     st.session_state["latest_subject_hits_plot"] = (
         "donor_per_million_hits",

@@ -25,6 +25,8 @@ from components.search.search_execution import execute_search
 from components.search.results_plotting import (
     render_results_plots,
     render_subject_hits_boxplot,
+    prepare_donor_plot_data,
+    compute_donor_plot_summary_stats,
 )
 from src.search_engine import AntibodySearchEngine
 from components.search.styling import icon_heading
@@ -108,6 +110,22 @@ def render_search_results(
     render_search_parameters_expander(statistics, is_paired)
 
 
+def _format_hit_percentage(statistics: Dict[str, Any]) -> str:
+    """Format overall hit percentage; show <0.01% when tiny but non-zero."""
+    try:
+        percentage = float(statistics.get("percentage") or 0)
+    except (TypeError, ValueError):
+        percentage = 0.0
+    try:
+        total_hits = int(statistics.get("total_hits") or 0)
+    except (TypeError, ValueError):
+        total_hits = 0
+
+    if total_hits > 0 and percentage < 0.01:
+        return "<0.01%"
+    return f"{percentage}%"
+
+
 def render_statistics_metrics(statistics: Dict[str, Any]) -> None:
     """
     Render statistics metrics in columns.
@@ -118,37 +136,76 @@ def render_statistics_metrics(statistics: Dict[str, Any]) -> None:
     col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
-        st.metric("Total Hits", f"{statistics['total_hits']:,}")
-    
-    with col2:
         st.metric("Database Size", f"{statistics['total_sequences']:,}")
     
+    with col2:
+        st.metric("Total Hits", f"{statistics['total_hits']:,}")
+    
     with col3:
-        st.metric("Hit Percentage", f"{statistics['percentage']}%")
+        st.metric("Hit Percentage", _format_hit_percentage(statistics))
     
     with col4:
-        st.metric("Hits per Million", f"{statistics.get('per_million', 0):,.1f}")
-    
-    with col5:
         st.metric("Search Time", f"{statistics['search_time']}s")
-
 
 def render_subject_statistics(
     stats_df: pd.DataFrame,
     statistics: Dict[str, Any],
+    widget_key_prefix: str = "donor_plot",
 ) -> None:
     """
-    Render statistics by subject table with download button.
+    Render statistics by subject, plot summary metrics, and the donor HPM plot.
     
     Args:
         stats_df: Statistics dataframe
+        statistics: Overall statistics dictionary for the current search
+        widget_key_prefix: Prefix for Streamlit widget keys (unique per chain in dual mode)
     """
-    st.markdown("#### :material/group: Statistics by Subject")
-    
-    content_col, plot_col = st.columns([5, 1])
+    zero_hit_toggle_key = f"{widget_key_prefix}_include_zero_hits"
+    threshold_toggle_key = f"{widget_key_prefix}_apply_sequence_threshold"
+    if zero_hit_toggle_key not in st.session_state:
+        st.session_state[zero_hit_toggle_key] = True
+    if threshold_toggle_key not in st.session_state:
+        st.session_state[threshold_toggle_key] = True
+    include_zero_hit_donors = bool(st.session_state[zero_hit_toggle_key])
+    apply_sequence_threshold = bool(st.session_state[threshold_toggle_key])
+
+    plot_filtered_df = None
+    plot_meta: Dict[str, Any] = {}
+    plot_summary_df = pd.DataFrame(columns=["Metric", "Value"])
+
+    if stats_df is not None and not stats_df.empty:
+        working_df = stats_df.copy()
+        for source, target in (
+            ("per_million", "hits_per_million"),
+            ("total", "total_sequences"),
+        ):
+            if source in working_df.columns and target not in working_df.columns:
+                working_df[target] = working_df[source]
+
+        if {"total_sequences", "hits"}.issubset(working_df.columns):
+            plot_filtered_df, plot_meta = prepare_donor_plot_data(
+                working_df,
+                statistics or {},
+                include_zero_hit_donors=include_zero_hit_donors,
+                apply_sequence_threshold=apply_sequence_threshold,
+            )
+            if not plot_meta.get("error") and plot_filtered_df is not None and not plot_filtered_df.empty:
+                plot_summary_df = compute_donor_plot_summary_stats(
+                    plot_filtered_df, plot_meta
+                )
+
+    head_subj, head_sum, head_plot = st.columns([4, 2, 1.5])
+    with head_subj:
+        st.markdown("#### :material/group: Statistics by Subject")
+    with head_sum:
+        st.markdown("#### :material/analytics: Plot Summary")
+    with head_plot:
+        st.markdown("#### :material/candlestick_chart: Precursor Frequency")
+
+    content_col, summary_col, plot_col = st.columns([4, 2, 1.5])
 
     with content_col:
-        if not stats_df.empty:
+        if stats_df is not None and not stats_df.empty:
             column_config = get_stats_column_config()
             desired_order = [
                 "subject",
@@ -159,17 +216,66 @@ def render_subject_statistics(
             ]
             ordered_columns = [col for col in desired_order if col in stats_df.columns]
             stats_df_display = stats_df[ordered_columns] if ordered_columns else stats_df
+            if "percentage" in stats_df_display.columns:
+                stats_df_display = stats_df_display.sort_values(
+                    "percentage", ascending=False, kind="mergesort"
+                ).reset_index(drop=True)
             st.dataframe(
                 stats_df_display,
                 width='stretch',
-                height=200,
+                height=380,
+                hide_index=True,
                 column_config=column_config
             )
         else:
             st.info("No results found matching your criteria.")
 
+    with summary_col:
+        if not plot_summary_df.empty:
+            st.dataframe(
+                plot_summary_df,
+                width="stretch",
+                height=250,
+                hide_index=True,
+                column_config={
+                    "Metric": st.column_config.TextColumn("Metric", width="small"),
+                    "Value": st.column_config.TextColumn("Value", width="medium"),
+                },
+            )
+        elif plot_meta.get("error"):
+            st.info(plot_meta["error"])
+        else:
+            st.info("Plot summary unavailable (no donors pass the sequence threshold).")
+
+        toggle_col1, toggle_col2 = st.columns(2)
+        with toggle_col1:
+            st.toggle(
+                "Apply sequence threshold",
+                key=threshold_toggle_key,
+                help=(
+                    "When enabled, only donors with enough sequences "
+                    "(⌈10 ÷ overall frequency⌉) are included in the plot and Plot Summary. "
+                    "When disabled, all donors with >0 sequences are used."
+                ),
+            )
+        with toggle_col2:
+            st.toggle(
+                "Include zero-hit donors",
+                key=zero_hit_toggle_key,
+                help=(
+                    "When enabled, donors in the selected set with zero hits "
+                    "are included in the precursor-frequency plot and Plot Summary "
+                    "(shown at ≤0.01). When disabled, only donors with ≥1 hit are shown."
+                ),
+            )
+
     with plot_col:
-        render_subject_hits_boxplot(stats_df, statistics)
+        render_subject_hits_boxplot(
+            stats_df,
+            statistics,
+            filtered_df=plot_filtered_df,
+            meta=plot_meta,
+        )
 
 
 def render_sequences_table(
@@ -892,7 +998,11 @@ def render_dual_unpaired_results(
         engine=engine,
         stats_df=heavy_result['stats_df']
     )
-    render_subject_statistics(heavy_result['stats_df'], heavy_result['statistics'])
+    render_subject_statistics(
+        heavy_result['stats_df'],
+        heavy_result['statistics'],
+        widget_key_prefix="heavy_donor_plot",
+    )
     render_results_plots(
         heavy_result['sequences_sample_df'],
         heavy_result['statistics'],
@@ -923,7 +1033,11 @@ def render_dual_unpaired_results(
         engine=engine,
         stats_df=light_result['stats_df']
     )
-    render_subject_statistics(light_result['stats_df'], light_result['statistics'])
+    render_subject_statistics(
+        light_result['stats_df'],
+        light_result['statistics'],
+        widget_key_prefix="light_donor_plot",
+    )
     render_results_plots(
         light_result['sequences_sample_df'],
         light_result['statistics'],

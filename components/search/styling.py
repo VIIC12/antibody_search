@@ -6,6 +6,10 @@ HEAVY_COLOR = "#89AAE7FF"
 PAIRED_COLOR = "#3F3839"
 LIGHT_COLOR = "#CB243D"
 
+HEAVY_PLOT_COLOR = "#4C6085"
+LIGHT_PLOT_COLOR = "#9B3232"
+
+
 def get_chain_color(chain: str) -> str:
     """Return the hexadecimal color for the given chain type."""
     return HEAVY_COLOR if chain.lower() == "heavy" else LIGHT_COLOR
