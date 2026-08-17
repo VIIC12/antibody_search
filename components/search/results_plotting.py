@@ -15,7 +15,18 @@ import plotly.express as px
 import plotly.graph_objects as go
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from components.search.styling import icon_heading
+from components.search.styling import (
+    HEAVY_COLOR,
+    HEAVY_COLORSCALE,
+    HEAVY_FILL,
+    HEAVY_LINE,
+    LIGHT_COLOR,
+    LIGHT_COLORSCALE,
+    LIGHT_FILL,
+    LIGHT_LINE,
+    get_chain_color,
+    icon_heading,
+)
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -1496,19 +1507,11 @@ def render_inferred_pairing_plots(
     # "Inferred Light" -> red (matching light chain plots)
     # "Inferred Heavy" -> blue (matching heavy chain plots)
     if chain_type == 'Heavy':
-        # We're inferring Light families, so use RED color scheme (matching light chain plots)
-        color_scale = [
-            (0.0, "#FFFFFF"),
-            (0.5, "#F7D5DB"),
-            (1.0, "#CB4154"),
-        ]
+        # Inferring Light families — light-chain palette
+        color_scale = LIGHT_COLORSCALE
     else:
-        # We're inferring Heavy families, so use BLUE color scheme (matching heavy chain plots)
-        color_scale = [
-            (0.0, "#FFFFFF"),
-            (0.5, "#D8DEE9"),
-            (1.0, "#4C6085"),
-        ]
+        # Inferring Heavy families — heavy-chain palette
+        color_scale = HEAVY_COLORSCALE
     
     # Render plots in a row matching the gene plot widths
     # For heavy: V plot in first column (same width as IGHV), J plot in third column (same width as IGHJ)
@@ -1712,7 +1715,7 @@ def render_paired_v_gene_heatmap(
     fig = px.imshow(
         heatmap_df,
         labels=dict(x="Light V Gene", y="Heavy V Gene", color="Pair Count"),
-        color_continuous_scale=[(0.0, "#F8F8F8"), (0.5, "#D8DEE9"), (1.0, "#4C6085")],
+        color_continuous_scale=HEAVY_COLORSCALE,
         aspect="auto"
     )
 
@@ -1808,7 +1811,7 @@ def render_paired_j_gene_heatmap(
     fig = px.imshow(
         heatmap_df,
         labels=dict(x="Light J Gene", y="Heavy J Gene", color="Pair Count"),
-        color_continuous_scale=[(0.0, "#F8F8F8"), (0.5, "#F7D5DB"), (1.0, "#CB4154")],
+        color_continuous_scale=LIGHT_COLORSCALE,
         aspect="auto"
     )
 
@@ -2357,10 +2360,7 @@ def plot_cdr_aa_spider(
         fill="toself",
         name=title,
     ))
-    if chain_type == "light":
-        color = "#CB4154"
-    else:
-        color = "#4C6085"
+    color = get_chain_color(chain_type)
     fig.update_traces(
         line_color=color,
         fillcolor=color,
@@ -2408,34 +2408,19 @@ def plot_cdr_length_distribution(
     # Count occurrences of each length (each length gets its own bar)
     length_counts = lengths.value_counts().sort_index()
     
-    # Prepare title with highlighting
-    display_title = f"{title}" if is_highlighted else title
     title_config = {
-        'text': display_title,
+        'text': title,
         'x': 0.5,
         'xanchor': 'center'
     }
-    if is_highlighted:
-        title_config['font'] = {'color': '#B4DCEA', 'size': 16}
-    
-    if chain_type == "light":
-        color_scale = [
-            (0.0, "#FFFFFF"),
-            (0.5, "#F7D5DB"),
-            (1.0, "#CB4154"),
-        ]
-    else:
-        color_scale = [
-            (0.0, "#FFFFFF"),
-            (0.5, "#D8DEE9"),
-            (1.0, "#4C6085"),
-        ]
+
+    color_scale = LIGHT_COLORSCALE if chain_type == "light" else HEAVY_COLORSCALE
 
     # Create bar chart (not histogram) so each length is a separate bar
     fig = px.bar(
         x=length_counts.index,
         y=length_counts.values,
-        title=display_title,
+        title=title,
         labels={'x': 'Length (amino acids)', 'y': 'Frequency'},
         color=length_counts.values,
         color_continuous_scale=color_scale
@@ -2452,6 +2437,9 @@ def plot_cdr_length_distribution(
     )
     
     fig.update_coloraxes(colorscale=color_scale, showscale=False)
+    fig.update_traces(
+        hovertemplate="Length: %{x}<br>Frequency: %{y}<extra></extra>"
+    )
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
@@ -2498,28 +2486,13 @@ def plot_gene_distribution(
     if len(gene_counts) == 0:
         return
     
-    # Prepare title with highlighting
-    display_title = f"{title}" if is_highlighted else title
     title_config = {
-        'text': display_title,
+        'text': title,
         'x': 0.5,
         'xanchor': 'center'
     }
-    if is_highlighted:
-        title_config['font'] = {'color': '#B4DCEA', 'size': 16}  # Orange-red color for highlighting
-    
-    if chain_type == "light":
-        color_scale = [
-            (0.0, "#FFFFFF"),
-            (0.5, "#F7D5DB"),
-            (1.0, "#CB4154"),
-        ]
-    else:
-        color_scale = [
-            (0.0, "#FFFFFF"),
-            (0.5, "#D8DEE9"),
-            (1.0, "#4C6085"),
-        ]
+
+    color_scale = LIGHT_COLORSCALE if chain_type == "light" else HEAVY_COLORSCALE
 
     # Anchor color scale at 0 so the top count always maps to the dark end.
     # Without this, a single bar (e.g. one family after grouping) sits mid-scale.
@@ -2531,7 +2504,7 @@ def plot_gene_distribution(
         x=gene_counts.values,
         y=gene_counts.index,
         orientation='h',
-        title=display_title,
+        title=title,
         labels={'x': 'Count', 'y': y_label},
         color=gene_counts.values,
         color_continuous_scale=color_scale,
@@ -2553,6 +2526,9 @@ def plot_gene_distribution(
         showscale=False,
         cmin=0,
         cmax=color_range_max,
+    )
+    fig.update_traces(
+        hovertemplate=f"{y_label}: %{{y}}<br>Count: %{{x}}<extra></extra>"
     )
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
@@ -2763,15 +2739,14 @@ def build_donor_hits_figure(
     yticks = [DONOR_HPM_BIN_VALUE] + list(range(int(DONOR_HPM_BIN_VALUE) + 1, upper + 1))
     ticktext = [_donor_hpm_tick_label(v) for v in yticks]
 
-    # Match heavy/light plot palette used elsewhere (gene bars, spiders)
     if (chain_type or "Heavy").lower() == "light":
-        marker_color = "rgb(203, 65, 84)"       # #CB4154
-        line_color = "rgba(203, 65, 84, 0.5)"
-        fill_color = "rgba(203, 65, 84, 0.2)"
+        marker_color = LIGHT_COLOR
+        line_color = LIGHT_LINE
+        fill_color = LIGHT_FILL
     else:
-        marker_color = "rgb(76, 96, 133)"       # #4C6085
-        line_color = "rgba(76, 96, 133, 0.5)"
-        fill_color = "rgba(76, 96, 133, 0.2)"
+        marker_color = HEAVY_COLOR
+        line_color = HEAVY_LINE
+        fill_color = HEAVY_FILL
 
     fig = go.Figure()
     fig.add_trace(
