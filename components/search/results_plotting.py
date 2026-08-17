@@ -2521,6 +2521,11 @@ def plot_gene_distribution(
             (1.0, "#4C6085"),
         ]
 
+    # Anchor color scale at 0 so the top count always maps to the dark end.
+    # Without this, a single bar (e.g. one family after grouping) sits mid-scale.
+    max_count = float(gene_counts.max()) if len(gene_counts) else 1.0
+    color_range_max = max_count if max_count > 0 else 1.0
+
     # Create bar chart
     fig = px.bar(
         x=gene_counts.values,
@@ -2529,7 +2534,8 @@ def plot_gene_distribution(
         title=display_title,
         labels={'x': 'Count', 'y': y_label},
         color=gene_counts.values,
-        color_continuous_scale=color_scale
+        color_continuous_scale=color_scale,
+        range_color=[0, color_range_max],
     )
     
     fig.update_layout(
@@ -2542,7 +2548,12 @@ def plot_gene_distribution(
         yaxis_title=y_label
     )
     
-    fig.update_coloraxes(colorscale=color_scale, showscale=False)
+    fig.update_coloraxes(
+        colorscale=color_scale,
+        showscale=False,
+        cmin=0,
+        cmax=color_range_max,
+    )
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
@@ -2733,6 +2744,7 @@ def build_donor_hits_figure(
     height: int = 420,
     margin: Optional[Dict[str, int]] = None,
     dynamic_y_max: bool = True,
+    chain_type: str = "Heavy",
 ) -> Optional[go.Figure]:
     """Build the precursor-frequency donor boxplot (log10 axis with ≤0.01 bin)."""
     if filtered_df is None or filtered_df.empty:
@@ -2757,6 +2769,16 @@ def build_donor_hits_figure(
             f"<br><sup>Donors with ≥ {required:,} sequences</sup>"
         )
 
+    # Match heavy/light plot palette used elsewhere (gene bars, spiders)
+    if (chain_type or "Heavy").lower() == "light":
+        marker_color = "rgb(203, 65, 84)"       # #CB4154
+        line_color = "rgba(203, 65, 84, 0.5)"
+        fill_color = "rgba(203, 65, 84, 0.2)"
+    else:
+        marker_color = "rgb(76, 96, 133)"       # #4C6085
+        line_color = "rgba(76, 96, 133, 0.5)"
+        fill_color = "rgba(76, 96, 133, 0.2)"
+
     fig = go.Figure()
     fig.add_trace(
         go.Box(
@@ -2769,10 +2791,10 @@ def build_donor_hits_figure(
                 size=8,
                 opacity=0.85,
                 line=dict(width=0.2, color="grey"),
-                color="rgb(76, 96, 133)",
+                color=marker_color,
             ),
-            line=dict(color="rgba(76, 96, 133, 0.5)", width=1),
-            fillcolor="rgba(76, 96, 133, 0.2)",
+            line=dict(color=line_color, width=1),
+            fillcolor=fill_color,
             customdata=np.column_stack(
                 [
                     donor_labels.to_numpy(),
@@ -2815,6 +2837,7 @@ def render_subject_hits_boxplot(
     statistics: Dict[str, Any],
     filtered_df: Optional[pd.DataFrame] = None,
     meta: Optional[Dict[str, Any]] = None,
+    chain_type: str = "Heavy",
 ) -> None:
     """
     Render donor-level hits-per-million distribution.
@@ -2828,6 +2851,7 @@ def render_subject_hits_boxplot(
         statistics: Overall statistics dictionary for the current search
         filtered_df: Optional precomputed plot-ready donor frame
         meta: Optional metadata from prepare_donor_plot_data
+        chain_type: "Heavy" or "Light" — sets marker/box colors
     """
     st.session_state.pop("latest_subject_hits_plot", None)
     statistics = statistics or {}
@@ -2896,6 +2920,7 @@ def render_subject_hits_boxplot(
         title="Precursor Frequency by Donor",
         height=380,
         margin=dict(l=50, r=20, t=45, b=15),
+        chain_type=chain_type,
     )
     if fig is None:
         st.info("Unable to render donor plot.")

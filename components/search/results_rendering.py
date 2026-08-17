@@ -97,7 +97,7 @@ def render_search_results(
 
     # Section 2: Result Distributions (subject statistics + plots)
     
-    render_subject_statistics(stats_df, statistics)
+    render_subject_statistics(stats_df, statistics, search_params=search_params, is_paired=is_paired)
     render_results_plots(
         sequences_sample_df,
         statistics,
@@ -151,6 +151,9 @@ def render_subject_statistics(
     stats_df: pd.DataFrame,
     statistics: Dict[str, Any],
     widget_key_prefix: str = "donor_plot",
+    search_params: Optional[Dict[str, Any]] = None,
+    is_paired: bool = False,
+    chain_type: Optional[str] = None,
 ) -> None:
     """
     Render statistics by subject, plot summary metrics, and the donor HPM plot.
@@ -159,7 +162,22 @@ def render_subject_statistics(
         stats_df: Statistics dataframe
         statistics: Overall statistics dictionary for the current search
         widget_key_prefix: Prefix for Streamlit widget keys (unique per chain in dual mode)
+        search_params: Optional search params (used to infer unpaired chain type)
+        is_paired: Whether this is a paired search
+        chain_type: Optional explicit "Heavy"/"Light" for plot colors
     """
+    if chain_type is None:
+        if is_paired:
+            chain_type = "Heavy"
+        else:
+            chain_type = _determine_unpaired_chain_type(
+                search_params or {},
+                (statistics or {}).get("selected_databases") or [],
+            )
+    chain_type = (chain_type or "Heavy").capitalize()
+    if chain_type not in ("Heavy", "Light"):
+        chain_type = "Heavy"
+
     zero_hit_toggle_key = f"{widget_key_prefix}_include_zero_hits"
     threshold_toggle_key = f"{widget_key_prefix}_apply_sequence_threshold"
     if zero_hit_toggle_key not in st.session_state:
@@ -284,6 +302,7 @@ def render_subject_statistics(
             statistics,
             filtered_df=plot_filtered_df,
             meta=plot_meta,
+            chain_type=chain_type,
         )
 
 
@@ -1011,6 +1030,7 @@ def render_dual_unpaired_results(
         heavy_result['stats_df'],
         heavy_result['statistics'],
         widget_key_prefix="heavy_donor_plot",
+        chain_type="Heavy",
     )
     render_results_plots(
         heavy_result['sequences_sample_df'],
@@ -1046,6 +1066,7 @@ def render_dual_unpaired_results(
         light_result['stats_df'],
         light_result['statistics'],
         widget_key_prefix="light_donor_plot",
+        chain_type="Light",
     )
     render_results_plots(
         light_result['sequences_sample_df'],
