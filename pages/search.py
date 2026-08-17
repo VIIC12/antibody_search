@@ -9,7 +9,12 @@ from streamlit_autorefresh import st_autorefresh
 
 logger = logging.getLogger(__name__)
 
-from components.search.search_forms import create_heavy_chain_form, create_light_chain_form
+from components.search.search_forms import (
+    create_heavy_chain_form,
+    create_light_chain_form,
+    clear_search_mask_session_state,
+    CLEAR_SEARCH_MASK_FLAG,
+)
 from components.search.database_utils import (
     get_database_structure
 )
@@ -567,6 +572,10 @@ def search_page_content():
     st.markdown("## :material/search: Search Criteria")
     st.divider()
     
+    # Clear must happen before widgets are created
+    if st.session_state.pop(CLEAR_SEARCH_MASK_FLAG, False):
+        clear_search_mask_session_state()
+    
     # Determine if form should be disabled
     search_status = st.session_state.search_status
     is_search_running = search_status == "running"
@@ -678,43 +687,58 @@ def search_page_content():
                     st.warning("Search cancellation requested")
                     st.rerun()
     
+    clear_submitted = False
     with st.form("search_form"):
         if validation_errors:
             st.error(f"**Please fix the following serach filters before searching:** {', '.join(validation_errors)}", icon=":material/error:")
         
-        # Always show a submit button (required by Streamlit forms)
-        if search_status == "idle":
-            search_submitted = st.form_submit_button(
-                ":material/database_search: Search Database",
-                type="primary",
-                disabled=(has_validation_errors or disable_form_controls),
-                width="content"
-            )
-        elif search_status == "running":
-            # Show hidden disabled submit button (required by Streamlit, but we show custom button above)
-            # This button is hidden by global CSS (see top of file)
-            search_submitted = st.form_submit_button(
-                ":material/database_search: Search Database",
-                disabled=True,
-                width="content"
-            )
-        else:
-            # For completed/failed, show disabled submit button with status
-            result = st.session_state.search_result
-            if search_status == "completed" and result and result.get('success'):
-                total_time = time.time() - st.session_state.search_start_time if st.session_state.search_start_time else 0
-                time_label = f" in {total_time:.1f}s" if total_time else ""
-                button_label = f":material/search_check_2: Search Complete{time_label}"
+        btn_search, btn_clear = st.columns([1, 1], gap="small")
+        with btn_search:
+            # Always show a submit button (required by Streamlit forms)
+            if search_status == "idle":
+                search_submitted = st.form_submit_button(
+                    ":material/database_search: Search Database",
+                    type="primary",
+                    disabled=(has_validation_errors or disable_form_controls),
+                    width="content"
+                )
+            elif search_status == "running":
+                # Show hidden disabled submit button (required by Streamlit, but we show custom button above)
+                # This button is hidden by global CSS (see top of file)
+                search_submitted = st.form_submit_button(
+                    ":material/database_search: Search Database",
+                    disabled=True,
+                    width="content"
+                )
             else:
-                button_label = "❌ Search Failed"
-                #! TODO Should never happen, when do we get here?
-            
-            # This button is hidden by global CSS (see top of file)
-            search_submitted = st.form_submit_button(
-                button_label,
-                disabled=True,
-                width="content"
+                # For completed/failed, show disabled submit button with status
+                result = st.session_state.search_result
+                if search_status == "completed" and result and result.get('success'):
+                    total_time = time.time() - st.session_state.search_start_time if st.session_state.search_start_time else 0
+                    time_label = f" in {total_time:.1f}s" if total_time else ""
+                    button_label = f":material/search_check_2: Search Complete{time_label}"
+                else:
+                    button_label = "❌ Search Failed"
+                    #! TODO Should never happen, when do we get here?
+                
+                # This button is hidden by global CSS (see top of file)
+                search_submitted = st.form_submit_button(
+                    button_label,
+                    disabled=True,
+                    width="content"
+                )
+        with btn_clear:
+            clear_submitted = st.form_submit_button(
+                ":material/ink_eraser: Clear Search Mask",
+                type="secondary",
+                disabled=disable_form_controls,
+                width="content",
+                help="Empty all search criteria fields (database selection is kept).",
             )
+
+    if clear_submitted:
+        st.session_state[CLEAR_SEARCH_MASK_FLAG] = True
+        st.rerun()
     
     # Show validation error (e.g. OAS-disallowed gene) right below the form, not after results
     search_validation_error = st.session_state.pop("search_validation_error", None)

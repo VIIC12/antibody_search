@@ -972,3 +972,76 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
     return params, validation_errors, valid
 
 
+CLEAR_SEARCH_MASK_FLAG = "_clear_search_mask"
+
+
+def _heavy_mask_keys(prefix: str) -> Dict[str, Any]:
+    """Widget keys + reset values for a heavy-chain search mask."""
+    if prefix:
+        v_key, d_key, j_key = f"{prefix}v_input", f"{prefix}d_input", f"{prefix}j_input"
+        length_prefix = motif_prefix = sim_prefix = mm_prefix = prefix
+    else:
+        v_key, d_key, j_key = "ighv_input", "ighd_input", "ighj_input"
+        length_prefix = motif_prefix = sim_prefix = mm_prefix = ""
+
+    keys: Dict[str, Any] = {
+        v_key: "",
+        d_key: "",
+        j_key: "",
+        f"{length_prefix}cdr1_length_input": "",
+        f"{length_prefix}cdr2_length_input": "",
+        f"{length_prefix}cdr3_length_input": "",
+        f"{motif_prefix}cdr1_motif_input": "",
+        f"{motif_prefix}cdr2_motif_input": "",
+        f"{motif_prefix}cdr3_motif_input": "",
+        f"{sim_prefix}cdr1_similarity_toggle": False,
+        f"{sim_prefix}cdr2_similarity_toggle": False,
+        f"{sim_prefix}cdr3_similarity_toggle": False,
+        f"{mm_prefix}cdr1_mismatches_input": 0,
+        f"{mm_prefix}cdr2_mismatches_input": 0,
+        f"{mm_prefix}cdr3_mismatches_input": 0,
+    }
+    return keys
+
+
+def _light_mask_keys(prefix: str = "light_") -> Dict[str, Any]:
+    """Widget keys + reset values for a light-chain search mask."""
+    return {
+        f"{prefix}v_input": "",
+        f"{prefix}j_input": "",
+        f"{prefix}cdr1_length_input": "",
+        f"{prefix}cdr2_length_input": "",
+        f"{prefix}cdr3_length_input": "",
+        f"{prefix}cdr1_motif_input": "",
+        f"{prefix}cdr2_motif_input": "",
+        f"{prefix}cdr3_motif_input": "",
+        f"{prefix}cdr1_similarity_toggle": False,
+        f"{prefix}cdr2_similarity_toggle": False,
+        f"{prefix}cdr3_similarity_toggle": False,
+        f"{prefix}cdr1_mismatches_input": 0,
+        f"{prefix}cdr2_mismatches_input": 0,
+        f"{prefix}cdr3_mismatches_input": 0,
+    }
+
+
+def clear_search_mask_session_state() -> None:
+    """
+    Reset all Database Search criteria widgets in session state.
+
+    Must run before the form widgets are instantiated (Streamlit requirement).
+    Does not change database selection.
+    """
+    resets: Dict[str, Any] = {}
+    # Unpaired heavy (no prefix) + paired heavy + dual heavy
+    for prefix in ("", "heavy_", "dual_heavy_"):
+        resets.update(_heavy_mask_keys(prefix))
+    # Unpaired/paired light + dual light
+    for prefix in ("light_", "dual_light_"):
+        resets.update(_light_mask_keys(prefix))
+
+    for key, value in resets.items():
+        st.session_state[key] = value
+
+    st.session_state.pop("search_validation_error", None)
+    st.session_state.pop("search_prefill_message", None)
+
