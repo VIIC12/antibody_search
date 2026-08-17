@@ -1,32 +1,53 @@
-# ABDB V3.0 - Docker Configuration
-FROM python:3.11-slim
+# ABHunter - publication image
+FROM python:3.12.13-slim-bookworm AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies (including Chromium for Plotly/Kaleido image export)
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    chromium \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends build-essential && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-server.txt .
+RUN python -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /opt/venv/bin/pip install --no-cache-dir -r requirements-server.txt
 
-# Copy application code
-COPY . .
+FROM python:3.12.13-slim-bookworm
 
-# Create data directory
-RUN mkdir -p data/parquet
+WORKDIR /app
 
-# Expose Streamlit port
+# Chromium is required for Plotly/Kaleido image export
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        chromium \
+        fonts-liberation \
+    && rm -rf /var/lib/apt/lists/* && \
+    groupadd --gid 1000 app && \
+    useradd --uid 1000 --gid app --create-home --home-dir /home/app app && \
+    mkdir -p /app/data/abhunter /app/downloads /app/logs /app/igblast && \
+    chown -R app:app /app
+
+COPY --from=builder /opt/venv /opt/venv
+COPY --chown=app:app . .
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    STREAMLIT_SERVER_PORT=8501 \
+    STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
+    ABHUNTER_DB_PATH=/app/data/abhunter \
+    ABHUNTER_DOWNLOAD_DIR=/app/downloads \
+    ABHUNTER_IGBLAST_PATH=/app/igblast \
+    CHROME_BIN=/usr/bin/chromium \
+    CHROMIUM_FLAGS=--no-sandbox
+
+USER app
+
 EXPOSE 8501
 
-# Health check
-HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 
-# Run Streamlit with development-friendly defaults
-CMD ["streamlit", "run", "app.py"]
-
+CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]

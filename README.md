@@ -30,6 +30,17 @@ python -m streamlit run app.py
 # Open the "Local URL" link in your browser
 ```
 
+### For local execution with Docker
+
+```bash
+cp .env.example .env
+# Point ABHUNTER_DB_PATH at your OAS parquet directory if it is not ./data
+docker compose up --build
+# Open http://127.0.0.1:8501
+```
+
+Host paths in `.env` are used only for bind mounts. Database, download, and IgBLAST directories default to `./data`, `./downloads`, and `./igblast`.
+
 # Overview
 
 ## Architecture

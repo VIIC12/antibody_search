@@ -1,38 +1,45 @@
+# Portable Compose stack for ABHunter.
+# Host paths are relative by default. Override via a local .env (see .env.example):
+#   ABHUNTER_DB_PATH=./data
+#   ABHUNTER_DOWNLOAD_DIR=./downloads
+#   ABHUNTER_IGBLAST_PATH=./igblast
+#
+# Do not pass host .env into containers with env_file: that would inject
+# host-absolute paths. Compose reads .env only for interpolation below.
+
+x-abhunter-build: &abhunter-build
+  context: .
+  dockerfile: Dockerfile
+
 services:
   abhunter-prod:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: abhunter-app
-    deploy:
-      resources:
-        limits:
-          cpus: '22.0'
-          memory: 48G
-    env_file:
-      - .env
+    build: *abhunter-build
     volumes:
-      # Mount data directory for persistence
-      - ${ABHUNTER_DB_PATH}:/app/data/abhunter
-      # Mount logs directory if needed
-      - ./logs:/app/logs
-      # Mount download directory for large file storage
+      - ${ABHUNTER_DB_PATH:-./data}:/app/data/abhunter
       - ${ABHUNTER_DOWNLOAD_DIR:-./downloads}:/app/downloads
+      - ${ABHUNTER_IGBLAST_PATH:-./igblast}:/app/igblast:ro
+      - ./logs:/app/logs
     environment:
-      - PYTHONPATH=/app
-      - STREAMLIT_SERVER_PORT=8501
-      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
-      - ABHUNTER_DB_PATH=/app/data/abhunter
-      - ABHUNTER_DOWNLOAD_DIR=/app/downloads
+      PYTHONPATH: /app
+      STREAMLIT_SERVER_PORT: "8501"
+      STREAMLIT_SERVER_ADDRESS: 0.0.0.0
+      ABHUNTER_DB_PATH: /app/data/abhunter
+      ABHUNTER_DOWNLOAD_DIR: /app/downloads
+      ABHUNTER_IGBLAST_PATH: /app/igblast
     logging:
-      driver: "json-file"
+      driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
-        labels: "service,environment"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health').read()"]
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health').read()",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -41,13 +48,9 @@ services:
       - "127.0.0.1:8501:8501"
     networks:
       - antibody-search-network
-  # Development service with hot reloading, and mounted volume for development
 
-
-  # nginx service for serving large file downloads
   nginx-downloads:
-    image: nginx:alpine
-    container_name: nginx-downloads-antibody-search
+    image: nginx:1.28.3-alpine
     ports:
       - "127.0.0.1:9082:80"
     volumes:
@@ -57,46 +60,67 @@ services:
     networks:
       - antibody-search-network
     restart: unless-stopped
+    depends_on:
+      download-callback:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
-  # Download callback service - receives HTTP callbacks from nginx when downloads complete
   download-callback:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: download-callback-antibody-search
+    build: *abhunter-build
     command: ["python3", "scripts/download_callback_service.py", "--port", "8888", "--host", "0.0.0.0"]
     volumes:
       - ${ABHUNTER_DOWNLOAD_DIR:-./downloads}:/app/downloads
     environment:
-      - ABHUNTER_DOWNLOAD_DIR=/app/downloads
-      - PYTHONPATH=/app
+      ABHUNTER_DOWNLOAD_DIR: /app/downloads
+      PYTHONPATH: /app
     restart: unless-stopped
     networks:
       - antibody-search-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8888/health').read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
-  # Cleanup service for removing downloaded files after they've been marked
   download-cleanup:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: download-cleanup-antibody-search
+    build: *abhunter-build
     command: ["python3", "scripts/cleanup_downloads.py", "--interval", "300"]
     volumes:
       - ${ABHUNTER_DOWNLOAD_DIR:-./downloads}:/app/downloads
     environment:
-      - ABHUNTER_DOWNLOAD_DIR=/app/downloads
-      - PYTHONPATH=/app
+      ABHUNTER_DOWNLOAD_DIR: /app/downloads
+      PYTHONPATH: /app
     restart: unless-stopped
     depends_on:
-      - download-callback
+      download-callback:
+        condition: service_healthy
     networks:
       - antibody-search-network
-
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import pathlib; assert b'cleanup_downloads' in pathlib.Path('/proc/1/cmdline').read_bytes()",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 networks:
   antibody-search-network:
-    name: antibody-search-network
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.31.0.0/16
