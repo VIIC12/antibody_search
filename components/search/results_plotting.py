@@ -435,7 +435,7 @@ def _render_plot_download_buttons(
         
         if status == "idle":
             if st.button(
-                "⬇ Download Figures + Raw Data",
+                "⬇ Download Figures + Data",
                 key=f"{download_key}_button_raw",
                 width='stretch'
             ):
@@ -517,13 +517,13 @@ def _render_plot_download_buttons(
                         f'<a href="{download_url}" target="_blank" style="text-decoration: none;">'
                         f'<button style="width: 100%; padding: 0.5rem 1rem; background-color: rgb(19, 124, 189); '
                         f'color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.875rem;">'
-                        f'✅ Download Figures + Raw Data ({file_size_mb:.2f} MB) - Opens in new tab</button></a>',
+                        f'✅ Download Figures + Data ({file_size_mb:.2f} MB) - Opens in new tab</button></a>',
                         unsafe_allow_html=True
                     )
                 else:
                     # Small file: use direct download button
                     st.download_button(
-                        label=f"✅ Download Figures + Raw Data ({file_size_mb:.2f} MB)",
+                        label=f"✅ Download Figures + Data ({file_size_mb:.2f} MB)",
                         data=result.get('zip_data', b''),
                         file_name=result.get('filename', 'plots_raw.zip'),
                         mime="application/zip",

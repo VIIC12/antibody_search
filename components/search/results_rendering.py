@@ -216,7 +216,7 @@ def render_subject_statistics(
     with head_subj:
         st.markdown("#### :material/group: Statistics by Donor")
     with head_sum:
-        st.markdown("#### :material/analytics: Plot Summary")
+        st.markdown("#### :material/analytics: Frequency Summary")
     with head_plot:
         st.markdown("#### :material/candlestick_chart: Frequency by Donor")
 
@@ -372,33 +372,26 @@ def render_stats_download_button(
         key: Optional unique Streamlit key to avoid duplicate element ID when rendered multiple times.
         disabled: When True, show a non-clickable button (e.g. while a search is running).
     """
-    # Unique key to avoid StreamlitDuplicateElementId when multiple result sets are rendered
     widget_key = key or f"stats_download_{(statistics or {}).get('total_hits', 0)}_{hash(str(search_params))}"
+    locked = disabled or stats_df is None or stats_df.empty
 
-    if stats_df is None or stats_df.empty or disabled:
-        st.button(
-            "⬇ Download Statistics (ZIP)",
-            disabled=True,
-            width='stretch',
-            type="primary",
-            key=f"{widget_key}_disabled",
-            help=("Locked while a search or plot load is in progress." if disabled else None),
+    if locked:
+        stats_zip, filename = b"", "statistics.zip"
+    else:
+        selected_databases = st.session_state.get("selected_databases", [])
+        stats_zip, filename = prepare_stats_download(
+            stats_df, search_params, is_paired, statistics, selected_databases
         )
-        return
-
-    # Get selected databases from session state
-    selected_databases = st.session_state.get("selected_databases", [])
-    stats_zip, filename = prepare_stats_download(
-        stats_df, search_params, is_paired, statistics, selected_databases
-    )
 
     st.download_button(
-        label="⬇ Download Statistics (ZIP)",
+        label="⬇ Download Statistics",
         data=stats_zip,
         file_name=filename,
         mime="application/zip",
-        width='stretch',
+        width="stretch",
         key=widget_key,
+        disabled=locked,
+        help=("Locked while a search or plot load is in progress." if disabled else None),
     )
 
 
@@ -522,7 +515,7 @@ def render_full_download_button(
         status = st.session_state[full_status_key]
         
         # Button labels
-        button_label = "⬇ Download Full Results Table"
+        button_label = "⬇ Download Results Table"
         new_button_label = "⬇ Download FASTA"
         
         # Session state keys for FASTA download
