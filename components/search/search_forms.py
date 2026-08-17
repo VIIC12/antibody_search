@@ -9,7 +9,7 @@ import re
 import streamlit as st
 from typing import Dict, Any, List, Tuple, Optional
 
-from components.search.styling import render_chain_heading
+from components.search.styling import icon_heading
 
 # Allowed gene family / number ranges (human)
 # Heavy: IGHV1-8, IGHD1-7, IGHJ1-6
@@ -367,14 +367,12 @@ def validate_motif_input(motif_str: str) -> bool:
     
     return True
 
-
-def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled: bool = False) -> Tuple[Dict[str, Any], List[str], bool]:
+def create_heavy_chain_form(prefix: str = "", disabled: bool = False) -> Tuple[Dict[str, Any], List[str], bool]:
     """
     Create form fields for Heavy chain search.
     
     Args:
         prefix: Prefix for field keys (e.g., "heavy_" for paired forms, "" for unpaired)
-        show_title: Whether to show the section title
         disabled: Whether to disable all form fields
         
     Returns:
@@ -382,8 +380,7 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
     """
     validation_errors = []
     
-    if show_title:
-        render_chain_heading("Heavy Chain", "heavy", level=4, icon="🧬")
+    icon_heading("heavy", "Heavy Chain", level=4, margin_top=0.5)
     
     # Gene fields
     col1, col2, col3 = st.columns(3)
@@ -453,25 +450,7 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
                 validation_errors.append(f"{'Heavy ' if prefix else ''}IGHJ Gene")
     
     # CDR Length fields
-    if show_title:
-        render_chain_heading(
-            "Heavy Chain CDR Lengths (amino acids)",
-            "heavy",
-            level=5,
-            margin_top="0.75rem",
-            margin_bottom="0.25rem",
-            use_chain_color=False,
-        )
-    else:
-        render_chain_heading(
-            "CDR Lengths (amino acids)",
-            "heavy",
-            level=5,
-            margin_top="0.75rem",
-            margin_bottom="0.25rem",
-            use_chain_color=False,
-        )
-    
+    st.markdown("<h5 style='margin-top: 0.75rem; margin-bottom: 0.25rem;'>CDR Lengths (amino acids)</h5>", unsafe_allow_html=True)
     col1, col2, col3, col4 = st.columns(4)
     
     cdr1_length_key = f"{prefix}cdr1_length_input" if prefix else "cdr1_length_input"
@@ -539,24 +518,7 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
             cdr3_length = None
     
     # CDR Motif fields
-    if show_title:
-        render_chain_heading(
-            "Heavy Chain CDR Sequence Motifs",
-            "heavy",
-            level=5,
-            margin_top="0.75rem",
-            margin_bottom="0.25rem",
-            use_chain_color=False,
-        )
-    else:
-        render_chain_heading(
-            "CDR Sequence Motifs",
-            "heavy",
-            level=5,
-            margin_top="0.75rem",
-            margin_bottom="0.25rem",
-            use_chain_color=False,
-        )
+    st.markdown("<h5 style='margin-top: 0.75rem; margin-bottom: 0.25rem;'>CDR Sequence Motifs</h5>", unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -728,13 +690,12 @@ def create_heavy_chain_form(prefix: str = "", show_title: bool = True, disabled:
     return params, validation_errors, valid
 
 
-def create_light_chain_form(prefix: str = "light_", show_title: bool = True, disabled: bool = False) -> Tuple[Dict[str, Any], List[str], bool]:
+def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> Tuple[Dict[str, Any], List[str], bool]:
     """
     Create form fields for Light chain search.
     
     Args:
         prefix: Prefix for field keys (default: "light_")
-        show_title: Whether to show the section title
         disabled: Whether to disable all form fields
         
     Returns:
@@ -742,8 +703,7 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
     """
     validation_errors = []
     
-    if show_title:
-        render_chain_heading("Light Chain", "light", level=4, icon="🔬")
+    icon_heading("light", "Light Chain", level=4, margin_top=0.5)
     
     # Gene fields (Light chains don't have D genes)
     col1, col2 = st.columns(2)
@@ -789,25 +749,7 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
                 validation_errors.append("Light IGLJ Gene")
     
     # CDR Length fields
-    if show_title:
-        render_chain_heading(
-            "Light Chain CDR Lengths (amino acids)",
-            "light",
-            level=5,
-            margin_top="0.75rem",
-            margin_bottom="0.25rem",
-            use_chain_color=False,
-        )
-    else:
-        render_chain_heading(
-            "CDR Lengths (amino acids)",
-            "light",
-            level=5,
-            margin_top="0.75rem",
-            margin_bottom="0.25rem",
-            use_chain_color=False,
-        )
-    
+    st.markdown("<h5 style='margin-top: 0.75rem; margin-bottom: 0.25rem;'>CDR Lengths (amino acids)</h5>", unsafe_allow_html=True)
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -871,24 +813,7 @@ def create_light_chain_form(prefix: str = "light_", show_title: bool = True, dis
             light_cdr3_length = None
     
     # CDR Motif fields
-    if show_title:
-        render_chain_heading(
-            "Light Chain CDR Sequence Motifs",
-            "light",
-            level=5,
-            margin_top="0.75rem",
-            margin_bottom="0.25rem",
-            use_chain_color=False,
-        )
-    else:
-        render_chain_heading(
-            "CDR Sequence Motifs",
-            "light",
-            level=5,
-            margin_top="0.75rem",
-            margin_bottom="0.25rem",
-            use_chain_color=False,
-        )
+    st.markdown("<h5 style='margin-top: 0.75rem; margin-bottom: 0.25rem;'>CDR Sequence Motifs</h5>", unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     

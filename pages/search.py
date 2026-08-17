@@ -24,7 +24,6 @@ render_search_results = _results_rendering.render_search_results
 render_dual_unpaired_results = _results_rendering.render_dual_unpaired_results
 render_dual_search_criteria_display = _results_rendering.render_dual_search_criteria_display
 render_search_criteria_display = _results_rendering.render_search_criteria_display
-from components.search.styling import render_chain_heading
 from components.test_utils import (
     perform_database_search_background,
     perform_dual_unpaired_search_background
@@ -147,8 +146,7 @@ def create_unpaired_search_form(selected_databases: list, disabled: bool = False
         chain_type = 'Heavy'
     
     if chain_type == 'Heavy':
-        render_chain_heading("Heavy Chain", "heavy", level=4, icon="🧬")
-        params, errors, valid = create_heavy_chain_form(prefix="", show_title=False, disabled=disabled)
+        params, errors, valid = create_heavy_chain_form(prefix="", disabled=disabled)
         validation_errors.extend(errors)
         
         return {
@@ -172,8 +170,7 @@ def create_unpaired_search_form(selected_databases: list, disabled: bool = False
             'validation_errors': validation_errors
         }
     else:  # Light
-        render_chain_heading("Light Chain", "light", level=4, icon="🔬")
-        params, errors, valid = create_light_chain_form(prefix="light_", show_title=False, disabled=disabled)
+        params, errors, valid = create_light_chain_form(prefix="light_", disabled=disabled)
         validation_errors.extend(errors)
         
         return {
@@ -204,10 +201,10 @@ def create_dual_unpaired_search_form(disabled: bool = False) -> Dict[str, Any]:
     validation_errors: list[str] = []
     
     heavy_params_raw, heavy_errors, heavy_valid = create_heavy_chain_form(
-        prefix="dual_heavy_", show_title=True, disabled=disabled
+        prefix="dual_heavy_", disabled=disabled
     )
     light_params_raw, light_errors, light_valid = create_light_chain_form(
-        prefix="dual_light_", show_title=True, disabled=disabled
+        prefix="dual_light_", disabled=disabled
     )
     
     validation_errors.extend(heavy_errors)
@@ -275,11 +272,11 @@ def create_paired_search_form(disabled: bool = False) -> Dict[str, Any]:
     validation_errors = []
     
     # Heavy Chain Section
-    heavy_params, heavy_errors, heavy_valid = create_heavy_chain_form(prefix="heavy_", show_title=True, disabled=disabled)
+    heavy_params, heavy_errors, heavy_valid = create_heavy_chain_form(prefix="heavy_", disabled=disabled)
     validation_errors.extend(heavy_errors)
     
     # Light Chain Section
-    light_params, light_errors, light_valid = create_light_chain_form(prefix="light_", show_title=True, disabled=disabled)
+    light_params, light_errors, light_valid = create_light_chain_form(prefix="light_", disabled=disabled)
     validation_errors.extend(light_errors)
     
     return {
@@ -722,7 +719,8 @@ def search_page_content():
     # Show validation error (e.g. OAS-disallowed gene) right below the form, not after results
     search_validation_error = st.session_state.pop("search_validation_error", None)
     if search_validation_error:
-        st.error(f"❌ **{search_validation_error}**")
+        st.error(f"**{search_validation_error}**", icon=":material/error:")
+
     
     # Add a small spacer to separate form from results
     st.markdown("<br>", unsafe_allow_html=True)

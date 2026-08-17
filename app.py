@@ -86,15 +86,13 @@ def main():
         }
     )
 
-    # Resolve logo path relative to app.py location
-    logo_path = Path(__file__).parent / "public" / "images" / "logo.gif"
-    if logo_path.exists():
-        st.logo(
-            image=str(logo_path),
-            size="large",
-            link="",
-        )
-    
+    st.logo(
+        image="./static/logo.gif",
+        size="large",
+        link=None,
+        icon_image=None,
+    )
+
     with st.sidebar:
         # Common sidebar content (About and License sections)
         render_sidebar()
@@ -104,7 +102,10 @@ def main():
     statistics = st.Page("pages/statistics.py", title="Statistics", icon=":material/bar_chart:")
     imprint = st.Page("pages/imprint.py", title="Imprint", icon=":material/info:")
 
-    entry_page = st.navigation([search, igblast, statistics, imprint], position="top")
+    entry_page = st.navigation(
+        [search, igblast, statistics, imprint],
+        position="top",
+    )
 
     # Run the selected page
     entry_page.run()

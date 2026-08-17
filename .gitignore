@@ -6,6 +6,8 @@ igblast/bin/blastdbcmd
 otel-collector-config.yaml
 oas_json_index.pkl
 
+publication/
+
 # Python
 __pycache__/
 *.py[cod]

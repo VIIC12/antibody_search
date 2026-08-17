@@ -15,7 +15,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from components.search.styling import render_chain_heading
+from components.search.styling import icon_heading
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -23,6 +23,7 @@ from src.search_engine import AntibodySearchEngine
 
 PLOTLY_DISPLAY_CONFIG = {
     "displayModeBar": False,
+    
 }
 
 # Global configuration for plotting limits
@@ -48,8 +49,8 @@ def render_results_plots(
     is_paired: bool,
     search_params: Dict[str, Any],
     engine: AntibodySearchEngine,
-    show_heading: bool = True,
     show_spider_toggle: bool = True,
+    show_gene_group_control: bool = True,
 ) -> None:
     """
     Render plots for search results based on available data and search parameters.
@@ -62,15 +63,12 @@ def render_results_plots(
         is_paired: Whether this is a paired search
         search_params: Search parameters dictionary
         engine: Search engine instance to fetch all results
-        show_heading: Whether to render the section heading inside this function
     """
     if sequences_sample_df.empty:
         return
     
-    if show_heading:
-        st.markdown("### :material/bar_chart_4_bars: Result Distributions HEAVY+LIGHT")
-        #! This does only get called if we select heavy AND light, why do we have this twice?
-    
+    st.markdown("### :material/bar_chart_4_bars: Result Distributions")
+
     # Check if we have a very large result set (will be sampled)
     total_hits = statistics.get('total_hits', 0)
     
@@ -159,6 +157,7 @@ def render_results_plots(
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
             show_spider_toggle=show_spider_toggle,
+            show_gene_group_control=show_gene_group_control,
         )
 
     subject_plot_entry = st.session_state.get("latest_subject_hits_plot")
@@ -636,6 +635,106 @@ _AA_PROPERTY_GROUPS: Dict[str, Tuple[str, ...]] = {
 }
 
 SPIDER_PLOT_MODE_KEY = "cdr_spider_plot_mode"
+GENE_GROUP_MODE_KEY = "gene_plot_group_mode"
+GENE_GROUP_MODE_OPTIONS = ("Allele", "Subfamily", "Family")
+GENE_GROUP_MODE_TO_VALUE = {
+    "Allele": "allele",
+    "Subfamily": "subfamily",
+    "Family": "family",
+}
+GENE_GROUP_VALUE_TO_LABEL = {v: k for k, v in GENE_GROUP_MODE_TO_VALUE.items()}
+
+
+def _get_gene_group_mode() -> str:
+    """Return current gene plot grouping mode: allele | subfamily | family."""
+    mode = st.session_state.get(GENE_GROUP_MODE_KEY, "allele")
+    if mode not in ("allele", "subfamily", "family"):
+        return "allele"
+    return mode
+
+
+def _extract_gene_subfamily(gene_name: Any) -> Optional[str]:
+    """Strip allele suffix: IGHV3-23*01 -> IGHV3-23."""
+    if gene_name is None or (isinstance(gene_name, float) and pd.isna(gene_name)):
+        return None
+    text = str(gene_name).strip()
+    if not text:
+        return None
+    return text.split("*", 1)[0]
+
+
+def _extract_gene_family_label(gene_name: Any) -> Optional[str]:
+    """Family label: IGHV3-23*01 / IGHV3-21*02 -> IGHV3."""
+    if gene_name is None or (isinstance(gene_name, float) and pd.isna(gene_name)):
+        return None
+    family = AntibodySearchEngine._extract_v_family(str(gene_name))
+    if family:
+        return family
+    # Fallback for unexpected formats
+    return _extract_gene_subfamily(gene_name)
+
+
+def _map_gene_to_group_label(gene_name: Any, group_mode: str) -> str:
+    """Map a gene call to the label used for the selected grouping mode."""
+    if group_mode == "subfamily":
+        return _extract_gene_subfamily(gene_name) or "Unknown"
+    if group_mode == "family":
+        return _extract_gene_family_label(gene_name) or "Unknown"
+    if gene_name is None or (isinstance(gene_name, float) and pd.isna(gene_name)):
+        return "Unknown"
+    text = str(gene_name).strip()
+    return text or "Unknown"
+
+
+def _gene_plot_title_for_mode(title: str, group_mode: str) -> str:
+    """Adjust gene plot title for subfamily/family grouping."""
+    if group_mode == "subfamily":
+        return title.replace("Gene", "Subfamily")
+    if group_mode == "family":
+        return title.replace("Gene", "Family")
+    return title
+
+
+def _sync_gene_group_mode_from_widget(
+    widget_key: str = "gene_plot_group_mode_control",
+) -> str:
+    """Apply widget selection (from a prior run) before gene plots are drawn."""
+    if GENE_GROUP_MODE_KEY not in st.session_state:
+        st.session_state[GENE_GROUP_MODE_KEY] = "allele"
+    selected = st.session_state.get(widget_key)
+    if selected in GENE_GROUP_MODE_TO_VALUE:
+        st.session_state[GENE_GROUP_MODE_KEY] = GENE_GROUP_MODE_TO_VALUE[selected]
+    return _get_gene_group_mode()
+
+
+def _render_gene_group_control(*, widget_key: str = "gene_plot_group_mode_control") -> str:
+    """
+    Render grouping control below V/D/J gene plots.
+    Returns the active mode (allele | subfamily | family).
+    """
+    if GENE_GROUP_MODE_KEY not in st.session_state:
+        st.session_state[GENE_GROUP_MODE_KEY] = "allele"
+    if widget_key not in st.session_state:
+        st.session_state[widget_key] = GENE_GROUP_VALUE_TO_LABEL.get(
+            st.session_state[GENE_GROUP_MODE_KEY],
+            "Allele",
+        )
+
+    selected = st.segmented_control(
+        "Group genes by",
+        options=list(GENE_GROUP_MODE_OPTIONS),
+        key=widget_key,
+        help=(
+            "Allele: full gene calls (e.g. IGHV3-23*01). "
+            "Subfamily: alleles collapsed (e.g. IGHV3-23*01 + IGHV3-23*02 → IGHV3-23). "
+            "Family: genes collapsed (e.g. IGHV3-23 + IGHV3-21 → IGHV3)."
+        ),
+    )
+    if selected is None:
+        selected = st.session_state.get(widget_key, "Allele")
+    mode = GENE_GROUP_MODE_TO_VALUE.get(selected, "allele")
+    st.session_state[GENE_GROUP_MODE_KEY] = mode
+    return mode
 
 
 def fetch_cdr_aa_distribution(
@@ -1032,6 +1131,7 @@ def render_unpaired_plots(
     aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
     spider_mode: str = "per_aa",
     show_spider_toggle: bool = True,
+    show_gene_group_control: bool = True,
 ) -> None:
     """
     Render plots for unpaired search results.
@@ -1047,12 +1147,14 @@ def render_unpaired_plots(
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
             show_toggle=show_spider_toggle,
+            show_gene_group_control=show_gene_group_control,
         )
     else:
         render_heavy_chain_plots(
             sequences_df, search_params, prefix="", collector=collector,
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
+            show_gene_group_control=show_gene_group_control,
         )
 
     overlay_active = (
@@ -1296,6 +1398,13 @@ def _create_inferred_heatmap(
     return (pivot_df, row_label, col_label, title, caption)
 
 
+def _apply_heatmap_axis_outline(fig: go.Figure) -> go.Figure:
+    """Draw a black box outline around a heatmap (same as paired V/J pairing plots)."""
+    fig.update_xaxes(showline=True, linewidth=1, linecolor="black", mirror=True)
+    fig.update_yaxes(showline=True, linewidth=1, linecolor="black", mirror=True)
+    return fig
+
+
 def render_inferred_pairing_plots(
     sequences_df: pd.DataFrame,
     chain_type: str,
@@ -1406,8 +1515,9 @@ def render_inferred_pairing_plots(
     # For light: V plot in first column, J plot in second column
     if chain_type == 'Heavy':
         # Heavy chain: V, D, J gene plots (3 columns)
-        # V inferred plot in column 0, J inferred plot in column 2
-        st.markdown(f"#### {heading_icon} Inferred {heading_chain} Gene Families (Overlay)")
+        # V inferred plot in column 0, J inferred plot in column 2        
+        icon_heading("paired", f"Inferred {heading_chain} chain Gene Families", level=4)
+        
         cols = st.columns(num_columns)
         
         for gene_type, (pivot_df, row_label, col_label, title, caption) in plots_to_render:
@@ -1426,6 +1536,7 @@ def render_inferred_pairing_plots(
                         yaxis=dict(autorange="reversed"),
                         coloraxis_colorbar=dict(title="Probability (%)")
                     )
+                    _apply_heatmap_axis_outline(fig)
                     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG, key=f"inferred_{chain_type.lower()}_v_plot")
             elif gene_type == 'J':
                 with cols[2]:  # Match IGHJ plot width
@@ -1442,11 +1553,13 @@ def render_inferred_pairing_plots(
                         yaxis=dict(autorange="reversed"),
                         coloraxis_colorbar=dict(title="Probability (%)")
                     )
+                    _apply_heatmap_axis_outline(fig)
                     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG, key=f"inferred_{chain_type.lower()}_j_plot")
     else:
         # Light chain: V, J gene plots (2 columns)
         # V inferred plot in column 0, J inferred plot in column 1
-        st.markdown(f"#### {heading_icon} Inferred {heading_chain} Gene Families (Overlay)")
+        icon_heading("paired", f"Inferred {heading_chain} Gene Families", level=4)
+
         cols = st.columns(num_columns)
         
         for i, (gene_type, (pivot_df, row_label, col_label, title, caption)) in enumerate(plots_to_render):
@@ -1464,6 +1577,7 @@ def render_inferred_pairing_plots(
                     yaxis=dict(autorange="reversed"),
                     coloraxis_colorbar=dict(title="Probability (%)")
                 )
+                _apply_heatmap_axis_outline(fig)
                 st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG, key=f"inferred_light_{gene_type.lower()}_plot_{i}")
 
     # Add to collector if provided
@@ -1478,6 +1592,7 @@ def render_inferred_pairing_plots(
                 color_continuous_scale=color_scale,
                 aspect="auto"
             )
+            _apply_heatmap_axis_outline(fig)
             collector.append((
                 f"inferred_{heading_chain.lower()}_{gene_type.lower()}_heatmap",
                 prepare_export_figure(fig),
@@ -1503,25 +1618,30 @@ def render_paired_plots(
         sequences_df: Sequences dataframe
         search_params: Search parameters dictionary
     """
+    _sync_gene_group_mode_from_widget()
     col1, col2 = st.columns(2)
     
     aa_distributions = aa_distributions or {}
     with col1:
-        render_chain_heading("Heavy Chain", "heavy", level=4, icon="🧬")
+        icon_heading("heavy", "Heavy Chain", level=4, margin_top=0.5)
         render_heavy_chain_plots(
             sequences_df, search_params, prefix="heavy_", collector=collector,
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
+            show_gene_group_control=False,
         )
     
     with col2:
-        render_chain_heading("Light Chain", "light", level=4, icon="🔬")
+        icon_heading("light", "Light Chain", level=4, margin_top=0.5)
         render_light_chain_plots(
             sequences_df, search_params, prefix="light_", collector=collector,
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
             show_toggle=False,
+            show_gene_group_control=False,
         )
+
+    _render_gene_group_control()
 
     # Render V and J gene pairing heatmaps side by side
     col_v, col_j = st.columns(2)
@@ -1611,13 +1731,7 @@ def render_paired_v_gene_heatmap(
         yaxis=dict(autorange="reversed"),
         coloraxis_colorbar=dict(title="Pairs")
     )
-
-    st.markdown(
-        "<h4 style='margin-top: 0.5rem; margin-bottom: 0.5rem;'>"
-        "<img src='app/static/icons/paired.png' style='width:55px; height:55px; margin-right:4px; vertical-align:middle;' />"
-        "Heavy × Light V Gene Pairing</h4>",
-        unsafe_allow_html=True,
-    )
+    icon_heading("paired", "Heavy × Light V Gene Pairing", level=4, margin_top=0.5)
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
@@ -1714,13 +1828,7 @@ def render_paired_j_gene_heatmap(
         coloraxis_colorbar=dict(title="Pairs")
     )
 
-    st.markdown(
-        "<h4 style='margin-top: 0.5rem; margin-bottom: 0.5rem;'>"
-        "<img src='app/static/icons/paired.png' style='width:55px; height:55px; margin-right:4px; vertical-align:middle;' />"
-        "Heavy × Light J Gene Pairing</h4>",
-        unsafe_allow_html=True,
-    )
-
+    icon_heading("paired", "Heavy × Light J Gene Pairing", level=4, margin_top=0.5)
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
     if collector is not None:
@@ -1744,6 +1852,7 @@ def render_heavy_chain_plots(
     collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
     aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
     spider_mode: str = "per_aa",
+    show_gene_group_control: bool = True,
 ) -> None:
     """
     Render Heavy chain specific plots.
@@ -1944,6 +2053,7 @@ def render_heavy_chain_plots(
     
     # Display gene plots in a row if we have any
     if gene_plots:
+        group_mode = _sync_gene_group_mode_from_widget()
         cols = st.columns(len(gene_plots))
         for i, plot_data in enumerate(gene_plots):
             with cols[i]:
@@ -1952,20 +2062,24 @@ def render_heavy_chain_plots(
                     plot_gene_distribution(
                         df,
                         col,
-                        title,
+                        _gene_plot_title_for_mode(title, group_mode),
                         is_highlighted=is_highlighted,
                         chain_type="heavy",
-                        collector=collector
+                        collector=collector,
+                        group_mode=group_mode,
                     )
                 else:
                     df, col, title = plot_data
                     plot_gene_distribution(
                         df,
                         col,
-                        title,
+                        _gene_plot_title_for_mode(title, group_mode),
                         chain_type="heavy",
-                        collector=collector
+                        collector=collector,
+                        group_mode=group_mode,
                     )
+        if show_gene_group_control:
+            _render_gene_group_control()
     
     if not plots_rendered:
         st.info("No plots available (all filters specified).")
@@ -1979,6 +2093,7 @@ def render_light_chain_plots(
     aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
     spider_mode: str = "per_aa",
     show_toggle: bool = False,
+    show_gene_group_control: bool = True,
 ) -> None:
     """
     Render Light chain specific plots.
@@ -2133,6 +2248,7 @@ def render_light_chain_plots(
     
     # Display gene plots in a row if we have any
     if gene_plots:
+        group_mode = _sync_gene_group_mode_from_widget()
         cols = st.columns(len(gene_plots))
         for i, plot_data in enumerate(gene_plots):
             with cols[i]:
@@ -2141,20 +2257,24 @@ def render_light_chain_plots(
                     plot_gene_distribution(
                         df,
                         col,
-                        title,
+                        _gene_plot_title_for_mode(title, group_mode),
                         is_highlighted=is_highlighted,
                         chain_type="light",
-                        collector=collector
+                        collector=collector,
+                        group_mode=group_mode,
                     )
                 else:
                     df, col, title = plot_data
                     plot_gene_distribution(
                         df,
                         col,
-                        title,
+                        _gene_plot_title_for_mode(title, group_mode),
                         chain_type="light",
-                        collector=collector
+                        collector=collector,
+                        group_mode=group_mode,
                     )
+        if show_gene_group_control:
+            _render_gene_group_control()
     
     if not plots_rendered:
         st.info("No plots available (all filters specified).")
@@ -2349,7 +2469,8 @@ def plot_gene_distribution(
     max_genes: int = 15,
     is_highlighted: bool = False,
     chain_type: str = "heavy",
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None
+    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
+    group_mode: str = "allele",
 ) -> None:
     """
     Plot gene distribution as a bar chart (top N genes).
@@ -2360,12 +2481,19 @@ def plot_gene_distribution(
         title: Title for the plot
         max_genes: Maximum number of genes to display (default: 15)
         is_highlighted: Whether this parameter was used in the search (for highlighting)
+        group_mode: allele | subfamily | family aggregation level
     """
     if column not in df.columns:
         return
     
-    # Get gene counts
-    gene_counts = df[column].value_counts().head(max_genes)
+    # Get gene counts (optionally aggregated by subfamily/family)
+    if group_mode in ("subfamily", "family"):
+        grouped = df[column].map(lambda g: _map_gene_to_group_label(g, group_mode))
+        gene_counts = grouped.value_counts().head(max_genes)
+        y_label = "Subfamily" if group_mode == "subfamily" else "Family"
+    else:
+        gene_counts = df[column].value_counts().head(max_genes)
+        y_label = "Gene"
     
     if len(gene_counts) == 0:
         return
@@ -2393,15 +2521,21 @@ def plot_gene_distribution(
             (1.0, "#4C6085"),
         ]
 
+    # Anchor color scale at 0 so the top count always maps to the dark end.
+    # Without this, a single bar (e.g. one family after grouping) sits mid-scale.
+    max_count = float(gene_counts.max()) if len(gene_counts) else 1.0
+    color_range_max = max_count if max_count > 0 else 1.0
+
     # Create bar chart
     fig = px.bar(
         x=gene_counts.values,
         y=gene_counts.index,
         orientation='h',
         title=display_title,
-        labels={'x': 'Count', 'y': 'Gene'},
+        labels={'x': 'Count', 'y': y_label},
         color=gene_counts.values,
-        color_continuous_scale=color_scale
+        color_continuous_scale=color_scale,
+        range_color=[0, color_range_max],
     )
     
     fig.update_layout(
@@ -2411,133 +2545,239 @@ def plot_gene_distribution(
         yaxis={'categoryorder': 'total ascending'},
         title=title_config,
         xaxis_title="Count",
-        yaxis_title="Gene"
+        yaxis_title=y_label
     )
     
-    fig.update_coloraxes(colorscale=color_scale, showscale=False)
+    fig.update_coloraxes(
+        colorscale=color_scale,
+        showscale=False,
+        cmin=0,
+        cmax=color_range_max,
+    )
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
     if collector is not None:
         export_df = gene_counts.reset_index()
-        export_df.columns = ["gene", "count"]
+        export_df.columns = [y_label.lower(), "count"]
         export_df["chain_type"] = chain_type
+        export_df["group_mode"] = group_mode
         collector.append((f"{chain_type}_{title}", prepare_export_figure(fig), export_df.copy()))
 
 
-def render_subject_hits_boxplot(
+# --- Donor precursor-frequency boxplot (publication-style axis + site box styling) ---
+
+DONOR_HPM_BIN_LABEL = "≤0.01"
+DONOR_HPM_BIN_VALUE = -2.0  # log10(0.01)
+DONOR_HPM_DEFAULT_Y_RANGE = (DONOR_HPM_BIN_VALUE - 0.10, 4.0)
+
+
+def _normalize_donor_stats_columns(stats_df: pd.DataFrame) -> pd.DataFrame:
+    df = stats_df.copy()
+    aliases = {"per_million": "hits_per_million", "total": "total_sequences"}
+    for source, target in aliases.items():
+        if source in df.columns and target not in df.columns:
+            df[target] = df[source]
+    for col in ("total_sequences", "hits", "hits_per_million", "per_million"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+
+def prepare_donor_plot_data(
     stats_df: pd.DataFrame,
-    statistics: Dict[str, Any]
-) -> None:
+    statistics: Dict[str, Any],
+    *,
+    include_zero_hit_donors: bool = True,
+    apply_sequence_threshold: bool = True,
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
-    Render donor-level hits-per-million distribution as a box plot with jittered points.
+    Prepare donor-level HPM data for the precursor-frequency plot.
 
-    Args:
-        stats_df: Statistics dataframe per subject
-        statistics: Overall statistics dictionary for the current search
+    Optionally keeps only donors above the sequence threshold and/or includes
+    zero-hit donors. Bins log10(HPM) <= -2 onto DONOR_HPM_BIN_VALUE (≤0.01).
     """
-    st.session_state.pop("latest_subject_hits_plot", None)
     statistics = statistics or {}
-
-    # Handle case where stats_df might be None (from old API)
-    if stats_df is None:
-        st.info("Subject statistics not available.")
-        return
-
-    if stats_df.empty:
-        st.info("No subject statistics available for plotting.")
-        return
-
     total_hits = statistics.get("total_hits") or 0
     total_sequences = statistics.get("total_sequences") or 0
-
     if total_hits <= 0 or total_sequences <= 0:
-        st.info("Insufficient overall statistics to render donor plot.")
-        return
+        return pd.DataFrame(), {"error": "Insufficient overall statistics"}
 
     overall_frequency = total_hits / total_sequences
-    if overall_frequency <= 0:
-        st.info("Overall frequency is zero; donor plot unavailable.")
-        return
+    required_sequences = int(np.ceil(10 / overall_frequency))
 
-    required_sequences = 10 / overall_frequency
+    df = _normalize_donor_stats_columns(stats_df)
+    if "total_sequences" in df.columns:
+        df = df[df["total_sequences"] > 0].copy()
 
-    filtered_df = stats_df.copy()
+    if apply_sequence_threshold:
+        filtered = df[df["total_sequences"] >= required_sequences].copy()
+    else:
+        filtered = df.copy()
 
-    # Normalize column names expected downstream
-    column_aliases = {
-        "per_million": "hits_per_million",
-        "total": "total_sequences",
+    n_zero_in_pool = int((filtered["hits"] == 0).sum()) if "hits" in filtered.columns else 0
+
+    if not include_zero_hit_donors and "hits" in filtered.columns:
+        filtered = filtered[filtered["hits"] > 0].copy()
+
+    filtered["hits_per_million"] = np.where(
+        filtered["total_sequences"] > 0,
+        filtered["hits"].astype(float) / filtered["total_sequences"].astype(float) * 1e6,
+        np.nan,
+    )
+
+    hpm = filtered["hits_per_million"].astype(float).to_numpy()
+    log_vals = np.full(hpm.shape, float("-inf"), dtype=float)
+    positive = hpm > 0
+    log_vals[positive] = np.log10(hpm[positive])
+    filtered["orig_log10_hits"] = log_vals
+    filtered["is_binned"] = log_vals <= DONOR_HPM_BIN_VALUE
+    filtered["log10_hits"] = np.where(filtered["is_binned"], DONOR_HPM_BIN_VALUE, log_vals)
+
+    meta = {
+        "overall_frequency": overall_frequency,
+        "required_sequences": required_sequences,
+        "apply_sequence_threshold": apply_sequence_threshold,
+        "n_input": len(df),
+        "n_after_threshold": int((df["total_sequences"] >= required_sequences).sum()),
+        "n_plotted": len(filtered),
+        "n_zero_hit_included": int((filtered["hits"] == 0).sum()) if "hits" in filtered.columns else 0,
+        "n_zero_hit_above_threshold": n_zero_in_pool,
+        "include_zero_hit_donors": include_zero_hit_donors,
+        "n_binned_le_0_01": int(filtered["is_binned"].sum()) if len(filtered) else 0,
+        "bin_label": DONOR_HPM_BIN_LABEL,
+        "bin_value": DONOR_HPM_BIN_VALUE,
+        "y_range": DONOR_HPM_DEFAULT_Y_RANGE,
     }
+    return filtered, meta
 
-    for source, target in column_aliases.items():
-        if source in filtered_df.columns and target not in filtered_df.columns:
-            filtered_df[target] = filtered_df[source]
 
-    required_columns = {"total_sequences", "hits", "hits_per_million"}
-    missing_columns = required_columns.difference(filtered_df.columns)
-    if missing_columns:
-        # Debug: Show what columns we actually have
-        available_cols = list(filtered_df.columns)
-        st.warning(
-            f"Subject statistics missing required fields for donor plotting.\n"
-            f"Required: {required_columns}\n"
-            f"Available: {available_cols}\n"
-            f"Missing: {missing_columns}"
-        )
-        return
+def _fmt_donor_hpm(value: float) -> str:
+    if value is None or not np.isfinite(value):
+        return "—"
+    if value == 0:
+        return "0"
+    if abs(value) >= 1000:
+        return f"{value:,.4g}"
+    return f"{value:.4g}"
 
-    numeric_cols = ["total_sequences", "hits", "hits_per_million"]
-    for col in numeric_cols:
-        if col in filtered_df.columns:
-            filtered_df[col] = pd.to_numeric(filtered_df[col], errors="coerce")
 
-    filtered_df = filtered_df[filtered_df["total_sequences"] >= required_sequences]
-    filtered_df = filtered_df[filtered_df["hits"] > 0]
-    filtered_df = filtered_df[filtered_df["hits_per_million"] > 0]
+def compute_donor_plot_summary_stats(
+    filtered_df: pd.DataFrame,
+    meta: Dict[str, Any],
+) -> pd.DataFrame:
+    """Summary metrics for donors included in the precursor-frequency plot."""
+    if filtered_df is None or filtered_df.empty:
+        return pd.DataFrame(columns=["Metric", "Value"])
 
-    if filtered_df.empty:
-        st.info("No donors meet the minimum sequence threshold for plotting.")
-        return
+    n = len(filtered_df)
+    n_zero = int((filtered_df["hits"] == 0).sum()) if "hits" in filtered_df.columns else 0
+    zero_pct = (100.0 * n_zero / n) if n else 0.0
+    threshold = meta.get("required_sequences", float("nan"))
+    include_zeros = meta.get("include_zero_hit_donors", True)
+    n_zero_above = meta.get("n_zero_hit_above_threshold", n_zero)
 
-    y_values = filtered_df["hits_per_million"].astype(float)
+    linear = filtered_df["hits_per_million"].astype(float).to_numpy()
+    lin_mean = float(np.nanmean(linear))
+    lin_median = float(np.nanmedian(linear))
+    lin_q1, lin_q3 = [float(x) for x in np.nanpercentile(linear, [25, 75])]
+    lin_iqr = lin_q3 - lin_q1
+
+    if include_zeros:
+        zero_hit_value = f"{n_zero:,} ({zero_pct:.1f}%)"
+    else:
+        zero_hit_value = f"excluded ({n_zero_above:,})"
+
+    apply_threshold = meta.get("apply_sequence_threshold", True)
+    if apply_threshold and np.isfinite(threshold):
+        threshold_value = f"≥ {int(threshold):,} sequences"
+    elif np.isfinite(threshold):
+        threshold_value = f"not applied (all donors; ref. ≥ {int(threshold):,})"
+    else:
+        threshold_value = "—"
+
+    rows = [
+        ("Donors in plot", f"{n:,}"),
+        ("Sequence threshold", threshold_value),
+        ("Zero-hit donors", zero_hit_value),
+        ("Mean", f"{_fmt_donor_hpm(lin_mean)} /M"),
+        ("Median", f"{_fmt_donor_hpm(lin_median)} /M"),
+        (
+            "IQR",
+            f"{_fmt_donor_hpm(lin_iqr)}  [Q1={_fmt_donor_hpm(lin_q1)}, Q3={_fmt_donor_hpm(lin_q3)}]",
+        ),
+    ]
+    return pd.DataFrame(rows, columns=["Metric", "Value"])
+
+
+def _donor_hpm_tick_label(log_val: float) -> str:
+    if int(round(log_val)) == int(DONOR_HPM_BIN_VALUE):
+        return DONOR_HPM_BIN_LABEL
+    ival = int(round(log_val))
+    if ival == -1:
+        return "0.1"
+    if ival == 0:
+        return "1"
+    if ival > 0:
+        return f"{10 ** ival:,}"
+    return ""
+
+
+def _resolve_donor_hpm_y_axis_range(
+    log10_hits: np.ndarray,
+    *,
+    min_upper: float = 2.0,
+) -> Tuple[float, float]:
+    """Floor at ≤0.01; upper ≥100, expanding when data exceeds that."""
+    finite = np.asarray(log10_hits, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    data_max = float(np.max(finite)) if finite.size else DONOR_HPM_BIN_VALUE
+    upper = max(float(min_upper), float(np.ceil(data_max - 1e-12)))
+    return (DONOR_HPM_BIN_VALUE - 0.10, upper)
+
+
+def build_donor_hits_figure(
+    filtered_df: pd.DataFrame,
+    meta: Dict[str, Any],
+    *,
+    title: Optional[str] = None,
+    height: int = 420,
+    margin: Optional[Dict[str, int]] = None,
+    dynamic_y_max: bool = True,
+    chain_type: str = "Heavy",
+) -> Optional[go.Figure]:
+    """Build the precursor-frequency donor boxplot (log10 axis with ≤0.01 bin)."""
+    if filtered_df is None or filtered_df.empty:
+        return None
+
+    y_values = filtered_df["log10_hits"].astype(float)
     donor_labels = filtered_df.get("subject", pd.Series(index=filtered_df.index, dtype=str)).fillna("Unknown")
+    hpm = filtered_df["hits_per_million"].astype(float)
 
-    if not (y_values > 0).all():
-        st.info("Cannot display donor distribution on a log scale due to non-positive values.")
-        return
+    required = meta.get("required_sequences", 0)
+    if dynamic_y_max:
+        y_axis_range = _resolve_donor_hpm_y_axis_range(y_values.to_numpy())
+    else:
+        y_axis_range = DONOR_HPM_DEFAULT_Y_RANGE
+    upper = int(y_axis_range[1])
+    yticks = [DONOR_HPM_BIN_VALUE] + list(range(int(DONOR_HPM_BIN_VALUE) + 1, upper + 1))
+    ticktext = [_donor_hpm_tick_label(v) for v in yticks]
 
-    # Calculate bounds with more padding to account for jittered points
-    # Use more padding (1.5x) to ensure all jittered points are visible
-    min_val = float(y_values.min())
-    max_val = float(y_values.max())
-    
-    lower_bound = min_val * 0.8
-    upper_bound = max_val * 1.5
-    
-    # Ensure lower_bound is positive (for log scale) but don't force a fixed minimum
-    # Use a small fraction of the minimum value if needed to avoid log(0)
-    if lower_bound <= 0:
-        lower_bound = min_val * 0.1  # Use 10% of min if calculated bound is <= 0
-    
-    if upper_bound <= lower_bound:
-        upper_bound = lower_bound * 2.0
+    if title is None:
+        title = (
+            f"Precursor Frequency by Donor"
+            f"<br><sup>Donors with ≥ {required:,} sequences</sup>"
+        )
 
-    log_min = float(np.log10(lower_bound))
-    log_max = float(np.log10(upper_bound))
-    if log_max - log_min < 2.0:
-        padding = (2.0 - (log_max - log_min)) / 2.0
-        log_min -= padding
-        log_max += padding
-    yaxis_range = [log_min, log_max]
-
-    tick_exponents = np.arange(np.floor(log_min), np.ceil(log_max) + 1, 1, dtype=int)
-    tick_vals = np.power(10.0, tick_exponents)
-    tick_text = [f"10^{exp}" for exp in tick_exponents]
-
-    customdata = pd.DataFrame({
-        "subject": donor_labels,
-    }).to_numpy()
+    # Match heavy/light plot palette used elsewhere (gene bars, spiders)
+    if (chain_type or "Heavy").lower() == "light":
+        marker_color = "rgb(203, 65, 84)"       # #CB4154
+        line_color = "rgba(203, 65, 84, 0.5)"
+        fill_color = "rgba(203, 65, 84, 0.2)"
+    else:
+        marker_color = "rgb(76, 96, 133)"       # #4C6085
+        line_color = "rgba(76, 96, 133, 0.5)"
+        fill_color = "rgba(76, 96, 133, 0.2)"
 
     fig = go.Figure()
     fig.add_trace(
@@ -2545,56 +2785,163 @@ def render_subject_hits_boxplot(
             y=y_values,
             name="Donors",
             boxpoints="all",
-            jitter=0.2,
+            jitter=0.4,
             pointpos=0,
             marker=dict(
-                size=8, 
-                color='rgba(31, 119, 180, 1.0)'  # Opaque blue points
+                size=8,
+                opacity=0.85,
+                line=dict(width=0.2, color="grey"),
+                color=marker_color,
             ),
-            line=dict(color='rgba(31, 119, 180, 0.5)', width=1),  # Transparent line
-            fillcolor='rgba(76, 96, 133, 0.2)',  # Transparent box fill
-            customdata=customdata,
+            line=dict(color=line_color, width=1),
+            fillcolor=fill_color,
+            customdata=np.column_stack(
+                [
+                    donor_labels.to_numpy(),
+                    hpm.to_numpy(),
+                ]
+            ),
             hovertemplate=(
-                "Subject: %{customdata[0]}<br>Hits/Million: %{y:,.2f}<extra></extra>"
+                "Subject: %{customdata[0]}<br>"
+                "Hits/Million: %{customdata[1]:,.4g}<extra></extra>"
             ),
         )
     )
-
-    subtitle_text = (
-        f"Showing donors with ≥ {required_sequences:,.0f} sequences "
-        f"(threshold = 10 ÷ overall frequency)."
-    )
-    subtitle_html = (
-        "<span style='font-weight: normal; font-size: 10px;'>"
-        f"{subtitle_text}"
-        "</span>"
-    )
-
     fig.update_layout(
         title={
-            "text": f"Per-Million Hits by Donor<br><sup>{subtitle_html}</sup>",
+            "text": title,
             "x": 0.5,
             "xanchor": "center",
         },
         showlegend=False,
-        height=230,
-        boxgroupgap=0.6,
-        margin=dict(l=20, r=20, t=45, b=15),
+        height=height,
+        boxgroupgap=0.3,
+        margin=margin or dict(l=70, r=20, t=70, b=30),
         template="plotly_white",
         yaxis=dict(
-            title="Hits per Million",
-            type="log",
-            range=yaxis_range,
+            title="Precursor Frequency (Per Million)",
+            type="linear",
+            range=list(y_axis_range),
             tickmode="array",
-            tickvals=tick_vals,
-            ticktext=tick_text,
+            tickvals=yticks,
+            ticktext=ticktext,
+            gridcolor="rgba(0,0,0,0.15)",
+            zeroline=False,
         ),
     )
+    return fig
+
+
+def render_subject_hits_boxplot(
+    stats_df: pd.DataFrame,
+    statistics: Dict[str, Any],
+    filtered_df: Optional[pd.DataFrame] = None,
+    meta: Optional[Dict[str, Any]] = None,
+    chain_type: str = "Heavy",
+) -> None:
+    """
+    Render donor-level hits-per-million distribution.
+
+    Keeps zero-hit donors that pass the sequence threshold (when enabled),
+    recomputes HPM, bins values ≤0.01 onto a fixed log10 axis, and shows a
+    box + jittered points.
+
+    Args:
+        stats_df: Statistics dataframe per subject
+        statistics: Overall statistics dictionary for the current search
+        filtered_df: Optional precomputed plot-ready donor frame
+        meta: Optional metadata from prepare_donor_plot_data
+        chain_type: "Heavy" or "Light" — sets marker/box colors
+    """
+    st.session_state.pop("latest_subject_hits_plot", None)
+    statistics = statistics or {}
+
+    # Handle case where stats_df might be None (from old API)
+    if stats_df is None and filtered_df is None:
+        st.info("Subject statistics not available.")
+        return
+
+    if filtered_df is None:
+        if stats_df is None or stats_df.empty:
+            st.info("No subject statistics available for plotting.")
+            return
+
+        total_hits = statistics.get("total_hits") or 0
+        total_sequences = statistics.get("total_sequences") or 0
+
+        if total_hits <= 0 or total_sequences <= 0:
+            st.info("Insufficient overall statistics to render donor plot.")
+            return
+
+        overall_frequency = total_hits / total_sequences
+        if overall_frequency <= 0:
+            st.info("Overall frequency is zero; donor plot unavailable.")
+            return
+
+        # Need at least subject/hits/total_sequences; HPM is recomputed for the plot
+        working_df = stats_df.copy()
+        column_aliases = {
+            "per_million": "hits_per_million",
+            "total": "total_sequences",
+        }
+        for source, target in column_aliases.items():
+            if source in working_df.columns and target not in working_df.columns:
+                working_df[target] = working_df[source]
+
+        required_columns = {"total_sequences", "hits"}
+        missing_columns = required_columns.difference(working_df.columns)
+        if missing_columns:
+            available_cols = list(working_df.columns)
+            st.warning(
+                f"Subject statistics missing required fields for donor plotting.\n"
+                f"Required: {required_columns}\n"
+                f"Available: {available_cols}\n"
+                f"Missing: {missing_columns}"
+            )
+            return
+
+        filtered_df, meta = prepare_donor_plot_data(working_df, statistics)
+        if meta.get("error"):
+            st.info(meta["error"])
+            return
+
+    meta = meta or {}
+    if meta.get("error"):
+        st.info(meta["error"])
+        return
+
+    if filtered_df is None or filtered_df.empty:
+        st.info("No donors meet the minimum sequence threshold for plotting.")
+        return
+
+    fig = build_donor_hits_figure(
+        filtered_df,
+        meta,
+        title="Precursor Frequency by Donor",
+        height=380,
+        margin=dict(l=50, r=20, t=45, b=15),
+        chain_type=chain_type,
+    )
+    if fig is None:
+        st.info("Unable to render donor plot.")
+        return
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
-    export_df = filtered_df[["subject", "total_sequences", "hits", "hits_per_million"]].copy()
-    export_df["hits_per_million_millions"] = export_df["hits_per_million"] / 1_000_000
+    export_cols = [
+        c for c in [
+            "subject",
+            "total_sequences",
+            "hits",
+            "hits_per_million",
+            "log10_hits",
+            "is_binned",
+        ]
+        if c in filtered_df.columns
+    ]
+    export_df = filtered_df[export_cols].copy()
+    if "hits_per_million" in export_df.columns:
+        export_df["hits_per_million_millions"] = export_df["hits_per_million"] / 1_000_000
 
     st.session_state["latest_subject_hits_plot"] = (
         "donor_per_million_hits",
