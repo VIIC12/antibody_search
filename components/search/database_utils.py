@@ -18,47 +18,47 @@ logger = logging.getLogger(__name__)
 
 def is_production() -> bool:
     """Check if running in production environment."""
-    return os.getenv('STREAMLIT_ENV') == 'production'
+    return os.getenv("STREAMLIT_ENV") == "production"
 
 
 def _get_verbose_default() -> bool:
     """Get verbose setting from environment variable, defaulting to False.
-    
+
     Only accepts 'true' or 'false' (case-insensitive). Any other value defaults to False.
-    
+
     Returns:
         True if ABHUNTER_VERBOSE is set to 'true', False otherwise
     """
-    verbose_env = os.getenv('ABHUNTER_VERBOSE', '').lower().strip()
-    return verbose_env == 'true'
+    verbose_env = os.getenv("ABHUNTER_VERBOSE", "").lower().strip()
+    return verbose_env == "true"
 
 
 def init_search_engine(
     data_dir: Union[str, List[str]],
     progress_callback=None,
     db_path: str = ":memory:",
-    verbose: Optional[bool] = None
+    verbose: Optional[bool] = None,
 ) -> AntibodySearchEngine:
     """
     Initialize search engine for a given data directory or directories.
-    
+
     Args:
         data_dir: Directory containing Parquet files, or list of directories
         progress_callback: Optional callback function(progress, status) for progress updates
         db_path: DuckDB database path (default: ":memory:" for in-memory database)
         verbose: Whether to print initialization messages. If None, uses ABHUNTER_VERBOSE
                 environment variable (defaults to False if not set). Only accepts True/False.
-        
+
     Returns:
         Initialized AntibodySearchEngine instance
-        
+
     Raises:
         SystemExit: If initialization fails (via st.stop())
     """
     # Use environment variable default if verbose not explicitly provided
     if verbose is None:
         verbose = _get_verbose_default()
-    
+
     try:
         # Handle both single directory and list of directories
         if isinstance(data_dir, list):
@@ -66,19 +66,21 @@ def init_search_engine(
                 data_dirs=data_dir,
                 progress_callback=progress_callback,
                 db_path=db_path,
-                verbose=verbose
+                verbose=verbose,
             )
         else:
             engine = AntibodySearchEngine(
                 data_dir=data_dir,
                 progress_callback=progress_callback,
                 db_path=db_path,
-                verbose=verbose
+                verbose=verbose,
             )
         return engine
     except Exception as e:
         st.error(f"Failed to initialize search engine for {data_dir}: {e}")
-        st.info("Please ensure the database directory exists and contains Parquet files.")
+        st.info(
+            "Please ensure the database directory exists and contains Parquet files."
+        )
         st.stop()
 
 
@@ -86,31 +88,32 @@ def init_search_engine(
 def check_metadata_freshness(data_dir: str) -> bool:
     """
     Check if metadata.parquet is up-to-date with Parquet files.
-    
+
     Args:
         data_dir: Directory to check
-        
+
     Returns:
         True if metadata is fresh, False otherwise
     """
     try:
-        metadata_path = Path(data_dir) / 'metadata.parquet'
+        metadata_path = Path(data_dir) / "metadata.parquet"
         if not metadata_path.exists():
             return False
-        
+
         # Get metadata modification time
         metadata_mtime = metadata_path.stat().st_mtime
-        
+
         # Get newest Parquet file modification time
         parquet_files = [
-            f for f in Path(data_dir).glob('*.parquet')
-            if f.name != 'metadata.parquet'
+            f
+            for f in Path(data_dir).glob("*.parquet")
+            if f.name != "metadata.parquet"
         ]
         if not parquet_files:
             return True  # No data files, metadata is "fresh"
-        
+
         newest_parquet_mtime = max(f.stat().st_mtime for f in parquet_files)
-        
+
         return metadata_mtime >= newest_parquet_mtime
     except Exception:
         return False
@@ -120,15 +123,15 @@ def check_metadata_freshness(data_dir: str) -> bool:
 def get_available_databases() -> list:
     """
     Automatically detect databases by scanning for directories with metadata.parquet files.
-    
+
     Reads ABHUNTER_DB_PATH from environment variable and recursively finds
     all directories containing metadata.parquet files.
-    
+
     Returns:
         List of database directory paths (as strings)
     """
     available_databases = []
-    
+
     # Read ABHUNTER_DB_PATH from environment variable
     abhunter_db_path = os.getenv("ABHUNTER_DB_PATH")
     if abhunter_db_path:
@@ -140,7 +143,8 @@ def get_available_databases() -> list:
                 db_dir = metadata_file.parent
                 # Check if this directory also has other parquet files (not just metadata)
                 parquet_files = [
-                    f for f in db_dir.glob("*.parquet")
+                    f
+                    for f in db_dir.glob("*.parquet")
                     if f.name != "metadata.parquet"
                 ]
                 if parquet_files:
@@ -148,8 +152,10 @@ def get_available_databases() -> list:
                     logger.debug(
                         f"Found database: {db_dir} ({len(parquet_files)} parquet files)"
                     )
-    
-    logger.info(f"Found {len(available_databases)} available databases: {available_databases}")
+
+    logger.info(
+        f"Found {len(available_databases)} available databases: {available_databases}"
+    )
     return available_databases
 
 
@@ -157,13 +163,13 @@ def get_available_databases() -> list:
 def get_database_structure() -> dict:
     """
     Get organized database structure with Heavy, Light, Paired categories and subdirectories.
-    
+
     Scans the data directory for Heavy/, Light/, and Paired/ subdirectories,
     and organizes them by category with metadata about each subdirectory.
-    
+
     Uses ABHUNTER_DB_PATH environment variable if set, otherwise falls back to
     project_root / "data" for backward compatibility.
-    
+
     Returns:
         Dictionary with structure:
         {
@@ -179,12 +185,8 @@ def get_database_structure() -> dict:
             'Paired': {...}
         }
     """
-    structure = {
-        'Heavy': {},
-        'Light': {},
-        'Paired': {}
-    }
-    
+    structure = {"Heavy": {}, "Light": {}, "Paired": {}}
+
     # Check for ABHUNTER_DB_PATH environment variable first
     # If not set, fall back to project_root / "data" for backward compatibility
     abhunter_db_path = os.getenv("ABHUNTER_DB_PATH")
@@ -197,13 +199,13 @@ def get_database_structure() -> dict:
         project_root = Path(__file__).parent.parent.parent
         data_dir = project_root / "data"
         logger.debug(f"Using default data directory: {data_dir}")
-    
+
     if not data_dir.exists():
         logger.warning(f"Data directory not found: {data_dir}")
         return structure
-    
+
     # Scan each main category
-    for category in ['Heavy', 'Light', 'Paired']:
+    for category in ["Heavy", "Light", "Paired"]:
         category_dir = data_dir / category
         if category_dir.exists():
             # Find all subdirectories with metadata.parquet
@@ -216,7 +218,8 @@ def get_database_structure() -> dict:
                 if metadata_file.exists():
                     # Check if there are parquet files (not just metadata)
                     parquet_files = [
-                        f for f in subdir.glob("*.parquet")
+                        f
+                        for f in subdir.glob("*.parquet")
                         if f.name != "metadata.parquet"
                     ]
                     if parquet_files:
@@ -224,9 +227,12 @@ def get_database_structure() -> dict:
                         sequence_count = 0
                         try:
                             import pandas as pd
+
                             metadata_df = pd.read_parquet(metadata_file)
-                            if 'total_sequences' in metadata_df.columns:
-                                sequence_count = metadata_df['total_sequences'].sum()
+                            if "total_sequences" in metadata_df.columns:
+                                sequence_count = metadata_df[
+                                    "total_sequences"
+                                ].sum()
                         except Exception as e:
                             logger.warning(
                                 f"Could not read sequence count from {metadata_file}: {e}"
@@ -234,37 +240,43 @@ def get_database_structure() -> dict:
                             sequence_count = 0
 
                         structure[category][subdir.name] = {
-                            'path': str(subdir),
-                            'parquet_count': len(parquet_files),
-                            'sequence_count': sequence_count,
-                            'has_metadata': True,
-                            'is_inferred': False
+                            "path": str(subdir),
+                            "parquet_count": len(parquet_files),
+                            "sequence_count": sequence_count,
+                            "has_metadata": True,
+                            "is_inferred": False,
                         }
                         logger.debug(
                             f"Found {category}/{subdir.name}: "
                             f"{len(parquet_files)} parquet files, "
                             f"{sequence_count:,} sequences"
                         )
-    
+
     # Check for inferred directory directly in data/Inferred/
     inferred_dir = data_dir / "Inferred"
     if inferred_dir.exists() and inferred_dir.is_dir():
         # Check for inferred overlay files
-        inferred_overlay_file_vh_vl = inferred_dir / "adj_vh_vl_freq_table_for_search_wo_epsilon.parquet"
-        inferred_overlay_file_jh_jl = inferred_dir / "adj_jh_vj_freq_table_for_search_wo_epsilon.parquet"
-        
-        if inferred_overlay_file_vh_vl.exists() or inferred_overlay_file_jh_jl.exists():
-            structure['Inferred'] = {
-                'Inferred': {
-                    'path': str(inferred_dir),
-                    'parquet_count': 1,
-                    'sequence_count': 0,
-                    'has_metadata': False,
-                    'is_inferred': True
+        inferred_overlay_file_vh_vl = (
+            inferred_dir / "adj_vh_vl_freq_table_for_search_wo_epsilon.parquet"
+        )
+        inferred_overlay_file_jh_jl = (
+            inferred_dir / "adj_jh_vj_freq_table_for_search_wo_epsilon.parquet"
+        )
+
+        if (
+            inferred_overlay_file_vh_vl.exists()
+            or inferred_overlay_file_jh_jl.exists()
+        ):
+            structure["Inferred"] = {
+                "Inferred": {
+                    "path": str(inferred_dir),
+                    "parquet_count": 1,
+                    "sequence_count": 0,
+                    "has_metadata": False,
+                    "is_inferred": True,
                 }
             }
             logger.debug(f"Found inferred pairing overlay at {inferred_dir}")
-    
+
     logger.info(f"Database structure: {structure}")
     return structure
-

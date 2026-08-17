@@ -36,7 +36,9 @@ def extract_metadata(filepath: Path) -> Dict[str, Any]:
             header_line = f.readline()
             # Clean up the header format
             header_cleaned = (
-                header_line.replace('"{', "{").replace('}"', "}").replace('""', '"')
+                header_line.replace('"{', "{")
+                .replace('}"', "}")
+                .replace('""', '"')
             )
             metadata = json.loads(header_cleaned)
             return metadata
@@ -49,41 +51,46 @@ def calculate_identity_percentage(sequence: str, germline: str) -> float:
     """
     Calculate percentage identity between sequence and germline (reference).
     The germline sequence is the reference (100% identity), any changes represent mutations.
-    
+
     Args:
         sequence: The actual sequence (e.g., v_sequence_alignment_aa)
         germline: The germline reference sequence (e.g., v_germline_alignment_aa)
-    
+
     Returns:
         Percentage identity (0-100) based on the germline sequence length, rounded to 2 decimal places
     """
     # Check if both are empty/NaN - return NaN
     seq_empty = pd.isna(sequence) or sequence == ""
     germline_empty = pd.isna(germline) or germline == ""
-    
+
     if seq_empty and germline_empty:
-        return float('nan')
-    
+        return float("nan")
+
     # Check if only one is empty - this should not happen, return error
     if seq_empty or germline_empty:
-        raise ValueError(f"Only one sequence is empty: sequence_empty={seq_empty}, germline_empty={germline_empty}")
-    
+        raise ValueError(
+            f"Only one sequence is empty: sequence_empty={seq_empty}, germline_empty={germline_empty}"
+        )
+
     # Remove gaps and convert to uppercase for comparison
-    sequence_clean = sequence.replace('-', '').replace('.', '').upper()
-    germline_clean = germline.replace('-', '').replace('.', '').upper()
-    
+    sequence_clean = sequence.replace("-", "").replace(".", "").upper()
+    germline_clean = germline.replace("-", "").replace(".", "").upper()
+
     # If either sequence is empty after cleaning, return 0
     if len(sequence_clean) == 0 or len(germline_clean) == 0:
         return 0.0
-    
+
     # Use the germline sequence length as the reference (100%)
     germline_length = len(germline_clean)
-    
+
     # Count identical positions up to the germline sequence length
     # If sequence is shorter, missing positions count as differences
-    identical = sum(1 for i, germline_char in enumerate(germline_clean) 
-                   if i < len(sequence_clean) and sequence_clean[i] == germline_char)
-    
+    identical = sum(
+        1
+        for i, germline_char in enumerate(germline_clean)
+        if i < len(sequence_clean) and sequence_clean[i] == germline_char
+    )
+
     # Calculate percentage based on the germline sequence length and round to 2 decimal places
     percentage = (identical / germline_length) * 100
     return round(percentage, 2)
@@ -133,7 +140,7 @@ def get_columns_for_chain(chain_type: str, extraction_level: int = 1) -> list:
             "j_germline_alignment_aa_light",
             "cdr1_aa_light",
             "cdr2_aa_light",
-            "cdr3_aa_light"
+            "cdr3_aa_light",
         ]
 
         additional_columns = [
@@ -145,9 +152,9 @@ def get_columns_for_chain(chain_type: str, extraction_level: int = 1) -> list:
             "cdr1_heavy",
             "cdr2_heavy",
             "cdr3_heavy",
-            "v_identity_heavy", # How sure is the V gene call?
-            "d_identity_heavy", # How sure is the D gene call?
-            "j_identity_heavy", # How sure is the J gene call?
+            "v_identity_heavy",  # How sure is the V gene call?
+            "d_identity_heavy",  # How sure is the D gene call?
+            "j_identity_heavy",  # How sure is the J gene call?
             # Light chain additional columns
             "sequence_alignment_light",
             "v_sequence_alignment_light",
@@ -340,8 +347,11 @@ def convert_file(
     chain_type = metadata.get("Chain", "Unknown")
     if chain_type == "Unknown":
         logger.error(f"No 'Chain' field found in metadata for {input_path}")
-        return {"filename": input_path.name, "error": "No Chain field in metadata"}
-    
+        return {
+            "filename": input_path.name,
+            "error": "No Chain field in metadata",
+        }
+
     # Convert to lowercase for comparison
     chain_type_lower = chain_type.lower()
 
@@ -380,152 +390,175 @@ def convert_file(
             try:
                 df["v_%SHM_heavy"] = df.apply(
                     lambda row: calculate_identity_percentage(
-                        row["v_sequence_alignment_aa_heavy"], 
-                        row["v_germline_alignment_aa_heavy"]
-                    ), axis=1
+                        row["v_sequence_alignment_aa_heavy"],
+                        row["v_germline_alignment_aa_heavy"],
+                    ),
+                    axis=1,
                 )
             except ValueError as e:
                 logger.error(f"Error calculating v_%SHM_heavy: {e}")
-                df["v_%SHM_heavy"] = float('nan')
-            
+                df["v_%SHM_heavy"] = float("nan")
+
             try:
                 df["d_%SHM_heavy"] = df.apply(
                     lambda row: calculate_identity_percentage(
-                        row["d_sequence_alignment_aa_heavy"], 
-                        row["d_germline_alignment_aa_heavy"]
-                    ), axis=1
+                        row["d_sequence_alignment_aa_heavy"],
+                        row["d_germline_alignment_aa_heavy"],
+                    ),
+                    axis=1,
                 )
             except ValueError as e:
                 logger.error(f"Error calculating d_%SHM_heavy: {e}")
-                df["d_%SHM_heavy"] = float('nan')
-            
+                df["d_%SHM_heavy"] = float("nan")
+
             try:
                 df["j_%SHM_heavy"] = df.apply(
                     lambda row: calculate_identity_percentage(
-                        row["j_sequence_alignment_aa_heavy"], 
-                        row["j_germline_alignment_aa_heavy"]
-                    ), axis=1
+                        row["j_sequence_alignment_aa_heavy"],
+                        row["j_germline_alignment_aa_heavy"],
+                    ),
+                    axis=1,
                 )
             except ValueError as e:
                 logger.error(f"Error calculating j_%SHM_heavy: {e}")
-                df["j_%SHM_heavy"] = float('nan')
-            
+                df["j_%SHM_heavy"] = float("nan")
+
             # Light chain %SHM calculations
             try:
                 df["v_%SHM_light"] = df.apply(
                     lambda row: calculate_identity_percentage(
-                        row["v_sequence_alignment_aa_light"], 
-                        row["v_germline_alignment_aa_light"]
-                    ), axis=1
+                        row["v_sequence_alignment_aa_light"],
+                        row["v_germline_alignment_aa_light"],
+                    ),
+                    axis=1,
                 )
             except ValueError as e:
                 logger.error(f"Error calculating v_%SHM_light: {e}")
-                df["v_%SHM_light"] = float('nan')
-            
+                df["v_%SHM_light"] = float("nan")
+
             try:
                 df["d_%SHM_light"] = df.apply(
                     lambda row: calculate_identity_percentage(
-                        row["d_sequence_alignment_aa_light"], 
-                        row["d_germline_alignment_aa_light"]
-                    ), axis=1
+                        row["d_sequence_alignment_aa_light"],
+                        row["d_germline_alignment_aa_light"],
+                    ),
+                    axis=1,
                 )
             except ValueError as e:
                 logger.error(f"Error calculating d_%SHM_light: {e}")
-                df["d_%SHM_light"] = float('nan')
-            
+                df["d_%SHM_light"] = float("nan")
+
             try:
                 df["j_%SHM_light"] = df.apply(
                     lambda row: calculate_identity_percentage(
-                        row["j_sequence_alignment_aa_light"], 
-                        row["j_germline_alignment_aa_light"]
-                    ), axis=1
+                        row["j_sequence_alignment_aa_light"],
+                        row["j_germline_alignment_aa_light"],
+                    ),
+                    axis=1,
                 )
             except ValueError as e:
                 logger.error(f"Error calculating j_%SHM_light: {e}")
-                df["j_%SHM_light"] = float('nan')
-        
+                df["j_%SHM_light"] = float("nan")
+
         elif chain_type_lower in ["heavy", "light"]:
             # Unpaired data: calculate for single chain (heavy or light)
             try:
                 df["v_%SHM"] = df.apply(
                     lambda row: calculate_identity_percentage(
-                        row["v_sequence_alignment_aa"], 
-                        row["v_germline_alignment_aa"]
-                    ), axis=1
+                        row["v_sequence_alignment_aa"],
+                        row["v_germline_alignment_aa"],
+                    ),
+                    axis=1,
                 )
             except ValueError as e:
                 logger.error(f"Error calculating v_%SHM: {e}")
-                df["v_%SHM"] = float('nan')
-            
+                df["v_%SHM"] = float("nan")
+
             try:
                 df["d_%SHM"] = df.apply(
                     lambda row: calculate_identity_percentage(
-                        row["d_sequence_alignment_aa"], 
-                        row["d_germline_alignment_aa"]
-                    ), axis=1
+                        row["d_sequence_alignment_aa"],
+                        row["d_germline_alignment_aa"],
+                    ),
+                    axis=1,
                 )
             except ValueError as e:
                 logger.error(f"Error calculating d_%SHM: {e}")
-                df["d_%SHM"] = float('nan')
-            
+                df["d_%SHM"] = float("nan")
+
             try:
                 df["j_%SHM"] = df.apply(
                     lambda row: calculate_identity_percentage(
-                        row["j_sequence_alignment_aa"], 
-                        row["j_germline_alignment_aa"]
-                    ), axis=1
+                        row["j_sequence_alignment_aa"],
+                        row["j_germline_alignment_aa"],
+                    ),
+                    axis=1,
                 )
             except ValueError as e:
                 logger.error(f"Error calculating j_%SHM: {e}")
-                df["j_%SHM"] = float('nan')
-        
+                df["j_%SHM"] = float("nan")
+
         else:
             # Invalid chain type
-            raise ValueError(f"Invalid chain type: '{chain_type}'. Expected 'Paired', 'Heavy', or 'Light'")
+            raise ValueError(
+                f"Invalid chain type: '{chain_type}'. Expected 'Paired', 'Heavy', or 'Light'"
+            )
 
         # Exclude columns that should not be in the data based on chain type
         # Light chains: exclude D-gene columns (always NaN)
         LIGHT_CHAIN_EXCLUDE_COLUMNS = [
-            'd_call',
-            'd_%SHM',
-            'd_sequence_alignment_aa',
-            'd_germline_alignment_aa'
+            "d_call",
+            "d_%SHM",
+            "d_sequence_alignment_aa",
+            "d_germline_alignment_aa",
         ]
-        
+
         # Paired chains: exclude D-gene light chain columns (always NaN)
         PAIRED_CHAIN_EXCLUDE_COLUMNS = [
-            'd_call_light',
-            'd_%SHM_light',
-            'd_sequence_alignment_aa_light',
-            'd_germline_alignment_aa_light'
+            "d_call_light",
+            "d_%SHM_light",
+            "d_sequence_alignment_aa_light",
+            "d_germline_alignment_aa_light",
         ]
-        
-        if chain_type_lower == 'light':
+
+        if chain_type_lower == "light":
             # Remove D-gene columns for Light chains
-            columns_to_remove = [col for col in df.columns if col in LIGHT_CHAIN_EXCLUDE_COLUMNS]
+            columns_to_remove = [
+                col for col in df.columns if col in LIGHT_CHAIN_EXCLUDE_COLUMNS
+            ]
             if columns_to_remove:
                 df = df.drop(columns=columns_to_remove)
-                logger.debug(f"  Removed D-gene columns for Light chain: {columns_to_remove}")
-        elif chain_type_lower == 'paired':
+                logger.debug(
+                    f"  Removed D-gene columns for Light chain: {columns_to_remove}"
+                )
+        elif chain_type_lower == "paired":
             # Remove D-gene light chain columns for Paired chains
-            columns_to_remove = [col for col in df.columns if col in PAIRED_CHAIN_EXCLUDE_COLUMNS]
+            columns_to_remove = [
+                col for col in df.columns if col in PAIRED_CHAIN_EXCLUDE_COLUMNS
+            ]
             if columns_to_remove:
                 df = df.drop(columns=columns_to_remove)
-                logger.debug(f"  Removed D-gene light chain columns for Paired chain: {columns_to_remove}")
+                logger.debug(
+                    f"  Removed D-gene light chain columns for Paired chain: {columns_to_remove}"
+                )
 
         # Prepare file-level metadata (NOT as data columns)
         # Extract metadata values and prepare for file-level storage
         file_metadata = {
-            b'chain': str(chain_type).encode(),
-            b'file_source': str(input_path.stem.replace('.csv', '') + '.csv').encode(),
-            b'species': str(metadata.get("Species", "Unknown")).encode(),
-            b'subject': str(metadata.get("Subject", "Unknown")).encode(),
-            b'disease': str(metadata.get("Disease", "Unknown")).encode(),
-            b'vaccine': str(metadata.get("Vaccine", "Unknown")).encode(),
-            b'isotype': str(metadata.get("Isotype", "Unknown")).encode(),
-            b'total_sequences': str(len(df)).encode(),  # Normalized as integer string
+            b"chain": str(chain_type).encode(),
+            b"file_source": str(
+                input_path.stem.replace(".csv", "") + ".csv"
+            ).encode(),
+            b"species": str(metadata.get("Species", "Unknown")).encode(),
+            b"subject": str(metadata.get("Subject", "Unknown")).encode(),
+            b"disease": str(metadata.get("Disease", "Unknown")).encode(),
+            b"vaccine": str(metadata.get("Vaccine", "Unknown")).encode(),
+            b"isotype": str(metadata.get("Isotype", "Unknown")).encode(),
+            b"total_sequences": str(
+                len(df)
+            ).encode(),  # Normalized as integer string
         }
-        
+
         # Note: We do NOT include unique_sequences in file-level metadata (as per clean_parquet_metadata.py)
 
         # Create output directory based on chain_type and isotype (partitioning)
@@ -535,17 +568,19 @@ def convert_file(
         output_subdir.mkdir(parents=True, exist_ok=True)
 
         # Output path, input is csv.gz remove .gz (input_path.stem) and .csv (.replace) -> .parquet
-        output_path = output_subdir / f"{input_path.stem.replace('.csv', '.parquet')}"
+        output_path = (
+            output_subdir / f"{input_path.stem.replace('.csv', '.parquet')}"
+        )
 
         # Convert DataFrame to PyArrow table
         table = pa.Table.from_pandas(df)
-        
+
         # Apply file-level metadata to schema
         new_schema = table.schema.with_metadata(file_metadata)
         table_with_metadata = table.replace_schema_metadata(new_schema.metadata)
-        
+
         # Write to Parquet with optimal compression and file-level metadata
-        pq.write_table(table_with_metadata, output_path, compression='zstd')
+        pq.write_table(table_with_metadata, output_path, compression="zstd")
 
         stats = {
             "filename": input_path.name,
@@ -553,7 +588,8 @@ def convert_file(
             "columns": len(df.columns),
             "input_size_mb": input_path.stat().st_size / (1024 * 1024),
             "output_size_mb": output_path.stat().st_size / (1024 * 1024),
-            "compression_ratio": input_path.stat().st_size / output_path.stat().st_size,
+            "compression_ratio": input_path.stat().st_size
+            / output_path.stat().st_size,
             "metadata": metadata,
         }
 
@@ -571,14 +607,16 @@ def convert_file(
         return {"filename": input_path.name, "error": str(e)}
 
 
-def extract_metadata_from_parquet_file(parquet_path: Path, output_dir: Path) -> Dict[str, Any]:
+def extract_metadata_from_parquet_file(
+    parquet_path: Path, output_dir: Path
+) -> Dict[str, Any]:
     """
     Extract metadata from a parquet file's file-level metadata.
-    
+
     Args:
         parquet_path: Path to the parquet file
         output_dir: Base output directory (for calculating relative file_path)
-    
+
     Returns:
         Dictionary with metadata fields
     """
@@ -586,39 +624,39 @@ def extract_metadata_from_parquet_file(parquet_path: Path, output_dir: Path) -> 
         # Read file-level metadata
         table = pq.read_table(parquet_path)
         df = pd.read_parquet(parquet_path)
-        
+
         # Extract file-level metadata
         file_metadata = {}
         if table.schema.metadata:
             for k, v in table.schema.metadata.items():
-                if not k.startswith(b'pandas'):
+                if not k.startswith(b"pandas"):
                     file_metadata[k.decode()] = v.decode()
-        
+
         # Calculate relative file path
         try:
             file_path = str(parquet_path.relative_to(output_dir))
         except ValueError:
             # Fall back to just the filename if relative path calculation fails
             file_path = parquet_path.name
-        
+
         # Build metadata record (matching optimized structure)
-        # Optimized metadata columns: file_path, chain, file_source, species, subject, 
+        # Optimized metadata columns: file_path, chain, file_source, species, subject,
         # disease, vaccine, isotype, total_sequences
         # Note: NO unique_sequences, filename, or rows columns
         record = {
-            'file_path': file_path,
-            'chain': file_metadata.get('chain', 'Unknown'),
-            'file_source': file_metadata.get('file_source', 'Unknown'),
-            'species': file_metadata.get('species', 'Unknown'),
-            'subject': file_metadata.get('subject', 'Unknown'),
-            'disease': file_metadata.get('disease', 'Unknown'),
-            'vaccine': file_metadata.get('vaccine', 'Unknown'),
-            'isotype': file_metadata.get('isotype', 'Unknown'),
-            'total_sequences': len(df),
+            "file_path": file_path,
+            "chain": file_metadata.get("chain", "Unknown"),
+            "file_source": file_metadata.get("file_source", "Unknown"),
+            "species": file_metadata.get("species", "Unknown"),
+            "subject": file_metadata.get("subject", "Unknown"),
+            "disease": file_metadata.get("disease", "Unknown"),
+            "vaccine": file_metadata.get("vaccine", "Unknown"),
+            "isotype": file_metadata.get("isotype", "Unknown"),
+            "total_sequences": len(df),
         }
-        
+
         return record
-        
+
     except Exception as e:
         logger.error(f"Failed to extract metadata from {parquet_path}: {e}")
         return {}
@@ -627,7 +665,7 @@ def extract_metadata_from_parquet_file(parquet_path: Path, output_dir: Path) -> 
 def create_metadata_table(stats_list: list, output_dir: Path):
     """
     Create/update metadata tables for each subdirectory containing Parquet files.
-    
+
     This function:
     1. Scans all parquet files in each subdirectory
     2. Extracts metadata from file-level metadata (not data columns)
@@ -635,7 +673,7 @@ def create_metadata_table(stats_list: list, output_dir: Path):
     4. Creates comprehensive metadata.parquet files
     """
     from collections import defaultdict
-    
+
     # Group newly converted files by subdirectory
     converted_subdirs = defaultdict(set)
     for stats in stats_list:
@@ -644,148 +682,216 @@ def create_metadata_table(stats_list: list, output_dir: Path):
             chain_type = metadata.get("Chain", "Unknown")
             isotype = metadata.get("Isotype", "Unknown")
             converted_subdirs[(chain_type, isotype)].add(
-                stats["filename"].replace('.csv.gz', '.parquet')
+                stats["filename"].replace(".csv.gz", ".parquet")
             )
-    
+
     # Process each subdirectory that has parquet files
     processed_subdirs = set()
-    
+
     # First, process subdirectories with newly converted files
     for (chain_type, isotype), converted_files in converted_subdirs.items():
         subdir = output_dir / chain_type / isotype
         if not subdir.exists():
             continue
-        
+
         metadata_path = subdir / "metadata.parquet"
         processed_subdirs.add((chain_type, isotype))
-        
+
         # Find all parquet files in this subdirectory
-        parquet_files = [f for f in subdir.glob("*.parquet") if f.name != "metadata.parquet"]
-        
+        parquet_files = [
+            f for f in subdir.glob("*.parquet") if f.name != "metadata.parquet"
+        ]
+
         if not parquet_files:
             continue
-        
-        logger.info(f"Updating metadata for {chain_type}/{isotype} ({len(parquet_files)} files)")
-        
+
+        logger.info(
+            f"Updating metadata for {chain_type}/{isotype} ({len(parquet_files)} files)"
+        )
+
         # Extract metadata from all parquet files
         metadata_records = []
         for parquet_path in parquet_files:
-            record = extract_metadata_from_parquet_file(parquet_path, output_dir)
+            record = extract_metadata_from_parquet_file(
+                parquet_path, output_dir
+            )
             if record:
                 metadata_records.append(record)
-        
+
         if not metadata_records:
             logger.warning(f"  ⚠️  No valid metadata extracted for {subdir}")
             continue
-        
+
         # Create DataFrame from metadata records
         new_df = pd.DataFrame(metadata_records)
-        
+
         # Define the correct columns for optimized metadata
-        # Matching structure: file_path, chain, file_source, species, subject, 
+        # Matching structure: file_path, chain, file_source, species, subject,
         # disease, vaccine, isotype, total_sequences
         # Note: NO unique_sequences, filename, or rows columns
-        correct_columns = ['file_path', 'chain', 'file_source', 'species', 'subject', 
-                          'disease', 'vaccine', 'isotype', 'total_sequences']
-        
+        correct_columns = [
+            "file_path",
+            "chain",
+            "file_source",
+            "species",
+            "subject",
+            "disease",
+            "vaccine",
+            "isotype",
+            "total_sequences",
+        ]
+
         # Load existing metadata if it exists and merge
         if metadata_path.exists():
             try:
                 existing_df = pd.read_parquet(metadata_path)
-                logger.info(f"  📂 Found existing metadata file with {len(existing_df)} entries")
-                
+                logger.info(
+                    f"  📂 Found existing metadata file with {len(existing_df)} entries"
+                )
+
                 # Remove unwanted columns if they exist in existing metadata
-                columns_to_remove = ['unique_sequences', 'filename', 'rows']
-                existing_columns_to_remove = [col for col in columns_to_remove if col in existing_df.columns]
+                columns_to_remove = ["unique_sequences", "filename", "rows"]
+                existing_columns_to_remove = [
+                    col
+                    for col in columns_to_remove
+                    if col in existing_df.columns
+                ]
                 if existing_columns_to_remove:
-                    existing_df = existing_df.drop(columns=existing_columns_to_remove)
-                    logger.debug(f"  🧹 Removed columns from existing metadata: {existing_columns_to_remove}")
-                
+                    existing_df = existing_df.drop(
+                        columns=existing_columns_to_remove
+                    )
+                    logger.debug(
+                        f"  🧹 Removed columns from existing metadata: {existing_columns_to_remove}"
+                    )
+
                 # Check for orphaned records: metadata entries referencing files that don't exist on disk
-                if 'file_path' in existing_df.columns:
+                if "file_path" in existing_df.columns:
                     # Create set of actual parquet files that exist (by filename)
                     actual_parquet_filenames = {f.name for f in parquet_files}
-                    
+
                     # Check which existing metadata records reference files that don't exist
                     orphaned_mask = []
                     for _, row in existing_df.iterrows():
-                        file_path_str = str(row['file_path'])
+                        file_path_str = str(row["file_path"])
                         # Extract filename from file_path (could be relative path like "Heavy/IGHA/file.parquet")
                         filename = Path(file_path_str).name
                         file_exists = filename in actual_parquet_filenames
                         orphaned_mask.append(not file_exists)
-                    
+
                     orphaned_count = sum(orphaned_mask)
                     if orphaned_count > 0:
-                        logger.info(f"  🗑️  Found {orphaned_count} orphaned metadata record(s) (referenced files no longer exist)")
+                        logger.info(
+                            f"  🗑️  Found {orphaned_count} orphaned metadata record(s) (referenced files no longer exist)"
+                        )
                         # Filter out orphaned records from existing metadata
                         existing_df = existing_df[~pd.Series(orphaned_mask)]
-                        logger.info(f"  ✅ Removed {orphaned_count} orphaned record(s) from metadata")
-                
+                        logger.info(
+                            f"  ✅ Removed {orphaned_count} orphaned record(s) from metadata"
+                        )
+
                 # Merge with existing data, removing duplicates based on file_path
-                combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+                combined_df = pd.concat(
+                    [existing_df, new_df], ignore_index=True
+                )
                 # Remove duplicates, keeping the last occurrence (most recent data)
-                combined_df = combined_df.drop_duplicates(subset=['file_path'], keep='last')
-                
+                combined_df = combined_df.drop_duplicates(
+                    subset=["file_path"], keep="last"
+                )
+
                 # Ensure only correct columns are present (in correct order)
-                combined_df = combined_df[[col for col in correct_columns if col in combined_df.columns]]
-                
-                logger.info(f"  ✅ Updated metadata: {len(existing_df)} → {len(combined_df)} files")
-                
+                combined_df = combined_df[
+                    [
+                        col
+                        for col in correct_columns
+                        if col in combined_df.columns
+                    ]
+                ]
+
+                logger.info(
+                    f"  ✅ Updated metadata: {len(existing_df)} → {len(combined_df)} files"
+                )
+
             except Exception as e:
                 logger.error(f"  ❌ Could not read existing metadata file: {e}")
                 combined_df = new_df
-                logger.info(f"  ✅ Created new metadata (old file was corrupted): {len(new_df)} files")
+                logger.info(
+                    f"  ✅ Created new metadata (old file was corrupted): {len(new_df)} files"
+                )
         else:
             combined_df = new_df
             logger.info(f"  ✅ Created new metadata file: {len(new_df)} files")
-        
+
         # Ensure correct column order and remove any unwanted columns
-        combined_df = combined_df[[col for col in correct_columns if col in combined_df.columns]]
-        
+        combined_df = combined_df[
+            [col for col in correct_columns if col in combined_df.columns]
+        ]
+
         # Save the updated metadata
         try:
             combined_df.to_parquet(metadata_path, index=False)
             logger.info(f"  💾 Saved metadata to: {metadata_path}")
         except Exception as e:
             logger.error(f"  ❌ Could not save metadata file: {e}")
-    
+
     # Also scan for any other subdirectories that might have parquet files but weren't converted
     # This ensures metadata is created for all subdirectories
     for chain_type_dir in output_dir.iterdir():
         if not chain_type_dir.is_dir():
             continue
-        
+
         for isotype_dir in chain_type_dir.iterdir():
             if not isotype_dir.is_dir():
                 continue
-            
+
             subdir_key = (chain_type_dir.name, isotype_dir.name)
             if subdir_key in processed_subdirs:
                 continue  # Already processed
-            
+
             metadata_path = isotype_dir / "metadata.parquet"
-            parquet_files = [f for f in isotype_dir.glob("*.parquet") if f.name != "metadata.parquet"]
-            
+            parquet_files = [
+                f
+                for f in isotype_dir.glob("*.parquet")
+                if f.name != "metadata.parquet"
+            ]
+
             if not parquet_files:
                 continue
-            
+
             # Only create metadata if it doesn't exist (don't overwrite existing)
             if not metadata_path.exists():
-                logger.info(f"Creating metadata for {chain_type_dir.name}/{isotype_dir.name} ({len(parquet_files)} files)")
-                
+                logger.info(
+                    f"Creating metadata for {chain_type_dir.name}/{isotype_dir.name} ({len(parquet_files)} files)"
+                )
+
                 metadata_records = []
                 for parquet_path in parquet_files:
-                    record = extract_metadata_from_parquet_file(parquet_path, output_dir)
+                    record = extract_metadata_from_parquet_file(
+                        parquet_path, output_dir
+                    )
                     if record:
                         metadata_records.append(record)
-                
+
                 if metadata_records:
                     metadata_df = pd.DataFrame(metadata_records)
                     # Ensure correct column order (matching optimized structure)
-                    correct_columns = ['file_path', 'chain', 'file_source', 'species', 'subject', 
-                                      'disease', 'vaccine', 'isotype', 'total_sequences']
-                    metadata_df = metadata_df[[col for col in correct_columns if col in metadata_df.columns]]
+                    correct_columns = [
+                        "file_path",
+                        "chain",
+                        "file_source",
+                        "species",
+                        "subject",
+                        "disease",
+                        "vaccine",
+                        "isotype",
+                        "total_sequences",
+                    ]
+                    metadata_df = metadata_df[
+                        [
+                            col
+                            for col in correct_columns
+                            if col in metadata_df.columns
+                        ]
+                    ]
                     metadata_df.to_parquet(metadata_path, index=False)
                     logger.info(f"  💾 Created metadata: {metadata_path}")
 
@@ -884,15 +990,18 @@ def main():
             for filepath in csv_files
         }
         for future in tqdm(
-            as_completed(future_to_file), total=len(csv_files), desc="Converting files"
+            as_completed(future_to_file),
+            total=len(csv_files),
+            desc="Converting files",
         ):
             try:
                 stats = future.result()
                 stats_list.append(stats)
             except Exception as exc:
-                stats_list.append(
-                    {"filename": str(future_to_file[future]), "error": str(exc)}
-                )
+                stats_list.append({
+                    "filename": str(future_to_file[future]),
+                    "error": str(exc),
+                })
 
     # Create metadata table from all converted files
     create_metadata_table(stats_list, output_dir)
@@ -914,7 +1023,7 @@ def main():
     logger.info(f"Total rows: {total_rows:,}")
     logger.info(f"Total input size: {total_input_mb:.1f} MB")
     logger.info(f"Total output size: {total_output_mb:.1f} MB")
-    logger.info(f"Overall compression: {total_input_mb/total_output_mb:.1f}x")
+    logger.info(f"Overall compression: {total_input_mb / total_output_mb:.1f}x")
     logger.info("=" * 60)
 
     if failed:

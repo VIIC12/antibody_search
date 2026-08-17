@@ -23,7 +23,6 @@ from src.search_engine import AntibodySearchEngine
 
 PLOTLY_DISPLAY_CONFIG = {
     "displayModeBar": False,
-    
 }
 
 # Global configuration for plotting limits
@@ -56,7 +55,7 @@ def render_results_plots(
     Render plots for search results based on available data and search parameters.
     Uses optimized queries to fetch only the columns needed for plotting.
     Caches plotting data to avoid re-fetching on every render.
-    
+
     Args:
         sequences_sample_df: Sample sequences dataframe (for display only)
         statistics: Statistics dictionary
@@ -66,32 +65,35 @@ def render_results_plots(
     """
     if sequences_sample_df.empty:
         return
-    
+
     st.markdown("### :material/bar_chart_4_bars: Result Distributions")
 
     # Check if we have a very large result set (will be sampled)
-    total_hits = statistics.get('total_hits', 0)
-    
+    total_hits = statistics.get("total_hits", 0)
+
     if total_hits > PLOTTING_WARNING_THRESHOLD:
         st.info(
             f"**Large result set detected** ({total_hits:,} hits). "
             f"Plots are based on a sample of up to {PLOTTING_DATA_LIMIT:,} sequences for performance. "
             f"Distributions should be representative of the full dataset."
         )
-    
+
     # Determine unpaired chain type
-    unpaired_chain_type = _get_unpaired_chain_type(search_params) if not is_paired else "Heavy"
-    
+    unpaired_chain_type = (
+        _get_unpaired_chain_type(search_params) if not is_paired else "Heavy"
+    )
+
     # Create cache key based on search parameters
     import json
+
     cache_key_seed = {
         "search_params": search_params,
         "is_paired": is_paired,
         "unpaired_chain_type": unpaired_chain_type,
-        "total_hits": total_hits
+        "total_hits": total_hits,
     }
     cache_key = f"plotting_data_{abs(hash(json.dumps(cache_key_seed, sort_keys=True, default=str)))}"
-    
+
     # Check if we have cached plotting data for this search
     cached_data = st.session_state.get(cache_key)
     sequences_full_df = None
@@ -101,24 +103,23 @@ def render_results_plots(
             sequences_full_df, aa_distributions = cached_data
         else:
             sequences_full_df = cached_data
-    
+
     if sequences_full_df is None:
         lock_active = st.session_state.get(PLOTTING_LOCK_KEY, False)
         # First rerun: lock the search controls so the form renders as disabled
         if not lock_active:
             st.session_state[PLOTTING_LOCK_KEY] = True
-            st.session_state[PLOTTING_LOCK_REASON_KEY] = PLOTTING_LOCK_REASON_PLOTS
+            st.session_state[PLOTTING_LOCK_REASON_KEY] = (
+                PLOTTING_LOCK_REASON_PLOTS
+            )
             st.rerun()
-        
+
         fetch_successful = False
         try:
             # Fetch plotting data (sequences + CDR AA distributions for spider plots)
             with st.spinner("Loading data for plotting..."):
                 sequences_full_df, aa_distributions = fetch_plotting_data(
-                    engine,
-                    search_params,
-                    is_paired,
-                    unpaired_chain_type
+                    engine, search_params, is_paired, unpaired_chain_type
                 )
             fetch_successful = True
             # Cache the fetched data
@@ -126,23 +127,25 @@ def render_results_plots(
         finally:
             st.session_state[PLOTTING_LOCK_KEY] = False
             st.session_state.pop(PLOTTING_LOCK_REASON_KEY, None)
-        
+
         if fetch_successful:
             # Second rerun: re-enable controls and render plots with cached data
             st.rerun()
         return
-    
+
     if sequences_full_df.empty:
         st.info("No results available for plotting.")
         return
-    
+
     collected_plots: List[Tuple[str, go.Figure, Optional[pd.DataFrame]]] = []
     spider_mode = "per_aa"
 
     # Determine which plots to show based on search type and parameters
     if is_paired:
         render_paired_plots(
-            sequences_full_df, search_params, collected_plots,
+            sequences_full_df,
+            search_params,
+            collected_plots,
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
         )
@@ -167,8 +170,16 @@ def render_results_plots(
         else:
             plot_name, plot_figure = subject_plot_entry[:2]
             plot_data = None
-        plot_data_copy = plot_data.copy() if isinstance(plot_data, pd.DataFrame) else plot_data
-        collected_plots.append((plot_name, go.Figure(plot_figure), plot_data_copy))
+        plot_data_copy = (
+            plot_data.copy()
+            if isinstance(plot_data, pd.DataFrame)
+            else plot_data
+        )
+        collected_plots.append((
+            plot_name,
+            go.Figure(plot_figure),
+            plot_data_copy,
+        ))
 
     if collected_plots:
         # Render async download buttons (Option C style)
@@ -177,7 +188,7 @@ def render_results_plots(
             search_params,
             statistics,
             is_paired,
-            unpaired_chain_type
+            unpaired_chain_type,
         )
 
 
@@ -186,7 +197,7 @@ def _render_plot_download_buttons(
     search_params: Dict[str, Any],
     statistics: Dict[str, Any],
     is_paired: bool,
-    unpaired_chain_type: str
+    unpaired_chain_type: str,
 ) -> None:
     """
     Render async download buttons for plots (Option C style).
@@ -195,10 +206,13 @@ def _render_plot_download_buttons(
     import concurrent.futures
     import time
     from streamlit_autorefresh import st_autorefresh
-    from components.search.download_utils import prepare_plots_download_background
-    
+    from components.search.download_utils import (
+        prepare_plots_download_background,
+    )
+
     # Inject CSS for spinner animation
-    st.markdown("""
+    st.markdown(
+        """
     <style>
     @keyframes spin {
         0% { transform: rotate(0deg); }
@@ -215,8 +229,10 @@ def _render_plot_download_buttons(
         display: inline-block;
     }
     </style>
-    """, unsafe_allow_html=True)
-    
+    """,
+        unsafe_allow_html=True,
+    )
+
     download_key_seed = {
         "search_params": search_params,
         "is_paired": is_paired,
@@ -224,8 +240,8 @@ def _render_plot_download_buttons(
     }
     seed_hash = abs(hash(str(download_key_seed)))
     download_key = f"plot_zip_{seed_hash}"
-    chain_label = "paired" if is_paired else unpaired_chain_type.lower()
-    
+    "paired" if is_paired else unpaired_chain_type.lower()
+
     # Session state keys for async plot downloads
     def _get_state_keys(include_raw: bool) -> Dict[str, str]:
         suffix = "figures_raw" if include_raw else "figures"
@@ -235,7 +251,7 @@ def _render_plot_download_buttons(
             "result": f"{download_key}_result_{suffix}",
             "start_time": f"{download_key}_start_time_{suffix}",
         }
-    
+
     # Initialize session state for both buttons
     for include_raw in [False, True]:
         keys = _get_state_keys(include_raw)
@@ -245,14 +261,14 @@ def _render_plot_download_buttons(
             st.session_state[keys["result"]] = None
         if keys["start_time"] not in st.session_state:
             st.session_state[keys["start_time"]] = None
-    
+
     # Get executor (cached)
     @st.cache_resource
     def get_plots_executor():
         return concurrent.futures.ProcessPoolExecutor(max_workers=2)
-    
+
     executor = get_plots_executor()
-    
+
     # Check task status (non-blocking)
     def check_plots_status(include_raw: bool):
         keys = _get_state_keys(include_raw)
@@ -262,28 +278,33 @@ def _render_plot_download_buttons(
                 result = future.result()
                 st.session_state[keys["future"]] = None
                 st.session_state[keys["result"]] = result
-                if result.get('success'):
+                if result.get("success"):
                     st.session_state[keys["status"]] = "completed"
-                    st.toast("✅ Plot archive is ready for download!", icon="✅")
+                    st.toast(
+                        "✅ Plot archive is ready for download!", icon="✅"
+                    )
                 else:
                     st.session_state[keys["status"]] = "failed"
                 return result
             except Exception as e:
                 st.session_state[keys["future"]] = None
                 st.session_state[keys["status"]] = "failed"
-                st.session_state[keys["result"]] = {'success': False, 'error': str(e)}
+                st.session_state[keys["result"]] = {
+                    "success": False,
+                    "error": str(e),
+                }
         return None
-    
+
     # Check status on every run
     check_plots_status(False)  # Figures only
-    check_plots_status(True)   # Figures + Raw Data
-    
+    check_plots_status(True)  # Figures + Raw Data
+
     # Auto-refresh when any task is running
     status_figures = st.session_state[_get_state_keys(False)["status"]]
     status_raw = st.session_state[_get_state_keys(True)["status"]]
     if status_figures == "running" or status_raw == "running":
         st_autorefresh(interval=2000, key=f"plots_refresh_{download_key}")
-    
+
     # Estimate phase based on elapsed time
     def estimate_phase(elapsed: float) -> str:
         if elapsed < 3:
@@ -294,64 +315,68 @@ def _render_plot_download_buttons(
             return "Creating archive..."
         else:
             return "Finalizing..."
-    
+
     # Render buttons
     col_figures, col_raw, _spacer = st.columns([1.5, 1.5, 7])
-    
+
     # Button 1: Download Figures
     with col_figures:
         status = st.session_state[_get_state_keys(False)["status"]]
         keys = _get_state_keys(False)
-        
+
         if status == "idle":
             if st.button(
                 "⬇ Download Figures",
                 key=f"{download_key}_button_figures",
-                width='stretch'
+                width="stretch",
             ):
                 # Serialize plots for background processing
                 plots_data = []
                 for title, figure, data in collected_plots:
                     plot_info = {
-                        'title': title,
-                        'figure_dict': figure.to_dict(),
-                        'data': None
+                        "title": title,
+                        "figure_dict": figure.to_dict(),
+                        "data": None,
                     }
                     if data is not None:
                         if isinstance(data, pd.DataFrame):
-                            plot_info['data'] = data.to_dict('records')  # Convert to list of dicts
+                            plot_info["data"] = data.to_dict(
+                                "records"
+                            )  # Convert to list of dicts
                         elif isinstance(data, pd.Series):
-                            plot_info['data'] = data.to_dict()
+                            plot_info["data"] = data.to_dict()
                         else:
-                            plot_info['data'] = data
+                            plot_info["data"] = data
                     plots_data.append(plot_info)
-                
+
                 # Build metadata
                 search_metadata = build_search_metadata(
-                    search_params,
-                    statistics,
-                    is_paired,
-                    include_raw_data=False
+                    search_params, statistics, is_paired, include_raw_data=False
                 )
-                
+
                 # Submit background task
                 future = executor.submit(
                     prepare_plots_download_background,
                     plots_data,
                     search_metadata,
-                    include_raw_data=False
+                    include_raw_data=False,
                 )
                 st.session_state[keys["future"]] = future
                 st.session_state[keys["start_time"]] = time.time()
                 st.session_state[keys["status"]] = "running"
                 st.rerun()
-        
+
         elif status == "running":
-            elapsed = time.time() - st.session_state[keys["start_time"]] if st.session_state[keys["start_time"]] else 0
+            elapsed = (
+                time.time() - st.session_state[keys["start_time"]]
+                if st.session_state[keys["start_time"]]
+                else 0
+            )
             phase = estimate_phase(elapsed)
-            
+
             # Custom button with CSS spinner
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div style="width: 100%;">
                 <button disabled style="
                     width: 100%;
@@ -371,44 +396,59 @@ def _render_plot_download_buttons(
                     <span>{phase}</span>
                 </button>
             </div>
-            """, unsafe_allow_html=True)
-        
+            """,
+                unsafe_allow_html=True,
+            )
+
         elif status == "completed":
             result = st.session_state[keys["result"]]
-            if result and result.get('success'):
-                file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
-                plot_count = result.get('plot_count', 0)
-                
+            if result and result.get("success"):
+                file_size_mb = result.get("file_size_bytes", 0) / 1024 / 1024
+                result.get("plot_count", 0)
+
                 # Check if this is a large file with download URL
-                if result.get('download_url'):
+                if result.get("download_url"):
                     # Large file: redirect to static download link
-                    download_url = result.get('download_url')
+                    download_url = result.get("download_url")
                     st.markdown(
                         f'<a href="{download_url}" target="_blank" style="text-decoration: none;">'
                         f'<button style="width: 100%; padding: 0.5rem 1rem; background-color: rgb(19, 124, 189); '
                         f'color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.875rem;">'
-                        f'✅ Download Figures ({file_size_mb:.2f} MB) - Opens in new tab</button></a>',
-                        unsafe_allow_html=True
+                        f"✅ Download Figures ({file_size_mb:.2f} MB) - Opens in new tab</button></a>",
+                        unsafe_allow_html=True,
                     )
                 else:
                     # Small file: use direct download button
                     st.download_button(
                         label=f"✅ Download Figures ({file_size_mb:.2f} MB)",
-                        data=result.get('zip_data', b''),
-                        file_name=result.get('filename', 'plots.zip'),
+                        data=result.get("zip_data", b""),
+                        file_name=result.get("filename", "plots.zip"),
                         mime="application/zip",
-                        width='stretch',
+                        width="stretch",
                         type="primary",
-                        key=f"download_{download_key}_figures"
+                        key=f"download_{download_key}_figures",
                     )
             else:
-                st.button("❌ Generation Failed", disabled=True, key=f"{download_key}_failed_figures", width='stretch')
-                error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
+                st.button(
+                    "❌ Generation Failed",
+                    disabled=True,
+                    key=f"{download_key}_failed_figures",
+                    width="stretch",
+                )
+                error_msg = (
+                    result.get("error", "Unknown error")
+                    if result
+                    else "Unknown error"
+                )
                 st.error(f"❌ {error_msg}")
-        
+
         elif status == "failed":
             result = st.session_state[keys["result"]]
-            error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
+            error_msg = (
+                result.get("error", "Unknown error")
+                if result
+                else "Unknown error"
+            )
             if st.button("🔄 Retry", key=f"{download_key}_retry_figures"):
                 st.session_state[keys["status"]] = "idle"
                 st.session_state[keys["result"]] = None
@@ -416,61 +456,65 @@ def _render_plot_download_buttons(
                 st.rerun()
             else:
                 st.error(f"❌ {error_msg}")
-    
+
     # Button 2: Download Figures + Raw Data
     with col_raw:
         status = st.session_state[_get_state_keys(True)["status"]]
         keys = _get_state_keys(True)
-        
+
         if status == "idle":
             if st.button(
                 "⬇ Download Figures + Raw Data",
                 key=f"{download_key}_button_raw",
-                width='stretch'
+                width="stretch",
             ):
                 # Serialize plots for background processing
                 plots_data = []
                 for title, figure, data in collected_plots:
                     plot_info = {
-                        'title': title,
-                        'figure_dict': figure.to_dict(),
-                        'data': None
+                        "title": title,
+                        "figure_dict": figure.to_dict(),
+                        "data": None,
                     }
                     if data is not None:
                         if isinstance(data, pd.DataFrame):
-                            plot_info['data'] = data.to_dict('records')  # Convert to list of dicts
+                            plot_info["data"] = data.to_dict(
+                                "records"
+                            )  # Convert to list of dicts
                         elif isinstance(data, pd.Series):
-                            plot_info['data'] = data.to_dict()
+                            plot_info["data"] = data.to_dict()
                         else:
-                            plot_info['data'] = data
+                            plot_info["data"] = data
                     plots_data.append(plot_info)
-                
+
                 # Build metadata
                 search_metadata = build_search_metadata(
-                    search_params,
-                    statistics,
-                    is_paired,
-                    include_raw_data=True
+                    search_params, statistics, is_paired, include_raw_data=True
                 )
-                
+
                 # Submit background task
                 future = executor.submit(
                     prepare_plots_download_background,
                     plots_data,
                     search_metadata,
-                    include_raw_data=True
+                    include_raw_data=True,
                 )
                 st.session_state[keys["future"]] = future
                 st.session_state[keys["start_time"]] = time.time()
                 st.session_state[keys["status"]] = "running"
                 st.rerun()
-        
+
         elif status == "running":
-            elapsed = time.time() - st.session_state[keys["start_time"]] if st.session_state[keys["start_time"]] else 0
+            elapsed = (
+                time.time() - st.session_state[keys["start_time"]]
+                if st.session_state[keys["start_time"]]
+                else 0
+            )
             phase = estimate_phase(elapsed)
-            
+
             # Custom button with CSS spinner
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div style="width: 100%;">
                 <button disabled style="
                     width: 100%;
@@ -490,44 +534,59 @@ def _render_plot_download_buttons(
                     <span>{phase}</span>
                 </button>
             </div>
-            """, unsafe_allow_html=True)
-        
+            """,
+                unsafe_allow_html=True,
+            )
+
         elif status == "completed":
             result = st.session_state[keys["result"]]
-            if result and result.get('success'):
-                file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
-                plot_count = result.get('plot_count', 0)
-                
+            if result and result.get("success"):
+                file_size_mb = result.get("file_size_bytes", 0) / 1024 / 1024
+                result.get("plot_count", 0)
+
                 # Check if this is a large file with download URL
-                if result.get('download_url'):
+                if result.get("download_url"):
                     # Large file: redirect to static download link
-                    download_url = result.get('download_url')
+                    download_url = result.get("download_url")
                     st.markdown(
                         f'<a href="{download_url}" target="_blank" style="text-decoration: none;">'
                         f'<button style="width: 100%; padding: 0.5rem 1rem; background-color: rgb(19, 124, 189); '
                         f'color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.875rem;">'
-                        f'✅ Download Figures + Raw Data ({file_size_mb:.2f} MB) - Opens in new tab</button></a>',
-                        unsafe_allow_html=True
+                        f"✅ Download Figures + Raw Data ({file_size_mb:.2f} MB) - Opens in new tab</button></a>",
+                        unsafe_allow_html=True,
                     )
                 else:
                     # Small file: use direct download button
                     st.download_button(
                         label=f"✅ Download Figures + Raw Data ({file_size_mb:.2f} MB)",
-                        data=result.get('zip_data', b''),
-                        file_name=result.get('filename', 'plots_raw.zip'),
+                        data=result.get("zip_data", b""),
+                        file_name=result.get("filename", "plots_raw.zip"),
                         mime="application/zip",
-                        width='stretch',
+                        width="stretch",
                         type="primary",
-                        key=f"download_{download_key}_raw"
+                        key=f"download_{download_key}_raw",
                     )
             else:
-                st.button("❌ Generation Failed", disabled=True, key=f"{download_key}_failed_raw", width='stretch')
-                error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
+                st.button(
+                    "❌ Generation Failed",
+                    disabled=True,
+                    key=f"{download_key}_failed_raw",
+                    width="stretch",
+                )
+                error_msg = (
+                    result.get("error", "Unknown error")
+                    if result
+                    else "Unknown error"
+                )
                 st.error(f"❌ {error_msg}")
-        
+
         elif status == "failed":
             result = st.session_state[keys["result"]]
-            error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
+            error_msg = (
+                result.get("error", "Unknown error")
+                if result
+                else "Unknown error"
+            )
             if st.button("🔄 Retry", key=f"{download_key}_retry_raw"):
                 st.session_state[keys["status"]] = "idle"
                 st.session_state[keys["result"]] = None
@@ -539,7 +598,11 @@ def _render_plot_download_buttons(
 
 def _get_unpaired_chain_type(search_params: Dict[str, Any]) -> str:
     """Return 'Heavy' or 'Light' for unpaired search parameters."""
-    chain_type = search_params.get('chain_type') or search_params.get('unpaired_chain_type') or "Heavy"
+    chain_type = (
+        search_params.get("chain_type")
+        or search_params.get("unpaired_chain_type")
+        or "Heavy"
+    )
     chain_type = chain_type.capitalize()
     if chain_type not in ("Heavy", "Light"):
         chain_type = "Heavy"
@@ -550,20 +613,20 @@ def fetch_plotting_data(
     engine: AntibodySearchEngine,
     search_params: Dict[str, Any],
     is_paired: bool,
-    unpaired_chain_type: str = "Heavy"
+    unpaired_chain_type: str = "Heavy",
 ) -> pd.DataFrame:
     """
     Fetch data for plotting using the same search logic as the main search.
     This ensures ALL search parameters (motifs, similarity, mismatches, etc.) are applied identically.
     Only the columns needed for plots (CDR lengths, V/D/J gene calls) are requested from the engine,
     reducing I/O and memory versus loading 1M full rows. Limits results to PLOTTING_DATA_LIMIT.
-    
+
     Args:
         engine: Search engine instance
         search_params: Search parameters dictionary
         is_paired: Whether this is a paired search
         unpaired_chain_type: Chain type for unpaired searches ("Heavy" or "Light")
-        
+
     Returns:
         Tuple of (sequences_df, aa_distributions). sequences_df has columns for plotting;
         aa_distributions is a dict mapping CDR keys (e.g. 'cdr1_heavy', 'cdr3') to DataFrames
@@ -572,29 +635,37 @@ def fetch_plotting_data(
     # Use the search engine's search method to get results with identical filtering
     # This ensures ALL search parameters (including motifs, similarity, mismatches, etc.) are applied identically
     from components.search.search_execution import build_search_kwargs
-    
+
     # Build search kwargs from search_params (same as main search)
     search_kwargs = build_search_kwargs(search_params, is_paired)
-    
+
     # Add chain_mode for paired searches
     if is_paired:
-        search_kwargs['chain_mode'] = 'paired'
+        search_kwargs["chain_mode"] = "paired"
     else:
-        search_kwargs['chain_mode'] = unpaired_chain_type.lower()
-    
+        search_kwargs["chain_mode"] = unpaired_chain_type.lower()
+
     # Determine which columns we need for plotting (CDR lengths, V/D/J genes only)
     # Passing these to search() reduces I/O and memory vs loading 1M full rows
     # Light chains have no D gene - exclude d_call when querying light chain view
-    chain_base_cols = ['v_call', 'j_call'] if (not is_paired and unpaired_chain_type.lower() == 'light') else ['v_call', 'd_call', 'j_call']
+    chain_base_cols = (
+        ["v_call", "j_call"]
+        if (not is_paired and unpaired_chain_type.lower() == "light")
+        else ["v_call", "d_call", "j_call"]
+    )
     plotting_columns = []
-    for base_col in ['cdr1_length', 'cdr2_length', 'cdr3_length']:
-        if base_col in engine.schema.get('length_columns', {}):
-            plotting_columns.extend(engine.schema['length_columns'][base_col])
+    for base_col in ["cdr1_length", "cdr2_length", "cdr3_length"]:
+        if base_col in engine.schema.get("length_columns", {}):
+            plotting_columns.extend(engine.schema["length_columns"][base_col])
     for base_col in chain_base_cols:
-        if base_col in engine.schema.get('chain_columns', {}):
-            plotting_columns.extend(engine.schema['chain_columns'][base_col])
+        if base_col in engine.schema.get("chain_columns", {}):
+            plotting_columns.extend(engine.schema["chain_columns"][base_col])
     # Restrict to columns that exist in the schema (for post-search selection)
-    available_columns = [c for c in plotting_columns if c in engine.schema.get('available_columns', [])]
+    available_columns = [
+        c
+        for c in plotting_columns
+        if c in engine.schema.get("available_columns", [])
+    ]
     if not available_columns:
         available_columns = None
 
@@ -622,7 +693,28 @@ def fetch_plotting_data(
 
 
 # Standard 20 amino acids for CDR AA distribution
-_CDR_AA_VALID = ("A", "R", "N", "D", "C", "E", "Q", "G", "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V")
+_CDR_AA_VALID = (
+    "A",
+    "R",
+    "N",
+    "D",
+    "C",
+    "E",
+    "Q",
+    "G",
+    "H",
+    "I",
+    "L",
+    "K",
+    "M",
+    "F",
+    "P",
+    "S",
+    "T",
+    "W",
+    "Y",
+    "V",
+)
 
 # AA property groups for spider plot "by property" view (from TODO_v_gen_aa_distribution.ipynb)
 _AA_PROPERTY_GROUPS: Dict[str, Tuple[str, ...]] = {
@@ -655,7 +747,9 @@ def _get_gene_group_mode() -> str:
 
 def _extract_gene_subfamily(gene_name: Any) -> Optional[str]:
     """Strip allele suffix: IGHV3-23*01 -> IGHV3-23."""
-    if gene_name is None or (isinstance(gene_name, float) and pd.isna(gene_name)):
+    if gene_name is None or (
+        isinstance(gene_name, float) and pd.isna(gene_name)
+    ):
         return None
     text = str(gene_name).strip()
     if not text:
@@ -665,7 +759,9 @@ def _extract_gene_subfamily(gene_name: Any) -> Optional[str]:
 
 def _extract_gene_family_label(gene_name: Any) -> Optional[str]:
     """Family label: IGHV3-23*01 / IGHV3-21*02 -> IGHV3."""
-    if gene_name is None or (isinstance(gene_name, float) and pd.isna(gene_name)):
+    if gene_name is None or (
+        isinstance(gene_name, float) and pd.isna(gene_name)
+    ):
         return None
     family = AntibodySearchEngine._extract_v_family(str(gene_name))
     if family:
@@ -680,7 +776,9 @@ def _map_gene_to_group_label(gene_name: Any, group_mode: str) -> str:
         return _extract_gene_subfamily(gene_name) or "Unknown"
     if group_mode == "family":
         return _extract_gene_family_label(gene_name) or "Unknown"
-    if gene_name is None or (isinstance(gene_name, float) and pd.isna(gene_name)):
+    if gene_name is None or (
+        isinstance(gene_name, float) and pd.isna(gene_name)
+    ):
         return "Unknown"
     text = str(gene_name).strip()
     return text or "Unknown"
@@ -703,11 +801,15 @@ def _sync_gene_group_mode_from_widget(
         st.session_state[GENE_GROUP_MODE_KEY] = "allele"
     selected = st.session_state.get(widget_key)
     if selected in GENE_GROUP_MODE_TO_VALUE:
-        st.session_state[GENE_GROUP_MODE_KEY] = GENE_GROUP_MODE_TO_VALUE[selected]
+        st.session_state[GENE_GROUP_MODE_KEY] = GENE_GROUP_MODE_TO_VALUE[
+            selected
+        ]
     return _get_gene_group_mode()
 
 
-def _render_gene_group_control(*, widget_key: str = "gene_plot_group_mode_control") -> str:
+def _render_gene_group_control(
+    *, widget_key: str = "gene_plot_group_mode_control"
+) -> str:
     """
     Render grouping control below V/D/J gene plots.
     Returns the active mode (allele | subfamily | family).
@@ -800,7 +902,9 @@ def fetch_cdr_aa_distribution(
             if df.empty:
                 continue
             total = df["cnt"].sum()
-            df["percent"] = (df["cnt"] / total * 100).round(2) if total > 0 else 0.0
+            df["percent"] = (
+                (df["cnt"] / total * 100).round(2) if total > 0 else 0.0
+            )
             result[key] = df
         except Exception:
             continue
@@ -812,319 +916,395 @@ def build_plotting_where_clause(
     engine: AntibodySearchEngine,
     search_params: Dict[str, Any],
     is_paired: bool,
-    unpaired_chain_type: str = "Heavy"
+    unpaired_chain_type: str = "Heavy",
 ) -> str:
     """
     Build WHERE clause from search parameters for plotting queries.
     Reuses the search engine's query building logic.
-    
+
     Args:
         engine: Search engine instance
         search_params: Search parameters dictionary
         is_paired: Whether this is a paired search
-        
+
     Returns:
         WHERE clause string
     """
     # We need to execute a search to get the WHERE clause, but we can do it
     # with full_results=False to avoid loading data
     # However, this still builds the query. Let's build it manually instead.
-    
+
     conditions = []
-    
+
     if is_paired:
         # Heavy chain conditions - use schema chain_columns
-        if search_params.get('heavy_v'):
-            heavy_v = search_params['heavy_v']
-            separator = ',' if ',' in heavy_v else '|'
+        if search_params.get("heavy_v"):
+            heavy_v = search_params["heavy_v"]
+            separator = "," if "," in heavy_v else "|"
             if separator in heavy_v:
                 heavy_v_conditions = []
                 for g in heavy_v.split(separator):
-                    for col in engine.schema['chain_columns']['v_call']:
-                        if '_heavy' in col:
-                            heavy_v_conditions.append(engine._build_gene_pattern(col, g))
+                    for col in engine.schema["chain_columns"]["v_call"]:
+                        if "_heavy" in col:
+                            heavy_v_conditions.append(
+                                engine._build_gene_pattern(col, g)
+                            )
                 if heavy_v_conditions:
                     conditions.append(f"({' OR '.join(heavy_v_conditions)})")
             else:
                 heavy_v_conditions = []
-                for col in engine.schema['chain_columns']['v_call']:
-                    if '_heavy' in col:
-                        heavy_v_conditions.append(engine._build_gene_pattern(col, heavy_v))
+                for col in engine.schema["chain_columns"]["v_call"]:
+                    if "_heavy" in col:
+                        heavy_v_conditions.append(
+                            engine._build_gene_pattern(col, heavy_v)
+                        )
                 if heavy_v_conditions:
                     conditions.append(f"({' OR '.join(heavy_v_conditions)})")
-        
-        if search_params.get('heavy_d'):
-            heavy_d = search_params['heavy_d']
-            separator = ',' if ',' in heavy_d else '|'
+
+        if search_params.get("heavy_d"):
+            heavy_d = search_params["heavy_d"]
+            separator = "," if "," in heavy_d else "|"
             if separator in heavy_d:
                 heavy_d_conditions = []
                 for g in heavy_d.split(separator):
-                    for col in engine.schema['chain_columns']['d_call']:
-                        if '_heavy' in col:
-                            heavy_d_conditions.append(engine._build_gene_pattern(col, g))
+                    for col in engine.schema["chain_columns"]["d_call"]:
+                        if "_heavy" in col:
+                            heavy_d_conditions.append(
+                                engine._build_gene_pattern(col, g)
+                            )
                 if heavy_d_conditions:
                     conditions.append(f"({' OR '.join(heavy_d_conditions)})")
             else:
                 heavy_d_conditions = []
-                for col in engine.schema['chain_columns']['d_call']:
-                    if '_heavy' in col:
-                        heavy_d_conditions.append(engine._build_gene_pattern(col, heavy_d))
+                for col in engine.schema["chain_columns"]["d_call"]:
+                    if "_heavy" in col:
+                        heavy_d_conditions.append(
+                            engine._build_gene_pattern(col, heavy_d)
+                        )
                 if heavy_d_conditions:
                     conditions.append(f"({' OR '.join(heavy_d_conditions)})")
-        
-        if search_params.get('heavy_j'):
-            heavy_j = search_params['heavy_j']
+
+        if search_params.get("heavy_j"):
+            heavy_j = search_params["heavy_j"]
             # J gene handling matches search engine logic
-            if not heavy_j.startswith('J'):
+            if not heavy_j.startswith("J"):
                 heavy_j = f"J{heavy_j}"
             heavy_j_conditions = []
-            for col in engine.schema['chain_columns']['j_call']:
-                if '_heavy' in col:
+            for col in engine.schema["chain_columns"]["j_call"]:
+                if "_heavy" in col:
                     heavy_j_conditions.append(f"{col} LIKE '%{heavy_j}%'")
             if heavy_j_conditions:
                 conditions.append(f"({' OR '.join(heavy_j_conditions)})")
-        
+
         # Heavy CDR lengths - use schema length_columns
-        if search_params.get('heavy_cdr1_length') is not None:
-            for col in engine.schema['length_columns']['cdr1_length']:
-                if '_heavy' in col:
-                    condition = engine._parse_cdr_length_condition(col, search_params['heavy_cdr1_length'])
+        if search_params.get("heavy_cdr1_length") is not None:
+            for col in engine.schema["length_columns"]["cdr1_length"]:
+                if "_heavy" in col:
+                    condition = engine._parse_cdr_length_condition(
+                        col, search_params["heavy_cdr1_length"]
+                    )
                     if condition:
                         conditions.append(condition)
-        if search_params.get('heavy_cdr2_length') is not None:
-            for col in engine.schema['length_columns']['cdr2_length']:
-                if '_heavy' in col:
-                    condition = engine._parse_cdr_length_condition(col, search_params['heavy_cdr2_length'])
+        if search_params.get("heavy_cdr2_length") is not None:
+            for col in engine.schema["length_columns"]["cdr2_length"]:
+                if "_heavy" in col:
+                    condition = engine._parse_cdr_length_condition(
+                        col, search_params["heavy_cdr2_length"]
+                    )
                     if condition:
                         conditions.append(condition)
-        if search_params.get('heavy_cdr3_length') is not None:
-            for col in engine.schema['length_columns']['cdr3_length']:
-                if '_heavy' in col:
-                    condition = engine._parse_cdr_length_condition(col, search_params['heavy_cdr3_length'])
+        if search_params.get("heavy_cdr3_length") is not None:
+            for col in engine.schema["length_columns"]["cdr3_length"]:
+                if "_heavy" in col:
+                    condition = engine._parse_cdr_length_condition(
+                        col, search_params["heavy_cdr3_length"]
+                    )
                     if condition:
                         conditions.append(condition)
-        
+
         # Light chain conditions - use schema chain_columns
-        if search_params.get('light_v'):
-            light_v = search_params['light_v']
-            separator = ',' if ',' in light_v else '|'
+        if search_params.get("light_v"):
+            light_v = search_params["light_v"]
+            separator = "," if "," in light_v else "|"
             if separator in light_v:
                 light_v_conditions = []
                 for g in light_v.split(separator):
-                    for col in engine.schema['chain_columns']['v_call']:
-                        if '_light' in col:
-                            light_v_conditions.append(engine._build_gene_pattern(col, g))
+                    for col in engine.schema["chain_columns"]["v_call"]:
+                        if "_light" in col:
+                            light_v_conditions.append(
+                                engine._build_gene_pattern(col, g)
+                            )
                 if light_v_conditions:
                     conditions.append(f"({' OR '.join(light_v_conditions)})")
             else:
                 light_v_conditions = []
-                for col in engine.schema['chain_columns']['v_call']:
-                    if '_light' in col:
-                        light_v_conditions.append(engine._build_gene_pattern(col, light_v))
+                for col in engine.schema["chain_columns"]["v_call"]:
+                    if "_light" in col:
+                        light_v_conditions.append(
+                            engine._build_gene_pattern(col, light_v)
+                        )
                 if light_v_conditions:
                     conditions.append(f"({' OR '.join(light_v_conditions)})")
-        
-        if search_params.get('light_j'):
-            light_j = search_params['light_j']
-            separator = ',' if ',' in light_j else '|'
+
+        if search_params.get("light_j"):
+            light_j = search_params["light_j"]
+            separator = "," if "," in light_j else "|"
             if separator in light_j:
                 light_j_conditions = []
                 for g in light_j.split(separator):
-                    for col in engine.schema['chain_columns']['j_call']:
-                        if '_light' in col:
-                            light_j_conditions.append(engine._build_gene_pattern(col, g))
+                    for col in engine.schema["chain_columns"]["j_call"]:
+                        if "_light" in col:
+                            light_j_conditions.append(
+                                engine._build_gene_pattern(col, g)
+                            )
                 if light_j_conditions:
                     conditions.append(f"({' OR '.join(light_j_conditions)})")
             else:
                 light_j_conditions = []
-                for col in engine.schema['chain_columns']['j_call']:
-                    if '_light' in col:
-                        light_j_conditions.append(engine._build_gene_pattern(col, light_j))
+                for col in engine.schema["chain_columns"]["j_call"]:
+                    if "_light" in col:
+                        light_j_conditions.append(
+                            engine._build_gene_pattern(col, light_j)
+                        )
                 if light_j_conditions:
                     conditions.append(f"({' OR '.join(light_j_conditions)})")
-        
+
         # Light CDR lengths - use schema length_columns
-        if search_params.get('light_cdr1_length') is not None:
-            for col in engine.schema['length_columns']['cdr1_length']:
-                if '_light' in col:
-                    condition = engine._parse_cdr_length_condition(col, search_params['light_cdr1_length'])
+        if search_params.get("light_cdr1_length") is not None:
+            for col in engine.schema["length_columns"]["cdr1_length"]:
+                if "_light" in col:
+                    condition = engine._parse_cdr_length_condition(
+                        col, search_params["light_cdr1_length"]
+                    )
                     if condition:
                         conditions.append(condition)
-        if search_params.get('light_cdr2_length') is not None:
-            for col in engine.schema['length_columns']['cdr2_length']:
-                if '_light' in col:
-                    condition = engine._parse_cdr_length_condition(col, search_params['light_cdr2_length'])
+        if search_params.get("light_cdr2_length") is not None:
+            for col in engine.schema["length_columns"]["cdr2_length"]:
+                if "_light" in col:
+                    condition = engine._parse_cdr_length_condition(
+                        col, search_params["light_cdr2_length"]
+                    )
                     if condition:
                         conditions.append(condition)
-        if search_params.get('light_cdr3_length') is not None:
-            for col in engine.schema['length_columns']['cdr3_length']:
-                if '_light' in col:
-                    condition = engine._parse_cdr_length_condition(col, search_params['light_cdr3_length'])
+        if search_params.get("light_cdr3_length") is not None:
+            for col in engine.schema["length_columns"]["cdr3_length"]:
+                if "_light" in col:
+                    condition = engine._parse_cdr_length_condition(
+                        col, search_params["light_cdr3_length"]
+                    )
                     if condition:
                         conditions.append(condition)
-        
+
         # Heavy chain CDR motifs
         for cdr_index in [1, 2, 3]:
-            motif_key = f'heavy_cdr{cdr_index}_motif'
-            similarity_key = f'heavy_cdr{cdr_index}_similarity'
-            mismatches_key = f'heavy_cdr{cdr_index}_mismatches'
-            
-            motif_value = search_params.get(motif_key, '')
+            motif_key = f"heavy_cdr{cdr_index}_motif"
+            similarity_key = f"heavy_cdr{cdr_index}_similarity"
+            mismatches_key = f"heavy_cdr{cdr_index}_mismatches"
+
+            motif_value = search_params.get(motif_key, "")
             if motif_value:
                 similarity = search_params.get(similarity_key, False)
                 mismatches = search_params.get(mismatches_key, 2)
-                
+
                 if similarity:
-                    regex_pattern = engine.generate_similarity_pattern(motif_value, mismatches)
+                    regex_pattern = engine.generate_similarity_pattern(
+                        motif_value, mismatches
+                    )
                 else:
                     regex_pattern = engine._convert_motif_to_regex(motif_value)
-                
+
                 # Get CDR AA columns from schema
-                cdr_aa_key = f'cdr{cdr_index}_aa'
-                if cdr_aa_key in engine.schema.get('chain_columns', {}):
-                    for col in engine.schema['chain_columns'][cdr_aa_key]:
-                        if '_heavy' in col:
+                cdr_aa_key = f"cdr{cdr_index}_aa"
+                if cdr_aa_key in engine.schema.get("chain_columns", {}):
+                    for col in engine.schema["chain_columns"][cdr_aa_key]:
+                        if "_heavy" in col:
                             conditions.append(f"{col} ~ '{regex_pattern}'")
-        
+
         # Light chain CDR motifs
         for cdr_index in [1, 2, 3]:
-            motif_key = f'light_cdr{cdr_index}_motif'
-            similarity_key = f'light_cdr{cdr_index}_similarity'
-            mismatches_key = f'light_cdr{cdr_index}_mismatches'
-            
-            motif_value = search_params.get(motif_key, '')
+            motif_key = f"light_cdr{cdr_index}_motif"
+            similarity_key = f"light_cdr{cdr_index}_similarity"
+            mismatches_key = f"light_cdr{cdr_index}_mismatches"
+
+            motif_value = search_params.get(motif_key, "")
             if motif_value:
                 similarity = search_params.get(similarity_key, False)
                 mismatches = search_params.get(mismatches_key, 2)
-                
+
                 if similarity:
-                    regex_pattern = engine.generate_similarity_pattern(motif_value, mismatches)
+                    regex_pattern = engine.generate_similarity_pattern(
+                        motif_value, mismatches
+                    )
                 else:
                     regex_pattern = engine._convert_motif_to_regex(motif_value)
-                
+
                 # Get CDR AA columns from schema
-                cdr_aa_key = f'cdr{cdr_index}_aa'
-                if cdr_aa_key in engine.schema.get('chain_columns', {}):
-                    for col in engine.schema['chain_columns'][cdr_aa_key]:
-                        if '_light' in col:
+                cdr_aa_key = f"cdr{cdr_index}_aa"
+                if cdr_aa_key in engine.schema.get("chain_columns", {}):
+                    for col in engine.schema["chain_columns"][cdr_aa_key]:
+                        if "_light" in col:
                             conditions.append(f"{col} ~ '{regex_pattern}'")
-    
+
     else:
         is_light_unpaired = unpaired_chain_type.lower() == "light"
-        v_key = 'light_v' if is_light_unpaired else 'heavy_v'
-        d_key = None if is_light_unpaired else 'heavy_d'
-        j_key = 'light_j' if is_light_unpaired else 'heavy_j'
-        cdr_prefix = 'light_' if is_light_unpaired else 'heavy_'
-        
-        v_gene_value = search_params.get(v_key, '')
+        v_key = "light_v" if is_light_unpaired else "heavy_v"
+        d_key = None if is_light_unpaired else "heavy_d"
+        j_key = "light_j" if is_light_unpaired else "heavy_j"
+        cdr_prefix = "light_" if is_light_unpaired else "heavy_"
+
+        v_gene_value = search_params.get(v_key, "")
         if v_gene_value:
-            separator = ',' if ',' in v_gene_value else '|'
+            separator = "," if "," in v_gene_value else "|"
             if separator in v_gene_value:
                 v_conditions = []
                 for g in v_gene_value.split(separator):
-                    for col in engine.schema['chain_columns']['v_call']:
-                        v_conditions.append(engine._build_gene_pattern(col, g, force_light_chain=is_light_unpaired))
+                    for col in engine.schema["chain_columns"]["v_call"]:
+                        v_conditions.append(
+                            engine._build_gene_pattern(
+                                col, g, force_light_chain=is_light_unpaired
+                            )
+                        )
                 if v_conditions:
                     conditions.append(f"({' OR '.join(v_conditions)})")
             else:
                 v_conditions = [
-                    engine._build_gene_pattern(col, v_gene_value, force_light_chain=is_light_unpaired)
-                    for col in engine.schema['chain_columns']['v_call']
+                    engine._build_gene_pattern(
+                        col, v_gene_value, force_light_chain=is_light_unpaired
+                    )
+                    for col in engine.schema["chain_columns"]["v_call"]
                 ]
                 if v_conditions:
                     conditions.append(f"({' OR '.join(v_conditions)})")
-        
+
         if d_key and search_params.get(d_key):
             d_gene_value = search_params[d_key]
-            separator = ',' if ',' in d_gene_value else '|'
+            separator = "," if "," in d_gene_value else "|"
             if separator in d_gene_value:
                 d_conditions = []
                 for g in d_gene_value.split(separator):
-                    for col in engine.schema['chain_columns']['d_call']:
-                        d_conditions.append(engine._build_gene_pattern(col, g, force_light_chain=is_light_unpaired))
+                    for col in engine.schema["chain_columns"]["d_call"]:
+                        d_conditions.append(
+                            engine._build_gene_pattern(
+                                col, g, force_light_chain=is_light_unpaired
+                            )
+                        )
                 if d_conditions:
                     conditions.append(f"({' OR '.join(d_conditions)})")
             else:
                 d_conditions = [
-                    engine._build_gene_pattern(col, d_gene_value, force_light_chain=is_light_unpaired)
-                    for col in engine.schema['chain_columns']['d_call']
+                    engine._build_gene_pattern(
+                        col, d_gene_value, force_light_chain=is_light_unpaired
+                    )
+                    for col in engine.schema["chain_columns"]["d_call"]
                 ]
                 if d_conditions:
                     conditions.append(f"({' OR '.join(d_conditions)})")
-        
-        j_gene_value = search_params.get(j_key, '')
+
+        j_gene_value = search_params.get(j_key, "")
         if j_gene_value:
-            separator = ',' if ',' in j_gene_value else '|'
+            separator = "," if "," in j_gene_value else "|"
             if separator in j_gene_value:
                 j_conditions = []
                 for g in j_gene_value.split(separator):
-                    for col in engine.schema['chain_columns']['j_call']:
-                        j_conditions.append(engine._build_gene_pattern(col, g, force_light_chain=is_light_unpaired))
+                    for col in engine.schema["chain_columns"]["j_call"]:
+                        j_conditions.append(
+                            engine._build_gene_pattern(
+                                col, g, force_light_chain=is_light_unpaired
+                            )
+                        )
                 if j_conditions:
                     conditions.append(f"({' OR '.join(j_conditions)})")
             else:
                 j_conditions = [
-                    engine._build_gene_pattern(col, j_gene_value, force_light_chain=is_light_unpaired)
-                    for col in engine.schema['chain_columns']['j_call']
+                    engine._build_gene_pattern(
+                        col, j_gene_value, force_light_chain=is_light_unpaired
+                    )
+                    for col in engine.schema["chain_columns"]["j_call"]
                 ]
                 if j_conditions:
                     conditions.append(f"({' OR '.join(j_conditions)})")
-        
+
         # CDR lengths - use schema length_columns
         for cdr_index in [1, 2, 3]:
-            length_key = f'{cdr_prefix}cdr{cdr_index}_length'
+            length_key = f"{cdr_prefix}cdr{cdr_index}_length"
             length_value = search_params.get(length_key)
             if length_value is not None:
-                for col in engine.schema['length_columns'][f'cdr{cdr_index}_length']:
-                    condition = engine._parse_cdr_length_condition(col, length_value)
+                for col in engine.schema["length_columns"][
+                    f"cdr{cdr_index}_length"
+                ]:
+                    condition = engine._parse_cdr_length_condition(
+                        col, length_value
+                    )
                     if condition:
                         conditions.append(condition)
-        
+
         # CDR motifs
         for cdr_index in [1, 2, 3]:
-            motif_key = f'{cdr_prefix}cdr{cdr_index}_motif'
-            similarity_key = f'{cdr_prefix}cdr{cdr_index}_similarity'
-            mismatches_key = f'{cdr_prefix}cdr{cdr_index}_mismatches'
-            
-            motif_value = search_params.get(motif_key, '')
+            motif_key = f"{cdr_prefix}cdr{cdr_index}_motif"
+            similarity_key = f"{cdr_prefix}cdr{cdr_index}_similarity"
+            mismatches_key = f"{cdr_prefix}cdr{cdr_index}_mismatches"
+
+            motif_value = search_params.get(motif_key, "")
             if motif_value:
                 similarity = search_params.get(similarity_key, False)
                 mismatches = search_params.get(mismatches_key, 2)
-                
+
                 if similarity:
-                    regex_pattern = engine.generate_similarity_pattern(motif_value, mismatches)
+                    regex_pattern = engine.generate_similarity_pattern(
+                        motif_value, mismatches
+                    )
                 else:
                     regex_pattern = engine._convert_motif_to_regex(motif_value)
-                
+
                 # Get CDR AA columns from schema
                 # For unpaired searches, use all columns (schema will have correct columns for unpaired DBs)
                 # For paired searches, columns have _heavy or _light suffix, but we're searching unpaired mode
                 # so we need to filter by chain type
-                cdr_aa_key = f'cdr{cdr_index}_aa'
-                if cdr_aa_key in engine.schema.get('chain_columns', {}):
+                cdr_aa_key = f"cdr{cdr_index}_aa"
+                if cdr_aa_key in engine.schema.get("chain_columns", {}):
                     motif_conditions = []
-                    for col in engine.schema['chain_columns'][cdr_aa_key]:
+                    for col in engine.schema["chain_columns"][cdr_aa_key]:
                         # For unpaired searches on unpaired databases, columns are just cdrX_aa
                         # For unpaired searches on paired databases, columns have _heavy/_light suffix
                         if is_light_unpaired:
                             # Light chain: use columns with _light suffix or just cdrX_aa (if no suffix exists)
-                            if '_light' in col or (not any('_heavy' in c or '_light' in c for c in engine.schema['chain_columns'][cdr_aa_key])):
-                                motif_conditions.append(f"{col} ~ '{regex_pattern}'")
+                            if "_light" in col or (
+                                not any(
+                                    "_heavy" in c or "_light" in c
+                                    for c in engine.schema["chain_columns"][
+                                        cdr_aa_key
+                                    ]
+                                )
+                            ):
+                                motif_conditions.append(
+                                    f"{col} ~ '{regex_pattern}'"
+                                )
                         else:
                             # Heavy chain: use columns with _heavy suffix or just cdrX_aa (if no suffix exists)
-                            if '_heavy' in col or (not any('_heavy' in c or '_light' in c for c in engine.schema['chain_columns'][cdr_aa_key])):
-                                motif_conditions.append(f"{col} ~ '{regex_pattern}'")
-                    
+                            if "_heavy" in col or (
+                                not any(
+                                    "_heavy" in c or "_light" in c
+                                    for c in engine.schema["chain_columns"][
+                                        cdr_aa_key
+                                    ]
+                                )
+                            ):
+                                motif_conditions.append(
+                                    f"{col} ~ '{regex_pattern}'"
+                                )
+
                     if motif_conditions:
                         conditions.append(f"({' OR '.join(motif_conditions)})")
-    
-    return ' AND '.join(conditions) if conditions else '1=1'
+
+    return " AND ".join(conditions) if conditions else "1=1"
 
 
 def render_unpaired_plots(
     sequences_df: pd.DataFrame,
     search_params: Dict[str, Any],
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
+    collector: Optional[
+        List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]
+    ] = None,
     chain_type: str = "Heavy",
     engine: Optional[AntibodySearchEngine] = None,
     statistics: Optional[Dict[str, Any]] = None,
@@ -1135,7 +1315,7 @@ def render_unpaired_plots(
 ) -> None:
     """
     Render plots for unpaired search results.
-    
+
     Args:
         sequences_df: Sequences dataframe
         search_params: Search parameters dictionary
@@ -1143,7 +1323,10 @@ def render_unpaired_plots(
     aa_distributions = aa_distributions or {}
     if chain_type.lower() == "light":
         render_light_chain_plots(
-            sequences_df, search_params, prefix="", collector=collector,
+            sequences_df,
+            search_params,
+            prefix="",
+            collector=collector,
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
             show_toggle=show_spider_toggle,
@@ -1151,22 +1334,28 @@ def render_unpaired_plots(
         )
     else:
         render_heavy_chain_plots(
-            sequences_df, search_params, prefix="", collector=collector,
+            sequences_df,
+            search_params,
+            prefix="",
+            collector=collector,
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
             show_gene_group_control=show_gene_group_control,
         )
 
-    overlay_active = (
-        (statistics or {}).get('inferred_overlay_active')
-        or st.session_state.get('inferred_overlay_active')
-    )
+    overlay_active = (statistics or {}).get(
+        "inferred_overlay_active"
+    ) or st.session_state.get("inferred_overlay_active")
 
     if overlay_active and engine is not None:
         # Check which gene columns are available in the results to determine which inferred plots to show
-        has_v_gene = _find_unpaired_v_call_column(sequences_df, chain_type) is not None
-        has_j_gene = _find_unpaired_j_call_column(sequences_df, chain_type) is not None
-        
+        has_v_gene = (
+            _find_unpaired_v_call_column(sequences_df, chain_type) is not None
+        )
+        has_j_gene = (
+            _find_unpaired_j_call_column(sequences_df, chain_type) is not None
+        )
+
         # Calculate number of gene plots that would be shown
         # For heavy: V, D, J (3 plots typically)
         # For light: V, J (2 plots typically)
@@ -1174,7 +1363,7 @@ def render_unpaired_plots(
             num_gene_plots = 2  # V and J for light chains
         else:
             num_gene_plots = 3  # V, D, and J for heavy chains
-        
+
         # Render inferred plots for V and/or J genes (show if gene data is available)
         render_inferred_pairing_plots(
             sequences_df,
@@ -1184,43 +1373,51 @@ def render_unpaired_plots(
             collector=collector,
             num_columns=num_gene_plots,
             show_v=has_v_gene,
-            show_j=has_j_gene
+            show_j=has_j_gene,
         )
 
 
-def _find_unpaired_v_call_column(sequences_df: pd.DataFrame, chain_type: str) -> Optional[str]:
+def _find_unpaired_v_call_column(
+    sequences_df: pd.DataFrame, chain_type: str
+) -> Optional[str]:
     """Identify the V gene column to use for inferred pairing plots."""
     if sequences_df.empty:
         return None
     chain_type = (chain_type or "Heavy").lower()
-    candidates = [col for col in sequences_df.columns if 'v_call' in col.lower()]
+    candidates = [
+        col for col in sequences_df.columns if "v_call" in col.lower()
+    ]
     if not candidates:
         return None
-    if chain_type == 'light':
-        preferred = [col for col in candidates if 'light' in col.lower()]
+    if chain_type == "light":
+        preferred = [col for col in candidates if "light" in col.lower()]
         if preferred:
             return preferred[0]
     else:
-        preferred = [col for col in candidates if 'light' not in col.lower()]
+        preferred = [col for col in candidates if "light" not in col.lower()]
         if preferred:
             return preferred[0]
     return candidates[0]
 
 
-def _find_unpaired_j_call_column(sequences_df: pd.DataFrame, chain_type: str) -> Optional[str]:
+def _find_unpaired_j_call_column(
+    sequences_df: pd.DataFrame, chain_type: str
+) -> Optional[str]:
     """Identify the J gene column to use for inferred pairing plots."""
     if sequences_df.empty:
         return None
     chain_type = (chain_type or "Heavy").lower()
-    candidates = [col for col in sequences_df.columns if 'j_call' in col.lower()]
+    candidates = [
+        col for col in sequences_df.columns if "j_call" in col.lower()
+    ]
     if not candidates:
         return None
-    if chain_type == 'light':
-        preferred = [col for col in candidates if 'light' in col.lower()]
+    if chain_type == "light":
+        preferred = [col for col in candidates if "light" in col.lower()]
         if preferred:
             return preferred[0]
     else:
-        preferred = [col for col in candidates if 'light' not in col.lower()]
+        preferred = [col for col in candidates if "light" not in col.lower()]
         if preferred:
             return preferred[0]
     return candidates[0]
@@ -1232,11 +1429,11 @@ def _create_inferred_heatmap(
     engine: AntibodySearchEngine,
     gene_type: str,
     max_sources: int = 8,
-    max_partners: int = 12
+    max_partners: int = 12,
 ) -> Optional[Tuple[pd.DataFrame, str, str, str, str]]:
     """
     Create an inferred pairing heatmap data structure for V or J genes.
-    
+
     Args:
         sequences_df: Sequences dataframe
         chain_type: Chain type ('Heavy' or 'Light')
@@ -1245,46 +1442,48 @@ def _create_inferred_heatmap(
                    The y-axis will use the same gene type to match the gene plots above
         max_sources: Maximum number of source families
         max_partners: Maximum number of partner families
-    
+
     Returns:
         Tuple of (pivot_df, row_label, col_label, title, caption) or None if no data
     """
     chain_type = (chain_type or "Heavy").capitalize()
     gene_type = gene_type.upper()
-    
+
     # Use the same gene type for y-axis data to match the gene plots above
     # "Predicted Light V" plot: y-axis = V families (matching IGHV plot)
     # "Predicted Light J" plot: y-axis = J families (matching IGHJ plot)
     yaxis_gene_type = gene_type
-    
+
     # Find the appropriate gene column for y-axis data
-    if yaxis_gene_type == 'V':
+    if yaxis_gene_type == "V":
         gene_column = _find_unpaired_v_call_column(sequences_df, chain_type)
         extract_family = engine.extract_v_family
     else:  # J
         gene_column = _find_unpaired_j_call_column(sequences_df, chain_type)
         extract_family = engine.extract_j_family
-    
+
     if not gene_column:
         return None
-    
+
     # Get actual genes from results (e.g., "IGHV3-30*01", "IGHJ4*01", "IGHV1/OR15")
     genes_series = sequences_df[gene_column].dropna().astype(str)
     if genes_series.empty:
         return None
-    
+
     # Get the inferred lookup for this chain type and y-axis gene type
     # The lookup key should match the y-axis gene type (what we're using from results)
-    lookup_dict = engine._inferred_lookup.get(yaxis_gene_type, {}).get(chain_type.capitalize(), {})
+    lookup_dict = engine._inferred_lookup.get(yaxis_gene_type, {}).get(
+        chain_type.capitalize(), {}
+    )
     if not lookup_dict:
         return None
-    
+
     # Extract families from genes and create a mapping
     # We need to order families by the total frequency of all genes in that family
     # This matches how the gene plot orders genes (by frequency)
-    gene_to_family = genes_series.map(extract_family)
+    genes_series.map(extract_family)
     gene_counts = genes_series.value_counts()
-    
+
     # Group genes by family and sum their frequencies
     # This gives us the total frequency for each family
     # Only include families that exist in the inferred lookup
@@ -1292,28 +1491,30 @@ def _create_inferred_heatmap(
     for gene, count in gene_counts.items():
         family = extract_family(gene)
         if family and family in lookup_dict:
-            family_frequencies[family] = family_frequencies.get(family, 0) + count
-    
+            family_frequencies[family] = (
+                family_frequencies.get(family, 0) + count
+            )
+
     if not family_frequencies:
         return None
-    
+
     # Order families by their first appearance in the gene plot (sorted by frequency)
     # This ensures the inferred plot's y-axis matches the gene plot's order
     # Sort genes by frequency (descending - most frequent first)
     sorted_genes = gene_counts.sort_values(ascending=False)
     family_order = []
     seen_families = set()
-    
+
     # Go through genes in frequency order and collect families in order of first appearance
     for gene in sorted_genes.index:
         family = extract_family(gene)
         if family and family in lookup_dict and family not in seen_families:
             family_order.append(family)
             seen_families.add(family)
-    
+
     # Use this order for top_sources (families in order of first appearance in gene plot)
     top_sources = family_order
-    
+
     if not top_sources:
         return None
 
@@ -1321,16 +1522,21 @@ def _create_inferred_heatmap(
     for source_family in top_sources:
         # Use the y-axis gene type for lookup (what we found in results)
         # But predict the opposite gene type (what we're showing on x-axis)
-        distribution = engine.get_inferred_distribution(chain_type, source_family, gene_type=yaxis_gene_type, top_n=max_partners * 3)
+        distribution = engine.get_inferred_distribution(
+            chain_type,
+            source_family,
+            gene_type=yaxis_gene_type,
+            top_n=max_partners * 3,
+        )
         if not distribution:
             continue
         for partner_family, probability in distribution:
             if probability is None:
                 continue
             records.append({
-                'source_family': source_family,
-                'partner_family': partner_family,
-                'probability': float(probability)
+                "source_family": source_family,
+                "partner_family": partner_family,
+                "probability": float(probability),
             })
 
     if not records:
@@ -1338,23 +1544,25 @@ def _create_inferred_heatmap(
 
     matrix_df = pd.DataFrame(records)
     partner_scores = (
-        matrix_df.groupby('partner_family')['probability']
+        matrix_df.groupby("partner_family")["probability"]
         .max()
         .sort_values(ascending=False)
         .head(max_partners)
     )
-    matrix_df = matrix_df[matrix_df['partner_family'].isin(partner_scores.index)]
+    matrix_df = matrix_df[
+        matrix_df["partner_family"].isin(partner_scores.index)
+    ]
     if matrix_df.empty:
         return None
 
     pivot_df = matrix_df.pivot_table(
-        index='source_family',
-        columns='partner_family',
-        values='probability',
-        aggfunc='max',
-        fill_value=0.0
+        index="source_family",
+        columns="partner_family",
+        values="probability",
+        aggfunc="max",
+        fill_value=0.0,
     )
-    
+
     # Order x-axis (columns) by probability for the top gene (most frequent, first in top_sources)
     if top_sources and top_sources[0] in pivot_df.index:
         top_gene = top_sources[0]
@@ -1365,36 +1573,46 @@ def _create_inferred_heatmap(
     else:
         # Fallback to previous ordering
         column_order = partner_scores.index.tolist()
-    
-    pivot_df = pivot_df.reindex(index=top_sources, columns=column_order, fill_value=0.0)
+
+    pivot_df = pivot_df.reindex(
+        index=top_sources, columns=column_order, fill_value=0.0
+    )
 
     if pivot_df.empty or not np.any(pivot_df.values):
         return None
 
     # Set labels based on chain type and gene type
-    if chain_type == 'Heavy':
-        if gene_type == 'V':
+    if chain_type == "Heavy":
+        if gene_type == "V":
             row_label = "Heavy V Family"
             col_label = "Predicted Light V Family"
             title = "Predicted Light V Families"
-            caption = "Based on heavy-to-light V pairing frequencies (`h_to_l`)."
+            caption = (
+                "Based on heavy-to-light V pairing frequencies (`h_to_l`)."
+            )
         else:  # J
             row_label = "Heavy J Family"
             col_label = "Predicted Light J Family"
             title = "Predicted Light J Families"
-            caption = "Based on heavy-to-light J pairing frequencies (`h_to_l`)."
+            caption = (
+                "Based on heavy-to-light J pairing frequencies (`h_to_l`)."
+            )
     else:  # Light
-        if gene_type == 'V':
+        if gene_type == "V":
             row_label = "Light V Family"
             col_label = "Predicted Heavy V Family"
             title = "Predicted Heavy V Families"
-            caption = "Based on light-to-heavy V pairing frequencies (`l_to_h`)."
+            caption = (
+                "Based on light-to-heavy V pairing frequencies (`l_to_h`)."
+            )
         else:  # J
             row_label = "Light J Family"
             col_label = "Predicted Heavy J Family"
             title = "Predicted Heavy J Families"
-            caption = "Based on light-to-heavy J pairing frequencies (`l_to_h`)."
-    
+            caption = (
+                "Based on light-to-heavy J pairing frequencies (`l_to_h`)."
+            )
+
     return (pivot_df, row_label, col_label, title, caption)
 
 
@@ -1410,17 +1628,19 @@ def render_inferred_pairing_plots(
     chain_type: str,
     engine: AntibodySearchEngine,
     search_params: Dict[str, Any],
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
+    collector: Optional[
+        List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]
+    ] = None,
     max_sources: int = 8,
     max_partners: int = 12,
     num_columns: int = 3,
     show_v: bool = True,
-    show_j: bool = True
+    show_j: bool = True,
 ) -> None:
     """
     Render inferred pairing heatmaps for V and/or J genes using overlay statistics for unpaired searches.
     Caches heatmap data to avoid re-processing on every render.
-    
+
     Args:
         sequences_df: Sequences dataframe
         chain_type: Chain type ('Heavy' or 'Light')
@@ -1437,9 +1657,10 @@ def render_inferred_pairing_plots(
         return
 
     chain_type = (chain_type or "Heavy").capitalize()
-    
+
     # Create cache key for inferred heatmap data based on search parameters
     import json
+
     # Since sequences_df is already cached from the main plotting cache (which uses search_params),
     # we can create a cache key based on search params and chain type.
     # The sequences_df will be the same for the same search_params, so the inferred heatmap will be the same.
@@ -1449,53 +1670,54 @@ def render_inferred_pairing_plots(
         "show_v": show_v,
         "show_j": show_j,
         "max_sources": max_sources,
-        "max_partners": max_partners
+        "max_partners": max_partners,
     }
-    cache_key_hash = abs(hash(json.dumps(cache_key_seed, sort_keys=True, default=str)))
+    cache_key_hash = abs(
+        hash(json.dumps(cache_key_seed, sort_keys=True, default=str))
+    )
     inferred_cache_key = f"inferred_heatmap_{cache_key_hash}"
-    
+
     # Check if we have cached inferred heatmap data
     cached_inferred_plots = st.session_state.get(inferred_cache_key)
-    
+
     if cached_inferred_plots is not None:
         # Use cached heatmap data
         plots_to_render = cached_inferred_plots
     else:
         # Generate heatmap data
         plots_to_render = []
-        
+
         # Render V gene inferred plot if requested
         # "Predicted Light V" plot: y-axis should show V families (matching IGHV plot)
         if show_v:
             v_plot = _create_inferred_heatmap(
-                sequences_df, chain_type, engine, 'V', max_sources, max_partners
+                sequences_df, chain_type, engine, "V", max_sources, max_partners
             )
             if v_plot:
-                plots_to_render.append(('V', v_plot))
-        
+                plots_to_render.append(("V", v_plot))
+
         # Render J gene inferred plot if requested
         # "Predicted Light J" plot: y-axis should show J families (matching IGHJ plot)
         if show_j:
             j_plot = _create_inferred_heatmap(
-                sequences_df, chain_type, engine, 'J', max_sources, max_partners
+                sequences_df, chain_type, engine, "J", max_sources, max_partners
             )
             if j_plot:
-                plots_to_render.append(('J', j_plot))
-        
+                plots_to_render.append(("J", j_plot))
+
         # Cache the heatmap data
         st.session_state[inferred_cache_key] = plots_to_render
-    
+
     if not plots_to_render:
         return
-    
+
     # Determine heading and color scheme based on what we're inferring
-    heading_icon = ":material/genetics:" if chain_type == "Heavy" else "🧬"
     heading_chain = "Light" if chain_type == "Heavy" else "Heavy"
-    
+
     # Color scheme based on what we're inferring (not the chain type being searched)
     # "Inferred Light" -> red (matching light chain plots)
     # "Inferred Heavy" -> blue (matching heavy chain plots)
-    if chain_type == 'Heavy':
+    if chain_type == "Heavy":
         # We're inferring Light families, so use RED color scheme (matching light chain plots)
         color_scale = [
             (0.0, "#FFFFFF"),
@@ -1509,88 +1731,149 @@ def render_inferred_pairing_plots(
             (0.5, "#D8DEE9"),
             (1.0, "#4C6085"),
         ]
-    
+
     # Render plots in a row matching the gene plot widths
     # For heavy: V plot in first column (same width as IGHV), J plot in third column (same width as IGHJ)
     # For light: V plot in first column, J plot in second column
-    if chain_type == 'Heavy':
+    if chain_type == "Heavy":
         # Heavy chain: V, D, J gene plots (3 columns)
-        # V inferred plot in column 0, J inferred plot in column 2        
-        icon_heading("paired", f"Inferred {heading_chain} chain Gene Families", level=4)
-        
+        # V inferred plot in column 0, J inferred plot in column 2
+        icon_heading(
+            "paired", f"Inferred {heading_chain} chain Gene Families", level=4
+        )
+
         cols = st.columns(num_columns)
-        
-        for gene_type, (pivot_df, row_label, col_label, title, caption) in plots_to_render:
-            if gene_type == 'V':
+
+        for gene_type, (
+            pivot_df,
+            row_label,
+            col_label,
+            title,
+            caption,
+        ) in plots_to_render:
+            if gene_type == "V":
                 with cols[0]:  # Match IGHV plot width
                     fig = px.imshow(
                         pivot_df,
-                        labels=dict(x=col_label, y=row_label, color="Pair Probability (%)"),
+                        labels=dict(
+                            x=col_label,
+                            y=row_label,
+                            color="Pair Probability (%)",
+                        ),
                         color_continuous_scale=color_scale,
-                        aspect="auto"
+                        aspect="auto",
                     )
                     fig.update_layout(
-                        title={"text": title, "x": 0.5, "xanchor": "center", "font": {"size": 16}},
+                        title={
+                            "text": title,
+                            "x": 0.5,
+                            "xanchor": "center",
+                            "font": {"size": 16},
+                        },
                         margin=dict(l=60, r=40, t=60, b=60),
                         xaxis=dict(side="bottom"),
                         yaxis=dict(autorange="reversed"),
-                        coloraxis_colorbar=dict(title="Probability (%)")
+                        coloraxis_colorbar=dict(title="Probability (%)"),
                     )
                     _apply_heatmap_axis_outline(fig)
-                    st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG, key=f"inferred_{chain_type.lower()}_v_plot")
-            elif gene_type == 'J':
+                    st.plotly_chart(
+                        fig,
+                        use_container_width=True,
+                        config=PLOTLY_DISPLAY_CONFIG,
+                        key=f"inferred_{chain_type.lower()}_v_plot",
+                    )
+            elif gene_type == "J":
                 with cols[2]:  # Match IGHJ plot width
                     fig = px.imshow(
                         pivot_df,
-                        labels=dict(x=col_label, y=row_label, color="Pair Probability (%)"),
+                        labels=dict(
+                            x=col_label,
+                            y=row_label,
+                            color="Pair Probability (%)",
+                        ),
                         color_continuous_scale=color_scale,
-                        aspect="auto"
+                        aspect="auto",
                     )
                     fig.update_layout(
-                        title={"text": title, "x": 0.5, "xanchor": "center", "font": {"size": 16}},
+                        title={
+                            "text": title,
+                            "x": 0.5,
+                            "xanchor": "center",
+                            "font": {"size": 16},
+                        },
                         margin=dict(l=60, r=40, t=60, b=60),
                         xaxis=dict(side="bottom"),
                         yaxis=dict(autorange="reversed"),
-                        coloraxis_colorbar=dict(title="Probability (%)")
+                        coloraxis_colorbar=dict(title="Probability (%)"),
                     )
                     _apply_heatmap_axis_outline(fig)
-                    st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG, key=f"inferred_{chain_type.lower()}_j_plot")
+                    st.plotly_chart(
+                        fig,
+                        use_container_width=True,
+                        config=PLOTLY_DISPLAY_CONFIG,
+                        key=f"inferred_{chain_type.lower()}_j_plot",
+                    )
     else:
         # Light chain: V, J gene plots (2 columns)
         # V inferred plot in column 0, J inferred plot in column 1
-        icon_heading("paired", f"Inferred {heading_chain} Gene Families", level=4)
+        icon_heading(
+            "paired", f"Inferred {heading_chain} Gene Families", level=4
+        )
 
         cols = st.columns(num_columns)
-        
-        for i, (gene_type, (pivot_df, row_label, col_label, title, caption)) in enumerate(plots_to_render):
+
+        for i, (
+            gene_type,
+            (pivot_df, row_label, col_label, title, caption),
+        ) in enumerate(plots_to_render):
             with cols[i]:  # Match V and J plot widths
                 fig = px.imshow(
                     pivot_df,
-                    labels=dict(x=col_label, y=row_label, color="Pair Probability (%)"),
+                    labels=dict(
+                        x=col_label, y=row_label, color="Pair Probability (%)"
+                    ),
                     color_continuous_scale=color_scale,
-                    aspect="auto"
+                    aspect="auto",
                 )
                 fig.update_layout(
-                    title={"text": title, "x": 0.5, "xanchor": "center", "font": {"size": 16}},
+                    title={
+                        "text": title,
+                        "x": 0.5,
+                        "xanchor": "center",
+                        "font": {"size": 16},
+                    },
                     margin=dict(l=60, r=40, t=60, b=60),
                     xaxis=dict(side="bottom"),
                     yaxis=dict(autorange="reversed"),
-                    coloraxis_colorbar=dict(title="Probability (%)")
+                    coloraxis_colorbar=dict(title="Probability (%)"),
                 )
                 _apply_heatmap_axis_outline(fig)
-                st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG, key=f"inferred_light_{gene_type.lower()}_plot_{i}")
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True,
+                    config=PLOTLY_DISPLAY_CONFIG,
+                    key=f"inferred_light_{gene_type.lower()}_plot_{i}",
+                )
 
     # Add to collector if provided
     if collector is not None:
-        for gene_type, (pivot_df, row_label, col_label, title, caption) in plots_to_render:
+        for gene_type, (
+            pivot_df,
+            row_label,
+            col_label,
+            title,
+            caption,
+        ) in plots_to_render:
             heatmap_export = pivot_df.copy()
             heatmap_export.index.name = row_label
             heatmap_export.columns.name = col_label
             fig = px.imshow(
                 pivot_df,
-                labels=dict(x=col_label, y=row_label, color="Pair Probability (%)"),
+                labels=dict(
+                    x=col_label, y=row_label, color="Pair Probability (%)"
+                ),
                 color_continuous_scale=color_scale,
-                aspect="auto"
+                aspect="auto",
             )
             _apply_heatmap_axis_outline(fig)
             collector.append((
@@ -1599,42 +1882,50 @@ def render_inferred_pairing_plots(
                 heatmap_export.reset_index().melt(
                     id_vars=[row_label],
                     var_name=col_label,
-                    value_name="probability"
-                )
+                    value_name="probability",
+                ),
             ))
 
 
 def render_paired_plots(
     sequences_df: pd.DataFrame,
     search_params: Dict[str, Any],
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
+    collector: Optional[
+        List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]
+    ] = None,
     aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
     spider_mode: str = "per_aa",
 ) -> None:
     """
     Render plots for paired search results.
-    
+
     Args:
         sequences_df: Sequences dataframe
         search_params: Search parameters dictionary
     """
     _sync_gene_group_mode_from_widget()
     col1, col2 = st.columns(2)
-    
+
     aa_distributions = aa_distributions or {}
     with col1:
         icon_heading("heavy", "Heavy Chain", level=4, margin_top=0.5)
         render_heavy_chain_plots(
-            sequences_df, search_params, prefix="heavy_", collector=collector,
+            sequences_df,
+            search_params,
+            prefix="heavy_",
+            collector=collector,
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
             show_gene_group_control=False,
         )
-    
+
     with col2:
         icon_heading("light", "Light Chain", level=4, margin_top=0.5)
         render_light_chain_plots(
-            sequences_df, search_params, prefix="light_", collector=collector,
+            sequences_df,
+            search_params,
+            prefix="light_",
+            collector=collector,
             aa_distributions=aa_distributions,
             spider_mode=spider_mode,
             show_toggle=False,
@@ -1645,17 +1936,20 @@ def render_paired_plots(
 
     # Render V and J gene pairing heatmaps side by side
     col_v, col_j = st.columns(2)
-    
+
     with col_v:
         render_paired_v_gene_heatmap(sequences_df, collector)
-    
+
     with col_j:
         render_paired_j_gene_heatmap(sequences_df, collector)
 
+
 def render_paired_v_gene_heatmap(
     sequences_df: pd.DataFrame,
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
-    max_genes: int = 12
+    collector: Optional[
+        List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]
+    ] = None,
+    max_genes: int = 12,
 ) -> None:
     """
     Render heatmap showing heavy vs light V gene pairing frequencies.
@@ -1669,11 +1963,13 @@ def render_paired_v_gene_heatmap(
         return
 
     heavy_candidates = [
-        col for col in sequences_df.columns
+        col
+        for col in sequences_df.columns
         if "v_call" in col.lower() and "heavy" in col.lower()
     ]
     light_candidates = [
-        col for col in sequences_df.columns
+        col
+        for col in sequences_df.columns
         if "v_call" in col.lower() and "light" in col.lower()
     ]
 
@@ -1691,68 +1987,75 @@ def render_paired_v_gene_heatmap(
     light_top = pairing_df[light_col].value_counts().head(max_genes).index
 
     filtered_df = pairing_df[
-        pairing_df[heavy_col].isin(heavy_top) &
-        pairing_df[light_col].isin(light_top)
+        pairing_df[heavy_col].isin(heavy_top)
+        & pairing_df[light_col].isin(light_top)
     ]
 
     if filtered_df.empty:
         return
 
     heatmap_df = pd.crosstab(
-        filtered_df[heavy_col],
-        filtered_df[light_col]
+        filtered_df[heavy_col], filtered_df[light_col]
     ).astype(int)
 
-    heatmap_df = heatmap_df.reindex(index=heavy_top, columns=light_top, fill_value=0)
+    heatmap_df = heatmap_df.reindex(
+        index=heavy_top, columns=light_top, fill_value=0
+    )
 
-    if (heatmap_df.values.sum() == 0):
+    if heatmap_df.values.sum() == 0:
         return
 
     # Heatmpap VHxVL
     fig = px.imshow(
         heatmap_df,
         labels=dict(x="Light V Gene", y="Heavy V Gene", color="Pair Count"),
-        color_continuous_scale=[(0.0, "#F8F8F8"), (0.5, "#D8DEE9"), (1.0, "#4C6085")],
-        aspect="auto"
+        color_continuous_scale=[
+            (0.0, "#F8F8F8"),
+            (0.5, "#D8DEE9"),
+            (1.0, "#4C6085"),
+        ],
+        aspect="auto",
     )
 
-    fig.update_xaxes(showline=True, linewidth=1, linecolor='black', mirror=True)
-    fig.update_yaxes(showline=True, linewidth=1, linecolor='black', mirror=True)
+    fig.update_xaxes(showline=True, linewidth=1, linecolor="black", mirror=True)
+    fig.update_yaxes(showline=True, linewidth=1, linecolor="black", mirror=True)
 
     fig.update_layout(
         title={
             "text": "V<sub>H</sub> × V<sub>L</sub> Gene Pairing",
             "x": 0.5,
             "xanchor": "center",
-            "font": {"size": 18}
+            "font": {"size": 18},
         },
         margin=dict(l=60, r=60, t=60, b=60),
         xaxis=dict(side="bottom"),
         yaxis=dict(autorange="reversed"),
-        coloraxis_colorbar=dict(title="Pairs")
+        coloraxis_colorbar=dict(title="Pairs"),
     )
-    icon_heading("paired", "Heavy × Light V Gene Pairing", level=4, margin_top=0.5)
+    icon_heading(
+        "paired", "Heavy × Light V Gene Pairing", level=4, margin_top=0.5
+    )
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
     if collector is not None:
         heatmap_melt = heatmap_df.reset_index().melt(
-            id_vars=heavy_col,
-            var_name="light_v_gene",
-            value_name="pair_count"
+            id_vars=heavy_col, var_name="light_v_gene", value_name="pair_count"
         )
         heatmap_melt.rename(columns={heavy_col: "heavy_v_gene"}, inplace=True)
         collector.append((
             "paired_v_gene_heatmap",
             prepare_export_figure(fig),
-            heatmap_melt
+            heatmap_melt,
         ))
 
 
 def render_paired_j_gene_heatmap(
     sequences_df: pd.DataFrame,
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
-    max_genes: int = 12
+    collector: Optional[
+        List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]
+    ] = None,
+    max_genes: int = 12,
 ) -> None:
     """
     Render heatmap showing heavy vs light J gene pairing frequencies.
@@ -1766,11 +2069,13 @@ def render_paired_j_gene_heatmap(
         return
 
     heavy_candidates = [
-        col for col in sequences_df.columns
+        col
+        for col in sequences_df.columns
         if "j_call" in col.lower() and "heavy" in col.lower()
     ]
     light_candidates = [
-        col for col in sequences_df.columns
+        col
+        for col in sequences_df.columns
         if "j_call" in col.lower() and "light" in col.lower()
     ]
 
@@ -1788,60 +2093,65 @@ def render_paired_j_gene_heatmap(
     light_top = pairing_df[light_col].value_counts().head(max_genes).index
 
     filtered_df = pairing_df[
-        pairing_df[heavy_col].isin(heavy_top) &
-        pairing_df[light_col].isin(light_top)
+        pairing_df[heavy_col].isin(heavy_top)
+        & pairing_df[light_col].isin(light_top)
     ]
 
     if filtered_df.empty:
         return
 
     heatmap_df = pd.crosstab(
-        filtered_df[heavy_col],
-        filtered_df[light_col]
+        filtered_df[heavy_col], filtered_df[light_col]
     ).astype(int)
 
-    heatmap_df = heatmap_df.reindex(index=heavy_top, columns=light_top, fill_value=0)
+    heatmap_df = heatmap_df.reindex(
+        index=heavy_top, columns=light_top, fill_value=0
+    )
 
-    if (heatmap_df.values.sum() == 0):
+    if heatmap_df.values.sum() == 0:
         return
 
     fig = px.imshow(
         heatmap_df,
         labels=dict(x="Light J Gene", y="Heavy J Gene", color="Pair Count"),
-        color_continuous_scale=[(0.0, "#F8F8F8"), (0.5, "#F7D5DB"), (1.0, "#CB4154")],
-        aspect="auto"
+        color_continuous_scale=[
+            (0.0, "#F8F8F8"),
+            (0.5, "#F7D5DB"),
+            (1.0, "#CB4154"),
+        ],
+        aspect="auto",
     )
 
-    fig.update_xaxes(showline=True, linewidth=1, linecolor='black', mirror=True)
-    fig.update_yaxes(showline=True, linewidth=1, linecolor='black', mirror=True)
+    fig.update_xaxes(showline=True, linewidth=1, linecolor="black", mirror=True)
+    fig.update_yaxes(showline=True, linewidth=1, linecolor="black", mirror=True)
 
     fig.update_layout(
         title={
             "text": "J<sub>H</sub> × J<sub>L</sub> Gene Pairing",
             "x": 0.5,
             "xanchor": "center",
-            "font": {"size": 18}
+            "font": {"size": 18},
         },
         margin=dict(l=60, r=60, t=60, b=60),
         xaxis=dict(side="bottom"),
         yaxis=dict(autorange="reversed"),
-        coloraxis_colorbar=dict(title="Pairs")
+        coloraxis_colorbar=dict(title="Pairs"),
     )
 
-    icon_heading("paired", "Heavy × Light J Gene Pairing", level=4, margin_top=0.5)
+    icon_heading(
+        "paired", "Heavy × Light J Gene Pairing", level=4, margin_top=0.5
+    )
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
     if collector is not None:
         heatmap_melt = heatmap_df.reset_index().melt(
-            id_vars=heavy_col,
-            var_name="light_j_gene",
-            value_name="pair_count"
+            id_vars=heavy_col, var_name="light_j_gene", value_name="pair_count"
         )
         heatmap_melt.rename(columns={heavy_col: "heavy_j_gene"}, inplace=True)
         collector.append((
             "paired_j_gene_heatmap",
             prepare_export_figure(fig),
-            heatmap_melt
+            heatmap_melt,
         ))
 
 
@@ -1849,14 +2159,16 @@ def render_heavy_chain_plots(
     sequences_df: pd.DataFrame,
     search_params: Dict[str, Any],
     prefix: str = "",
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
+    collector: Optional[
+        List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]
+    ] = None,
     aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
     spider_mode: str = "per_aa",
     show_gene_group_control: bool = True,
 ) -> None:
     """
     Render Heavy chain specific plots.
-    
+
     Args:
         sequences_df: Sequences dataframe
         search_params: Search parameters dictionary
@@ -1865,71 +2177,104 @@ def render_heavy_chain_plots(
     plots_rendered = []
     cdr_plots = []  # Store CDR length plots to display in a row (order: CDR1, CDR2, CDR3)
     gene_plots = []  # Store gene plots to display in a row (order: V, D, J)
-    
+
     # CDR1 Length distribution (always show, but highlight if used in search)
-    cdr1_length_param = search_params.get(f'{prefix}cdr1_length') if prefix else search_params.get('heavy_cdr1_length')
+    cdr1_length_param = (
+        search_params.get(f"{prefix}cdr1_length")
+        if prefix
+        else search_params.get("heavy_cdr1_length")
+    )
     is_cdr1_highlighted = cdr1_length_param is not None
-    
+
     cdr1_length_col = None
     for col in sequences_df.columns:
         if prefix:
             # For paired data, column names are like 'cdr1_length_heavy', not 'heavy_cdr1_length'
-            if prefix == 'heavy_':
-                if col == 'cdr1_length_heavy' or (col.endswith('_heavy') and 'cdr1_length' in col):
+            if prefix == "heavy_":
+                if col == "cdr1_length_heavy" or (
+                    col.endswith("_heavy") and "cdr1_length" in col
+                ):
                     cdr1_length_col = col
                     break
         else:
-            if col == 'cdr1_length' and 'light' not in col.lower():
+            if col == "cdr1_length" and "light" not in col.lower():
                 cdr1_length_col = col
                 break
-    
+
     if cdr1_length_col:
-        cdr_plots.append((sequences_df, cdr1_length_col, "CDRH1 Length", is_cdr1_highlighted))
+        cdr_plots.append((
+            sequences_df,
+            cdr1_length_col,
+            "CDRH1 Length",
+            is_cdr1_highlighted,
+        ))
         plots_rendered.append("cdr1_length")
-    
+
     # CDR2 Length distribution (always show, but highlight if used in search)
-    cdr2_length_param = search_params.get(f'{prefix}cdr2_length') if prefix else search_params.get('heavy_cdr2_length')
+    cdr2_length_param = (
+        search_params.get(f"{prefix}cdr2_length")
+        if prefix
+        else search_params.get("heavy_cdr2_length")
+    )
     is_cdr2_highlighted = cdr2_length_param is not None
-    
+
     cdr2_length_col = None
     for col in sequences_df.columns:
         if prefix:
             # For paired data, column names are like 'cdr2_length_heavy', not 'heavy_cdr2_length'
-            if prefix == 'heavy_':
-                if col == 'cdr2_length_heavy' or (col.endswith('_heavy') and 'cdr2_length' in col):
+            if prefix == "heavy_":
+                if col == "cdr2_length_heavy" or (
+                    col.endswith("_heavy") and "cdr2_length" in col
+                ):
                     cdr2_length_col = col
                     break
         else:
-            if col == 'cdr2_length' and 'light' not in col.lower():
+            if col == "cdr2_length" and "light" not in col.lower():
                 cdr2_length_col = col
                 break
-    
+
     if cdr2_length_col:
-        cdr_plots.append((sequences_df, cdr2_length_col, "CDRH2 Length", is_cdr2_highlighted))
+        cdr_plots.append((
+            sequences_df,
+            cdr2_length_col,
+            "CDRH2 Length",
+            is_cdr2_highlighted,
+        ))
         plots_rendered.append("cdr2_length")
-    
+
     # CDR3 Length distribution (always show, but highlight if used in search)
-    cdr3_length_param = search_params.get(f'{prefix}cdr3_length') if prefix else search_params.get('heavy_cdr3_length')
+    cdr3_length_param = (
+        search_params.get(f"{prefix}cdr3_length")
+        if prefix
+        else search_params.get("heavy_cdr3_length")
+    )
     is_cdr3_highlighted = cdr3_length_param is not None
-    
+
     # Try different column name variations
     cdr3_length_col = None
     for col in sequences_df.columns:
         if prefix:
             # For paired data, column names are like 'cdr3_length_heavy', not 'heavy_cdr3_length'
-            if prefix == 'heavy_':
-                if col == 'cdr3_length_heavy' or (col.endswith('_heavy') and 'cdr3_length' in col):
+            if prefix == "heavy_":
+                if col == "cdr3_length_heavy" or (
+                    col.endswith("_heavy") and "cdr3_length" in col
+                ):
                     cdr3_length_col = col
                     break
         else:
-            if col == 'cdr3_length' and 'light' not in col.lower():
+            if col == "cdr3_length" and "light" not in col.lower():
                 cdr3_length_col = col
                 break
-    
+
     if cdr3_length_col:
-        cdr_plots.append((sequences_df, cdr3_length_col, "CDRH3 Length", is_cdr3_highlighted))
+        cdr_plots.append((
+            sequences_df,
+            cdr3_length_col,
+            "CDRH3 Length",
+            is_cdr3_highlighted,
+        ))
         plots_rendered.append("cdr3_length")
-    
+
     # Display CDR length plots in a row if we have any
     aa_distributions = aa_distributions or {}
     has_spiders = any(
@@ -1949,16 +2294,12 @@ def render_heavy_chain_plots(
                         title,
                         is_highlighted=is_highlighted,
                         chain_type="heavy",
-                        collector=collector
+                        collector=collector,
                     )
                 else:
                     df, col, title = plot_data
                     plot_cdr_length_distribution(
-                        df,
-                        col,
-                        title,
-                        chain_type="heavy",
-                        collector=collector
+                        df, col, title, chain_type="heavy", collector=collector
                     )
         # Toggle directly above spider plots (below histograms); only in Heavy to avoid duplicate key
         if has_spiders:
@@ -1966,12 +2307,18 @@ def render_heavy_chain_plots(
                 st.session_state[SPIDER_PLOT_MODE_KEY] = "per_aa"
             by_property = st.toggle(
                 "Group by property",
-                value=(st.session_state.get(SPIDER_PLOT_MODE_KEY, "per_aa") == "by_property"),
+                value=(
+                    st.session_state.get(SPIDER_PLOT_MODE_KEY, "per_aa")
+                    == "by_property"
+                ),
                 key="cdr_spider_plot_mode_toggle",
             )
             spider_mode = "by_property" if by_property else "per_aa"
             st.session_state[SPIDER_PLOT_MODE_KEY] = spider_mode
-            st.markdown("<div style='margin-top: -0.5rem;'></div>", unsafe_allow_html=True)
+            st.markdown(
+                "<div style='margin-top: -0.5rem;'></div>",
+                unsafe_allow_html=True,
+            )
         for i, plot_data in enumerate(cdr_plots):
             df, col, title = plot_data[:3]
             aa_key = _cdr_length_col_to_aa_key(col, prefix)
@@ -1984,73 +2331,105 @@ def render_heavy_chain_plots(
                         collector=collector,
                         spider_mode=spider_mode,
                     )
-    
+
     # V Gene distribution - always show for Heavy chains to maintain layout
     v_call_col = None
     for col in sequences_df.columns:
         if prefix:
-            if col == f'{prefix}v_call' or (prefix == 'heavy_' and col == 'v_call_heavy'):
+            if col == f"{prefix}v_call" or (
+                prefix == "heavy_" and col == "v_call_heavy"
+            ):
                 v_call_col = col
                 break
         else:
-            if col == 'v_call' and 'light' not in col.lower():
+            if col == "v_call" and "light" not in col.lower():
                 v_call_col = col
                 break
-    
+
     if v_call_col:
         # Check if V gene was used in search
-        v_gene_param = search_params.get(f'{prefix}v') if prefix else search_params.get('heavy_v')
+        v_gene_param = (
+            search_params.get(f"{prefix}v")
+            if prefix
+            else search_params.get("heavy_v")
+        )
         is_v_highlighted = bool(v_gene_param and v_gene_param.strip())
-        gene_plots.append((sequences_df, v_call_col, "IGHV Gene", is_v_highlighted))
+        gene_plots.append((
+            sequences_df,
+            v_call_col,
+            "IGHV Gene",
+            is_v_highlighted,
+        ))
         plots_rendered.append("v_gene")
-    
+
     # D Gene distribution - always show for Heavy chains (no D gene for Light chains)
     if not prefix:  # Only for unpaired Heavy chains
         d_call_col = None
         for col in sequences_df.columns:
-            if col == 'd_call' and 'light' not in col.lower():
+            if col == "d_call" and "light" not in col.lower():
                 d_call_col = col
                 break
-        
+
         if d_call_col:
             # Check if D gene was used in search
-            d_gene_param = search_params.get('heavy_d') if not prefix else None
+            d_gene_param = search_params.get("heavy_d") if not prefix else None
             is_d_highlighted = bool(d_gene_param and d_gene_param.strip())
-            gene_plots.append((sequences_df, d_call_col, "IGHD Gene", is_d_highlighted))
+            gene_plots.append((
+                sequences_df,
+                d_call_col,
+                "IGHD Gene",
+                is_d_highlighted,
+            ))
             plots_rendered.append("d_gene")
-    elif prefix == 'heavy_':  # For paired Heavy chains
+    elif prefix == "heavy_":  # For paired Heavy chains
         d_call_col = None
         for col in sequences_df.columns:
-            if col == 'd_call_heavy':
+            if col == "d_call_heavy":
                 d_call_col = col
                 break
-        
+
         if d_call_col:
             # Check if D gene was used in search
-            d_gene_param = search_params.get('heavy_d')
+            d_gene_param = search_params.get("heavy_d")
             is_d_highlighted = bool(d_gene_param and d_gene_param.strip())
-            gene_plots.append((sequences_df, d_call_col, "IGHD Gene", is_d_highlighted))
+            gene_plots.append((
+                sequences_df,
+                d_call_col,
+                "IGHD Gene",
+                is_d_highlighted,
+            ))
             plots_rendered.append("d_gene")
-    
+
     # J Gene distribution - always show for Heavy chains
     j_call_col = None
     for col in sequences_df.columns:
         if prefix:
-            if col == f'{prefix}j_call' or (prefix == 'heavy_' and col == 'j_call_heavy'):
+            if col == f"{prefix}j_call" or (
+                prefix == "heavy_" and col == "j_call_heavy"
+            ):
                 j_call_col = col
                 break
         else:
-            if col == 'j_call' and 'light' not in col.lower():
+            if col == "j_call" and "light" not in col.lower():
                 j_call_col = col
                 break
-    
+
     if j_call_col:
         # Check if J gene was used in search
-        j_gene_param = search_params.get(f'{prefix}j') if prefix else search_params.get('heavy_j')
+        j_gene_param = (
+            search_params.get(f"{prefix}j")
+            if prefix
+            else search_params.get("heavy_j")
+        )
         is_j_highlighted = bool(j_gene_param and j_gene_param.strip())
-        gene_plots.append((sequences_df, j_call_col, "IGHJ Gene", is_j_highlighted))
+        gene_plots.append((
+            sequences_df,
+            j_call_col,
+            "IGHJ Gene",
+            is_j_highlighted,
+        ))
         plots_rendered.append("j_gene")
-    
+
     # Display gene plots in a row if we have any
     if gene_plots:
         group_mode = _sync_gene_group_mode_from_widget()
@@ -2080,7 +2459,7 @@ def render_heavy_chain_plots(
                     )
         if show_gene_group_control:
             _render_gene_group_control()
-    
+
     if not plots_rendered:
         st.info("No plots available (all filters specified).")
 
@@ -2089,7 +2468,9 @@ def render_light_chain_plots(
     sequences_df: pd.DataFrame,
     search_params: Dict[str, Any],
     prefix: str = "light_",
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
+    collector: Optional[
+        List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]
+    ] = None,
     aa_distributions: Optional[Dict[str, pd.DataFrame]] = None,
     spider_mode: str = "per_aa",
     show_toggle: bool = False,
@@ -2097,7 +2478,7 @@ def render_light_chain_plots(
 ) -> None:
     """
     Render Light chain specific plots.
-    
+
     Args:
         sequences_df: Sequences dataframe
         search_params: Search parameters dictionary
@@ -2106,61 +2487,79 @@ def render_light_chain_plots(
     plots_rendered = []
     cdr_plots = []  # Store CDR length plots to display in a row (order: CDR1, CDR2, CDR3)
     gene_plots = []  # Store gene plots to display in a row (order: V, J - no D gene for Light chains)
-    
+
     # CDR1 Length distribution (if CDR1 length not specified in search)
-    cdr1_length_param = search_params.get(f'{prefix}cdr1_length') if prefix else search_params.get('cdr1_length')
+    cdr1_length_param = (
+        search_params.get(f"{prefix}cdr1_length")
+        if prefix
+        else search_params.get("cdr1_length")
+    )
     if cdr1_length_param is None:
         cdr1_length_col = None
         for col in sequences_df.columns:
             if prefix:
-                if col == f'{prefix}cdr1_length' or (prefix == 'light_' and col == 'cdr1_length_light'):
+                if col == f"{prefix}cdr1_length" or (
+                    prefix == "light_" and col == "cdr1_length_light"
+                ):
                     cdr1_length_col = col
                     break
             else:
-                if col == 'cdr1_length':
+                if col == "cdr1_length":
                     cdr1_length_col = col
                     break
-        
+
         if cdr1_length_col:
             cdr_plots.append((sequences_df, cdr1_length_col, "CDRL1 Length"))
             plots_rendered.append("cdr1_length")
-    
+
     # CDR2 Length distribution (if CDR2 length not specified)
-    cdr2_length_param = search_params.get(f'{prefix}cdr2_length') if prefix else search_params.get('cdr2_length')
+    cdr2_length_param = (
+        search_params.get(f"{prefix}cdr2_length")
+        if prefix
+        else search_params.get("cdr2_length")
+    )
     if cdr2_length_param is None:
         cdr2_length_col = None
         for col in sequences_df.columns:
             if prefix:
-                if col == f'{prefix}cdr2_length' or (prefix == 'light_' and col == 'cdr2_length_light'):
+                if col == f"{prefix}cdr2_length" or (
+                    prefix == "light_" and col == "cdr2_length_light"
+                ):
                     cdr2_length_col = col
                     break
             else:
-                if col == 'cdr2_length':
+                if col == "cdr2_length":
                     cdr2_length_col = col
                     break
-        
+
         if cdr2_length_col:
             cdr_plots.append((sequences_df, cdr2_length_col, "CDRL2 Length"))
             plots_rendered.append("cdr2_length")
-    
+
     # CDR3 Length distribution (if CDR3 length not specified)
-    cdr3_length_param = search_params.get(f'{prefix}cdr3_length') if prefix else search_params.get('cdr3_length')
+    cdr3_length_param = (
+        search_params.get(f"{prefix}cdr3_length")
+        if prefix
+        else search_params.get("cdr3_length")
+    )
     if cdr3_length_param is None:
         cdr3_length_col = None
         for col in sequences_df.columns:
             if prefix:
-                if col == f'{prefix}cdr3_length' or (prefix == 'light_' and col == 'cdr3_length_light'):
+                if col == f"{prefix}cdr3_length" or (
+                    prefix == "light_" and col == "cdr3_length_light"
+                ):
                     cdr3_length_col = col
                     break
             else:
-                if col == 'cdr3_length':
+                if col == "cdr3_length":
                     cdr3_length_col = col
                     break
-        
+
         if cdr3_length_col:
             cdr_plots.append((sequences_df, cdr3_length_col, "CDRL3 Length"))
             plots_rendered.append("cdr3_length")
-    
+
     # Display CDR length plots in a row if we have any
     aa_distributions = aa_distributions or {}
     has_spiders = any(
@@ -2172,11 +2571,7 @@ def render_light_chain_plots(
         for i, (df, col, title) in enumerate(cdr_plots):
             with cols[i]:
                 plot_cdr_length_distribution(
-                    df,
-                    col,
-                    title,
-                    chain_type="light",
-                    collector=collector
+                    df, col, title, chain_type="light", collector=collector
                 )
         # Toggle (unpaired Light) or placeholder (paired, to align with Heavy's toggle)
         if has_spiders:
@@ -2185,20 +2580,30 @@ def render_light_chain_plots(
                     st.session_state[SPIDER_PLOT_MODE_KEY] = "per_aa"
                 by_property = st.toggle(
                     "Group by property",
-                    value=(st.session_state.get(SPIDER_PLOT_MODE_KEY, "per_aa") == "by_property"),
+                    value=(
+                        st.session_state.get(SPIDER_PLOT_MODE_KEY, "per_aa")
+                        == "by_property"
+                    ),
                     key="cdr_spider_plot_mode_toggle",
                 )
                 spider_mode = "by_property" if by_property else "per_aa"
                 st.session_state[SPIDER_PLOT_MODE_KEY] = spider_mode
-                st.markdown("<div style='margin-top: -0.5rem;'></div>", unsafe_allow_html=True)
+                st.markdown(
+                    "<div style='margin-top: -0.5rem;'></div>",
+                    unsafe_allow_html=True,
+                )
             else:
-                st.markdown("<div style='height: 36px;'></div>", unsafe_allow_html=True)
+                st.markdown(
+                    "<div style='height: 36px;'></div>", unsafe_allow_html=True
+                )
             spider_mode = st.session_state.get(SPIDER_PLOT_MODE_KEY, "per_aa")
         for i, (df, col, title) in enumerate(cdr_plots):
             aa_key = _cdr_length_col_to_aa_key(col, prefix)
             if aa_key and aa_key in aa_distributions:
                 if has_spiders:
-                    spider_mode = st.session_state.get(SPIDER_PLOT_MODE_KEY, "per_aa")
+                    spider_mode = st.session_state.get(
+                        SPIDER_PLOT_MODE_KEY, "per_aa"
+                    )
                 with cols[i]:
                     plot_cdr_aa_spider(
                         aa_distributions[aa_key],
@@ -2207,45 +2612,67 @@ def render_light_chain_plots(
                         collector=collector,
                         spider_mode=spider_mode,
                     )
-    
+
     # V Gene distribution - always show for Light chains
     v_call_col = None
     for col in sequences_df.columns:
         if prefix:
-            if col == f'{prefix}v_call' or (prefix == 'light_' and col == 'v_call_light'):
+            if col == f"{prefix}v_call" or (
+                prefix == "light_" and col == "v_call_light"
+            ):
                 v_call_col = col
                 break
         else:
-            if col == 'v_call':
+            if col == "v_call":
                 v_call_col = col
                 break
-    
+
     if v_call_col:
         # Check if V gene was used in search
-        v_gene_param = search_params.get(f'{prefix}v') if prefix else search_params.get('light_v')
+        v_gene_param = (
+            search_params.get(f"{prefix}v")
+            if prefix
+            else search_params.get("light_v")
+        )
         is_v_highlighted = bool(v_gene_param and v_gene_param.strip())
-        gene_plots.append((sequences_df, v_call_col, "IGLV Gene", is_v_highlighted))
+        gene_plots.append((
+            sequences_df,
+            v_call_col,
+            "IGLV Gene",
+            is_v_highlighted,
+        ))
         plots_rendered.append("v_gene")
-    
+
     # J Gene distribution - always show for Light chains
     j_call_col = None
     for col in sequences_df.columns:
         if prefix:
-            if col == f'{prefix}j_call' or (prefix == 'light_' and col == 'j_call_light'):
+            if col == f"{prefix}j_call" or (
+                prefix == "light_" and col == "j_call_light"
+            ):
                 j_call_col = col
                 break
         else:
-            if col == 'j_call':
+            if col == "j_call":
                 j_call_col = col
                 break
-    
+
     if j_call_col:
         # Check if J gene was used in search
-        j_gene_param = search_params.get(f'{prefix}j') if prefix else search_params.get('light_j')
+        j_gene_param = (
+            search_params.get(f"{prefix}j")
+            if prefix
+            else search_params.get("light_j")
+        )
         is_j_highlighted = bool(j_gene_param and j_gene_param.strip())
-        gene_plots.append((sequences_df, j_call_col, "IGLJ Gene", is_j_highlighted))
+        gene_plots.append((
+            sequences_df,
+            j_call_col,
+            "IGLJ Gene",
+            is_j_highlighted,
+        ))
         plots_rendered.append("j_gene")
-    
+
     # Display gene plots in a row if we have any
     if gene_plots:
         group_mode = _sync_gene_group_mode_from_widget()
@@ -2275,7 +2702,7 @@ def render_light_chain_plots(
                     )
         if show_gene_group_control:
             _render_gene_group_control()
-    
+
     if not plots_rendered:
         st.info("No plots available (all filters specified).")
 
@@ -2310,8 +2737,14 @@ def _aggregate_aa_by_property(aa_df: pd.DataFrame) -> pd.DataFrame:
     if "percent" not in aa_df.columns and "cnt" in aa_df.columns:
         total = aa_df["cnt"].sum()
         aa_df = aa_df.copy()
-        aa_df["percent"] = (aa_df["cnt"] / total * 100).round(2) if total > 0 else 0.0
-    pct_map = aa_df.set_index("aa")["percent"].to_dict() if "percent" in aa_df.columns else {}
+        aa_df["percent"] = (
+            (aa_df["cnt"] / total * 100).round(2) if total > 0 else 0.0
+        )
+    pct_map = (
+        aa_df.set_index("aa")["percent"].to_dict()
+        if "percent" in aa_df.columns
+        else {}
+    )
     rows = []
     for group_name, aas in _AA_PROPERTY_GROUPS.items():
         pct = sum(float(pct_map.get(a, 0)) for a in aas)
@@ -2323,7 +2756,9 @@ def plot_cdr_aa_spider(
     aa_df: pd.DataFrame,
     title: str,
     chain_type: str = "heavy",
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
+    collector: Optional[
+        List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]
+    ] = None,
     spider_mode: str = "per_aa",
 ) -> None:
     """
@@ -2336,7 +2771,9 @@ def plot_cdr_aa_spider(
     if "percent" not in aa_df.columns and "cnt" in aa_df.columns:
         total = aa_df["cnt"].sum()
         aa_df = aa_df.copy()
-        aa_df["percent"] = (aa_df["cnt"] / total * 100).round(2) if total > 0 else 0.0
+        aa_df["percent"] = (
+            (aa_df["cnt"] / total * 100).round(2) if total > 0 else 0.0
+        )
     if "percent" not in aa_df.columns:
         return
 
@@ -2351,12 +2788,14 @@ def plot_cdr_aa_spider(
         pct_map = aa_df.set_index("aa")["percent"].to_dict()
         theta = list(_CDR_AA_VALID)
         r = [float(pct_map.get(a, 0)) for a in theta]
-    fig = go.Figure(data=go.Scatterpolar(
-        r=r,
-        theta=theta,
-        fill="toself",
-        name=title,
-    ))
+    fig = go.Figure(
+        data=go.Scatterpolar(
+            r=r,
+            theta=theta,
+            fill="toself",
+            name=title,
+        )
+    )
     if chain_type == "light":
         color = "#CB4154"
     else:
@@ -2376,7 +2815,11 @@ def plot_cdr_aa_spider(
     )
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
     if collector is not None:
-        collector.append((f"aa_spider_{title.replace(' ', '_')}", prepare_export_figure(fig), aa_df.copy()))
+        collector.append((
+            f"aa_spider_{title.replace(' ', '_')}",
+            prepare_export_figure(fig),
+            aa_df.copy(),
+        ))
 
 
 def plot_cdr_length_distribution(
@@ -2385,11 +2828,13 @@ def plot_cdr_length_distribution(
     title: str,
     is_highlighted: bool = False,
     chain_type: str = "heavy",
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None
+    collector: Optional[
+        List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]
+    ] = None,
 ) -> None:
     """
     Plot CDR length distribution as a bar chart with each length as a separate bar.
-    
+
     Args:
         df: Dataframe with sequences
         column: Column name containing CDR length
@@ -2398,26 +2843,22 @@ def plot_cdr_length_distribution(
     """
     if column not in df.columns:
         return
-    
+
     # Filter out NaN values
     lengths = df[column].dropna()
-    
+
     if len(lengths) == 0:
         return
-    
+
     # Count occurrences of each length (each length gets its own bar)
     length_counts = lengths.value_counts().sort_index()
-    
+
     # Prepare title with highlighting
     display_title = f"{title}" if is_highlighted else title
-    title_config = {
-        'text': display_title,
-        'x': 0.5,
-        'xanchor': 'center'
-    }
+    title_config = {"text": display_title, "x": 0.5, "xanchor": "center"}
     if is_highlighted:
-        title_config['font'] = {'color': '#B4DCEA', 'size': 16}
-    
+        title_config["font"] = {"color": "#B4DCEA", "size": 16}
+
     if chain_type == "light":
         color_scale = [
             (0.0, "#FFFFFF"),
@@ -2436,21 +2877,23 @@ def plot_cdr_length_distribution(
         x=length_counts.index,
         y=length_counts.values,
         title=display_title,
-        labels={'x': 'Length (amino acids)', 'y': 'Frequency'},
+        labels={"x": "Length (amino acids)", "y": "Frequency"},
         color=length_counts.values,
-        color_continuous_scale=color_scale
+        color_continuous_scale=color_scale,
     )
-    
+
     fig.update_layout(
         height=300,
         showlegend=False,
         margin=dict(l=60, r=30, t=60, b=70),
-        xaxis={'type': 'category'},  # Ensure discrete x-axis (each length is separate)
+        xaxis={
+            "type": "category"
+        },  # Ensure discrete x-axis (each length is separate)
         title=title_config,
         xaxis_title="Length (amino acids)",
-        yaxis_title="Frequency"
+        yaxis_title="Frequency",
     )
-    
+
     fig.update_coloraxes(colorscale=color_scale, showscale=False)
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
@@ -2459,7 +2902,11 @@ def plot_cdr_length_distribution(
         export_df = length_counts.reset_index()
         export_df.columns = ["cdr_length", "count"]
         export_df["chain_type"] = chain_type
-        collector.append((f"{chain_type}_{title}", prepare_export_figure(fig), export_df.copy()))
+        collector.append((
+            f"{chain_type}_{title}",
+            prepare_export_figure(fig),
+            export_df.copy(),
+        ))
 
 
 def plot_gene_distribution(
@@ -2469,12 +2916,14 @@ def plot_gene_distribution(
     max_genes: int = 15,
     is_highlighted: bool = False,
     chain_type: str = "heavy",
-    collector: Optional[List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]] = None,
+    collector: Optional[
+        List[Tuple[str, go.Figure, Optional[pd.DataFrame]]]
+    ] = None,
     group_mode: str = "allele",
 ) -> None:
     """
     Plot gene distribution as a bar chart (top N genes).
-    
+
     Args:
         df: Dataframe with sequences
         column: Column name containing gene calls
@@ -2485,29 +2934,30 @@ def plot_gene_distribution(
     """
     if column not in df.columns:
         return
-    
+
     # Get gene counts (optionally aggregated by subfamily/family)
     if group_mode in ("subfamily", "family"):
-        grouped = df[column].map(lambda g: _map_gene_to_group_label(g, group_mode))
+        grouped = df[column].map(
+            lambda g: _map_gene_to_group_label(g, group_mode)
+        )
         gene_counts = grouped.value_counts().head(max_genes)
         y_label = "Subfamily" if group_mode == "subfamily" else "Family"
     else:
         gene_counts = df[column].value_counts().head(max_genes)
         y_label = "Gene"
-    
+
     if len(gene_counts) == 0:
         return
-    
+
     # Prepare title with highlighting
     display_title = f"{title}" if is_highlighted else title
-    title_config = {
-        'text': display_title,
-        'x': 0.5,
-        'xanchor': 'center'
-    }
+    title_config = {"text": display_title, "x": 0.5, "xanchor": "center"}
     if is_highlighted:
-        title_config['font'] = {'color': '#B4DCEA', 'size': 16}  # Orange-red color for highlighting
-    
+        title_config["font"] = {
+            "color": "#B4DCEA",
+            "size": 16,
+        }  # Orange-red color for highlighting
+
     if chain_type == "light":
         color_scale = [
             (0.0, "#FFFFFF"),
@@ -2530,24 +2980,24 @@ def plot_gene_distribution(
     fig = px.bar(
         x=gene_counts.values,
         y=gene_counts.index,
-        orientation='h',
+        orientation="h",
         title=display_title,
-        labels={'x': 'Count', 'y': y_label},
+        labels={"x": "Count", "y": y_label},
         color=gene_counts.values,
         color_continuous_scale=color_scale,
         range_color=[0, color_range_max],
     )
-    
+
     fig.update_layout(
         height=400,  # Fixed height for consistent display across all gene plots
         showlegend=False,
         margin=dict(l=120, r=40, t=60, b=70),
-        yaxis={'categoryorder': 'total ascending'},
+        yaxis={"categoryorder": "total ascending"},
         title=title_config,
         xaxis_title="Count",
-        yaxis_title=y_label
+        yaxis_title=y_label,
     )
-    
+
     fig.update_coloraxes(
         colorscale=color_scale,
         showscale=False,
@@ -2562,7 +3012,11 @@ def plot_gene_distribution(
         export_df.columns = [y_label.lower(), "count"]
         export_df["chain_type"] = chain_type
         export_df["group_mode"] = group_mode
-        collector.append((f"{chain_type}_{title}", prepare_export_figure(fig), export_df.copy()))
+        collector.append((
+            f"{chain_type}_{title}",
+            prepare_export_figure(fig),
+            export_df.copy(),
+        ))
 
 
 # --- Donor precursor-frequency boxplot (publication-style axis + site box styling) ---
@@ -2615,14 +3069,18 @@ def prepare_donor_plot_data(
     else:
         filtered = df.copy()
 
-    n_zero_in_pool = int((filtered["hits"] == 0).sum()) if "hits" in filtered.columns else 0
+    n_zero_in_pool = (
+        int((filtered["hits"] == 0).sum()) if "hits" in filtered.columns else 0
+    )
 
     if not include_zero_hit_donors and "hits" in filtered.columns:
         filtered = filtered[filtered["hits"] > 0].copy()
 
     filtered["hits_per_million"] = np.where(
         filtered["total_sequences"] > 0,
-        filtered["hits"].astype(float) / filtered["total_sequences"].astype(float) * 1e6,
+        filtered["hits"].astype(float)
+        / filtered["total_sequences"].astype(float)
+        * 1e6,
         np.nan,
     )
 
@@ -2632,19 +3090,27 @@ def prepare_donor_plot_data(
     log_vals[positive] = np.log10(hpm[positive])
     filtered["orig_log10_hits"] = log_vals
     filtered["is_binned"] = log_vals <= DONOR_HPM_BIN_VALUE
-    filtered["log10_hits"] = np.where(filtered["is_binned"], DONOR_HPM_BIN_VALUE, log_vals)
+    filtered["log10_hits"] = np.where(
+        filtered["is_binned"], DONOR_HPM_BIN_VALUE, log_vals
+    )
 
     meta = {
         "overall_frequency": overall_frequency,
         "required_sequences": required_sequences,
         "apply_sequence_threshold": apply_sequence_threshold,
         "n_input": len(df),
-        "n_after_threshold": int((df["total_sequences"] >= required_sequences).sum()),
+        "n_after_threshold": int(
+            (df["total_sequences"] >= required_sequences).sum()
+        ),
         "n_plotted": len(filtered),
-        "n_zero_hit_included": int((filtered["hits"] == 0).sum()) if "hits" in filtered.columns else 0,
+        "n_zero_hit_included": int((filtered["hits"] == 0).sum())
+        if "hits" in filtered.columns
+        else 0,
         "n_zero_hit_above_threshold": n_zero_in_pool,
         "include_zero_hit_donors": include_zero_hit_donors,
-        "n_binned_le_0_01": int(filtered["is_binned"].sum()) if len(filtered) else 0,
+        "n_binned_le_0_01": int(filtered["is_binned"].sum())
+        if len(filtered)
+        else 0,
         "bin_label": DONOR_HPM_BIN_LABEL,
         "bin_value": DONOR_HPM_BIN_VALUE,
         "y_range": DONOR_HPM_DEFAULT_Y_RANGE,
@@ -2671,7 +3137,11 @@ def compute_donor_plot_summary_stats(
         return pd.DataFrame(columns=["Metric", "Value"])
 
     n = len(filtered_df)
-    n_zero = int((filtered_df["hits"] == 0).sum()) if "hits" in filtered_df.columns else 0
+    n_zero = (
+        int((filtered_df["hits"] == 0).sum())
+        if "hits" in filtered_df.columns
+        else 0
+    )
     zero_pct = (100.0 * n_zero / n) if n else 0.0
     threshold = meta.get("required_sequences", float("nan"))
     include_zeros = meta.get("include_zero_hit_donors", True)
@@ -2719,7 +3189,7 @@ def _donor_hpm_tick_label(log_val: float) -> str:
     if ival == 0:
         return "1"
     if ival > 0:
-        return f"{10 ** ival:,}"
+        return f"{10**ival:,}"
     return ""
 
 
@@ -2751,7 +3221,9 @@ def build_donor_hits_figure(
         return None
 
     y_values = filtered_df["log10_hits"].astype(float)
-    donor_labels = filtered_df.get("subject", pd.Series(index=filtered_df.index, dtype=str)).fillna("Unknown")
+    donor_labels = filtered_df.get(
+        "subject", pd.Series(index=filtered_df.index, dtype=str)
+    ).fillna("Unknown")
     hpm = filtered_df["hits_per_million"].astype(float)
 
     required = meta.get("required_sequences", 0)
@@ -2760,7 +3232,9 @@ def build_donor_hits_figure(
     else:
         y_axis_range = DONOR_HPM_DEFAULT_Y_RANGE
     upper = int(y_axis_range[1])
-    yticks = [DONOR_HPM_BIN_VALUE] + list(range(int(DONOR_HPM_BIN_VALUE) + 1, upper + 1))
+    yticks = [DONOR_HPM_BIN_VALUE] + list(
+        range(int(DONOR_HPM_BIN_VALUE) + 1, upper + 1)
+    )
     ticktext = [_donor_hpm_tick_label(v) for v in yticks]
 
     if title is None:
@@ -2771,11 +3245,11 @@ def build_donor_hits_figure(
 
     # Match heavy/light plot palette used elsewhere (gene bars, spiders)
     if (chain_type or "Heavy").lower() == "light":
-        marker_color = "rgb(203, 65, 84)"       # #CB4154
+        marker_color = "rgb(203, 65, 84)"  # #CB4154
         line_color = "rgba(203, 65, 84, 0.5)"
         fill_color = "rgba(203, 65, 84, 0.2)"
     else:
-        marker_color = "rgb(76, 96, 133)"       # #4C6085
+        marker_color = "rgb(76, 96, 133)"  # #4C6085
         line_color = "rgba(76, 96, 133, 0.5)"
         fill_color = "rgba(76, 96, 133, 0.2)"
 
@@ -2795,12 +3269,10 @@ def build_donor_hits_figure(
             ),
             line=dict(color=line_color, width=1),
             fillcolor=fill_color,
-            customdata=np.column_stack(
-                [
-                    donor_labels.to_numpy(),
-                    hpm.to_numpy(),
-                ]
-            ),
+            customdata=np.column_stack([
+                donor_labels.to_numpy(),
+                hpm.to_numpy(),
+            ]),
             hovertemplate=(
                 "Subject: %{customdata[0]}<br>"
                 "Hits/Million: %{customdata[1]:,.4g}<extra></extra>"
@@ -2885,7 +3357,10 @@ def render_subject_hits_boxplot(
             "total": "total_sequences",
         }
         for source, target in column_aliases.items():
-            if source in working_df.columns and target not in working_df.columns:
+            if (
+                source in working_df.columns
+                and target not in working_df.columns
+            ):
                 working_df[target] = working_df[source]
 
         required_columns = {"total_sequences", "hits"}
@@ -2929,7 +3404,8 @@ def render_subject_hits_boxplot(
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
     export_cols = [
-        c for c in [
+        c
+        for c in [
             "subject",
             "total_sequences",
             "hits",
@@ -2941,12 +3417,14 @@ def render_subject_hits_boxplot(
     ]
     export_df = filtered_df[export_cols].copy()
     if "hits_per_million" in export_df.columns:
-        export_df["hits_per_million_millions"] = export_df["hits_per_million"] / 1_000_000
+        export_df["hits_per_million_millions"] = (
+            export_df["hits_per_million"] / 1_000_000
+        )
 
     st.session_state["latest_subject_hits_plot"] = (
         "donor_per_million_hits",
         prepare_export_figure(fig),
-        export_df
+        export_df,
     )
 
 
@@ -2954,7 +3432,7 @@ def build_search_metadata(
     search_params: Dict[str, Any],
     statistics: Dict[str, Any],
     is_paired: bool,
-    include_raw_data: bool
+    include_raw_data: bool,
 ) -> Dict[str, Any]:
     """
     Build metadata dictionary describing the current search for inclusion in downloads.
@@ -2984,7 +3462,7 @@ def create_plots_zip(
     plots: List[Tuple[str, go.Figure, Optional[pd.DataFrame]]],
     metadata: Dict[str, Any],
     include_raw_data: bool = False,
-    progress_callback: Optional[Callable[[float], None]] = None
+    progress_callback: Optional[Callable[[float], None]] = None,
 ) -> bytes:
     """
     Create an in-memory ZIP archive containing PNG exports of the provided Plotly figures.
@@ -3007,7 +3485,8 @@ def create_plots_zip(
     raw_entries = 0
     if include_raw_data:
         raw_entries = sum(
-            1 for _, _, data in plots
+            1
+            for _, _, data in plots
             if isinstance(data, (pd.DataFrame, pd.Series)) or data is not None
         )
 
@@ -3059,10 +3538,7 @@ def create_plots_zip(
         metadata["plots"] = plot_entries
         metadata["includes_raw_plotting_data"] = include_raw_data
         metadata_bytes = json.dumps(
-            metadata,
-            indent=2,
-            sort_keys=True,
-            default=_json_default
+            metadata, indent=2, sort_keys=True, default=_json_default
         ).encode("utf-8")
         zf.writestr("search_parameters.json", metadata_bytes)
         current_step += 1
@@ -3090,6 +3566,7 @@ def _sanitize_plot_filename(title: str, index: int) -> str:
     normalized = normalized.strip("_") or f"plot_{index:02d}"
     return f"{index:02d}_{normalized}.png"
 
+
 def prepare_export_figure(fig: go.Figure) -> go.Figure:
     """
     Create a styled copy of the provided Plotly figure for downloads.
@@ -3113,7 +3590,7 @@ def prepare_export_figure(fig: go.Figure) -> go.Figure:
         xanchor="right",
         yanchor="bottom",
         showarrow=False,
-        font=dict(color="#cccccc", size=11)
+        font=dict(color="#cccccc", size=11),
     )
     return export_fig
 
@@ -3128,5 +3605,3 @@ def _json_default(value: Any) -> Any:
         return str(value)
     except Exception:
         return repr(value)
-
-

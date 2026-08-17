@@ -2,10 +2,10 @@
 IgBLAST test page: input heavy and/or light chain **nucleotide** sequence(s),
 run igblastn with V, D, J germline DBs, and display V(D)J gene assignments.
 """
+
 import streamlit as st
 
 from components.igblast_utils import (
-    is_igblast_available,
     run_heavy_chain_vdj,
     run_light_chain_vj,
 )
@@ -65,7 +65,9 @@ if st.button("Run IgBLAST", type="primary"):
         st.session_state.igblast_input_heavy = None
 
     if run_light:
-        with st.spinner("Running IgBLAST for light chain (V, J; kappa vs lambda)..."):
+        with st.spinner(
+            "Running IgBLAST for light chain (V, J; kappa vs lambda)..."
+        ):
             seq_l = light_seq.strip()
             res_l, err_l = run_light_chain_vj(seq_l)
             st.session_state.igblast_light = (res_l, err_l)
@@ -79,6 +81,7 @@ if st.button("Run IgBLAST", type="primary"):
 # Show last results
 results_heavy = st.session_state.igblast_heavy
 results_light = st.session_state.igblast_light
+
 
 def _esc(s: str) -> str:
     """Escape * for Markdown."""
@@ -103,7 +106,9 @@ def _gene_hit_label(row) -> str:
     return gene or "—"
 
 
-def _render_gene_hits_with_checkboxes(g: dict | None, chain_key: str, gene_type: str, max_hits: int = 3) -> None:
+def _render_gene_hits_with_checkboxes(
+    g: dict | None, chain_key: str, gene_type: str, max_hits: int = 3
+) -> None:
     """Render up to max_hits germline hits as checkboxes (label = gene (identity%, bit_score)), all checked by default."""
     if g is None or g.get("df") is None or g["df"].empty:
         st.markdown("—")
@@ -115,7 +120,9 @@ def _render_gene_hits_with_checkboxes(g: dict | None, chain_key: str, gene_type:
         st.checkbox(label=label, value=True, key=key)
 
 
-def _render_cdr_in_column(cdr: dict, name: str, chain_key: str, cdr_key: str) -> None:
+def _render_cdr_in_column(
+    cdr: dict, name: str, chain_key: str, cdr_key: str
+) -> None:
     """Render one CDR in column: checkboxes next to Motif and Length (both checked by default)."""
     if not cdr:
         st.markdown("—")
@@ -154,9 +161,15 @@ def _render_cdr_info_expander(cdr: dict) -> None:
             nt = (info.get("nt") or "").strip()
             start = info.get("start")
             end = info.get("end")
-            pos = f" [{start}–{end}]" if start is not None and end is not None else ""
+            pos = (
+                f" [{start}–{end}]"
+                if start is not None and end is not None
+                else ""
+            )
             st.markdown(f"**{name}**")
-            st.markdown(f"Motif: {_esc(aa) if aa else '—'}  \nLength: {len(aa) if aa else 0} aa")
+            st.markdown(
+                f"Motif: {_esc(aa) if aa else '—'}  \nLength: {len(aa) if aa else 0} aa"
+            )
             if nt:
                 st.caption(f"NT: `{nt}`{pos}")
             st.markdown("")
@@ -209,7 +222,7 @@ def _gene_for_search(gene_str: str | None, chain: str) -> str:
     s = gene_str.strip()
     for prefix in ("IGHV", "IGHD", "IGHJ", "IGLV", "IGLJ", "IGKV", "IGKJ"):
         if s.upper().startswith(prefix):
-            return s[len(prefix):].strip() or s
+            return s[len(prefix) :].strip() or s
     return s
 
 
@@ -229,7 +242,13 @@ def _genes_for_search(g: dict | None, chain: str) -> str:
     return ",".join(out)
 
 
-def _checked_genes_for_search(g: dict | None, chain: str, chain_key: str, gene_type: str, max_hits: int = 3) -> str:
+def _checked_genes_for_search(
+    g: dict | None,
+    chain: str,
+    chain_key: str,
+    gene_type: str,
+    max_hits: int = 3,
+) -> str:
     """Comma-separated list of genes that have their checkbox checked (by index)."""
     if g is None or g.get("df") is None or g["df"].empty:
         return ""
@@ -237,7 +256,9 @@ def _checked_genes_for_search(g: dict | None, chain: str, chain_key: str, gene_t
     parts = []
     seen = set()
     for i, (_, row) in enumerate(df.iterrows()):
-        if not st.session_state.get(f"igblast_cb_{chain_key}_{gene_type}_{i}", True):
+        if not st.session_state.get(
+            f"igblast_cb_{chain_key}_{gene_type}_{i}", True
+        ):
             continue
         gene_full = str(row.get("subject id", ""))
         gene = _gene_for_search(gene_full, chain)
@@ -247,16 +268,24 @@ def _checked_genes_for_search(g: dict | None, chain: str, chain_key: str, gene_t
     return ",".join(parts)
 
 
-def _checked_cdr_len(cdr: dict, name: str, chain_key: str, cdr_key: str) -> str | None:
+def _checked_cdr_len(
+    cdr: dict, name: str, chain_key: str, cdr_key: str
+) -> str | None:
     """Return CDR length string if the length checkbox is checked, else None."""
-    if not st.session_state.get(f"igblast_cb_{chain_key}_{cdr_key}_length", True):
+    if not st.session_state.get(
+        f"igblast_cb_{chain_key}_{cdr_key}_length", True
+    ):
         return None
     return _cdr_len(cdr, name)
 
 
-def _checked_cdr_motif(cdr: dict, name: str, chain_key: str, cdr_key: str) -> str:
+def _checked_cdr_motif(
+    cdr: dict, name: str, chain_key: str, cdr_key: str
+) -> str:
     """Return CDR motif if the motif checkbox is checked, else ''."""
-    if not st.session_state.get(f"igblast_cb_{chain_key}_{cdr_key}_motif", True):
+    if not st.session_state.get(
+        f"igblast_cb_{chain_key}_{cdr_key}_motif", True
+    ):
         return ""
     return _cdr_motif(cdr, name)
 
@@ -287,10 +316,16 @@ def _cdr_motif(cdr: dict, name: str) -> str:
     return f"*{aa}*"
 
 
-def _build_igblast_prefill(mode: str, res_h: dict | None, res_l: dict | None) -> dict:
+def _build_igblast_prefill(
+    mode: str, res_h: dict | None, res_l: dict | None
+) -> dict:
     """Build search_prefill_from_igblast from checked boxes only. mode: unpaired_heavy | unpaired_light | paired | dual_unpaired."""
     heavy = None
-    if res_h and (res_h.get("V", {}).get("gene") or res_h.get("D", {}).get("gene") or res_h.get("J", {}).get("gene")):
+    if res_h and (
+        res_h.get("V", {}).get("gene")
+        or res_h.get("D", {}).get("gene")
+        or res_h.get("J", {}).get("gene")
+    ):
         v = res_h.get("V") or {}
         d = res_h.get("D") or {}
         j = res_h.get("J") or {}
@@ -307,7 +342,9 @@ def _build_igblast_prefill(mode: str, res_h: dict | None, res_l: dict | None) ->
             "cdr3_motif": _checked_cdr_motif(cdr, "CDR3", "heavy", "cdr3"),
         }
     light = None
-    if res_l and (res_l.get("V", {}).get("gene") or res_l.get("J", {}).get("gene")):
+    if res_l and (
+        res_l.get("V", {}).get("gene") or res_l.get("J", {}).get("gene")
+    ):
         v = res_l.get("V") or {}
         j = res_l.get("J") or {}
         cdr = res_l.get("cdr") or {}
@@ -332,13 +369,20 @@ if results_heavy is not None or results_light is not None:
         results_heavy is not None
         and not results_heavy[1]
         and results_heavy[0]
-        and (results_heavy[0].get("V", {}).get("gene") or results_heavy[0].get("D", {}).get("gene") or results_heavy[0].get("J", {}).get("gene"))
+        and (
+            results_heavy[0].get("V", {}).get("gene")
+            or results_heavy[0].get("D", {}).get("gene")
+            or results_heavy[0].get("J", {}).get("gene")
+        )
     )
     has_light = (
         results_light is not None
         and not results_light[1]
         and results_light[0]
-        and (results_light[0].get("V", {}).get("gene") or results_light[0].get("J", {}).get("gene"))
+        and (
+            results_light[0].get("V", {}).get("gene")
+            or results_light[0].get("J", {}).get("gene")
+        )
     )
 
     if has_heavy or has_light:
@@ -346,28 +390,52 @@ if results_heavy is not None or results_light is not None:
         prefill_btns = st.columns([1, 1, 1])
         with prefill_btns[0]:
             if has_heavy and not has_light:
-                if st.button("Use in Database search (unpaired heavy)", type="secondary", width="content"):
-                    st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
-                        "unpaired_heavy", results_heavy[0], None
+                if st.button(
+                    "Use in Database search (unpaired heavy)",
+                    type="secondary",
+                    width="content",
+                ):
+                    st.session_state["search_prefill_from_igblast"] = (
+                        _build_igblast_prefill(
+                            "unpaired_heavy", results_heavy[0], None
+                        )
                     )
                     st.switch_page("pages/search.py")
             elif has_light and not has_heavy:
-                if st.button("Use in Database search (unpaired light)", type="secondary", width="content"):
-                    st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
-                        "unpaired_light", None, results_light[0]
+                if st.button(
+                    "Use in Database search (unpaired light)",
+                    type="secondary",
+                    width="content",
+                ):
+                    st.session_state["search_prefill_from_igblast"] = (
+                        _build_igblast_prefill(
+                            "unpaired_light", None, results_light[0]
+                        )
                     )
                     st.switch_page("pages/search.py")
             elif has_heavy and has_light:
-                if st.button("Use in Database search (paired)", type="secondary", width="content"):
-                    st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
-                        "paired", results_heavy[0], results_light[0]
+                if st.button(
+                    "Use in Database search (paired)",
+                    type="secondary",
+                    width="content",
+                ):
+                    st.session_state["search_prefill_from_igblast"] = (
+                        _build_igblast_prefill(
+                            "paired", results_heavy[0], results_light[0]
+                        )
                     )
                     st.switch_page("pages/search.py")
         with prefill_btns[1]:
             if has_heavy and has_light:
-                if st.button("Use in Database search (dual unpaired)", type="secondary", width="content"):
-                    st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
-                        "dual_unpaired", results_heavy[0], results_light[0]
+                if st.button(
+                    "Use in Database search (dual unpaired)",
+                    type="secondary",
+                    width="content",
+                ):
+                    st.session_state["search_prefill_from_igblast"] = (
+                        _build_igblast_prefill(
+                            "dual_unpaired", results_heavy[0], results_light[0]
+                        )
                     )
                     st.switch_page("pages/search.py")
         st.info("You may have to adjust gen names for the database search.")
@@ -396,7 +464,11 @@ if results_heavy is not None or results_light is not None:
             if input_heavy:
                 with st.expander("**Input sequence**", expanded=False):
                     st.text(input_heavy)
-            for key, label in [("V", "V gene"), ("D", "D gene"), ("J", "J gene")]:
+            for key, label in [
+                ("V", "V gene"),
+                ("D", "D gene"),
+                ("J", "J gene"),
+            ]:
                 g = res_h.get(key)
                 if g and g.get("df") is not None and not g["df"].empty:
                     with st.expander(f"Top germline hits — {label}"):

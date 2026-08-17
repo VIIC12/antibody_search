@@ -5,8 +5,8 @@ with -germline_db_V, -germline_db_D, -germline_db_J for integrated V(D)J assignm
 For light chain, -germline_db_D is required by igblastn even though light has no D gene;
 we pass IGHD_clean. Light chain runs twice (kappa and lambda) and picks the best score.
 """
+
 import os
-import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -19,7 +19,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # IgBLAST root: use ABHUNTER_IGBLAST_PATH if set (e.g. export ABHUNTER_IGBLAST_PATH="/path/to/igblast"), else project igblast/
 _igblast_path = os.getenv("ABHUNTER_IGBLAST_PATH")
-IGBLAST_ROOT = Path(_igblast_path).resolve() if _igblast_path else (PROJECT_ROOT / "igblast")
+IGBLAST_ROOT = (
+    Path(_igblast_path).resolve()
+    if _igblast_path
+    else (PROJECT_ROOT / "igblast")
+)
 IGBLAST_BIN = IGBLAST_ROOT / "bin"
 IGBLAST_DB_BASE = "database/Homo_sapiens_clean/IG_dna"
 
@@ -54,7 +58,9 @@ def normalize_nt_sequence(raw: str) -> str:
     return "".join(raw.upper().split())
 
 
-def validate_nt_sequence(seq: str, allow_unknown: bool = True) -> tuple[bool, str]:
+def validate_nt_sequence(
+    seq: str, allow_unknown: bool = True
+) -> tuple[bool, str]:
     """Check that string looks like a nucleotide sequence. Returns (is_valid, error_message)."""
     seq = normalize_nt_sequence(seq)
     if not seq:
@@ -62,30 +68,84 @@ def validate_nt_sequence(seq: str, allow_unknown: bool = True) -> tuple[bool, st
     allowed = VALID_NT_EXTENDED if allow_unknown else VALID_NT
     invalid = [c for c in seq if c not in allowed]
     if invalid:
-        return False, f"Invalid character(s): {', '.join(sorted(set(invalid)))}. Use A, C, G, T (and N if unknown)."
+        return (
+            False,
+            f"Invalid character(s): {', '.join(sorted(set(invalid)))}. Use A, C, G, T (and N if unknown).",
+        )
     if len(seq) < 60:
-        return False, "Sequence is very short; V region is typically at least ~270 nt."
+        return (
+            False,
+            "Sequence is very short; V region is typically at least ~270 nt.",
+        )
     return True, ""
 
 
 # Standard genetic code (DNA) for translating CDR sequences
 _CODON_TABLE = {
-    "TTT": "F", "TTC": "F", "TTA": "L", "TTG": "L",
-    "TCT": "S", "TCC": "S", "TCA": "S", "TCG": "S",
-    "TAT": "Y", "TAC": "Y", "TAA": "*", "TAG": "*",
-    "TGT": "C", "TGC": "C", "TGA": "*", "TGG": "W",
-    "CTT": "L", "CTC": "L", "CTA": "L", "CTG": "L",
-    "CCT": "P", "CCC": "P", "CCA": "P", "CCG": "P",
-    "CAT": "H", "CAC": "H", "CAA": "Q", "CAG": "Q",
-    "CGT": "R", "CGC": "R", "CGA": "R", "CGG": "R",
-    "ATT": "I", "ATC": "I", "ATA": "I", "ATG": "M",
-    "ACT": "T", "ACC": "T", "ACA": "T", "ACG": "T",
-    "AAT": "N", "AAC": "N", "AAA": "K", "AAG": "K",
-    "AGT": "S", "AGC": "S", "AGA": "R", "AGG": "R",
-    "GTT": "V", "GTC": "V", "GTA": "V", "GTG": "V",
-    "GCT": "A", "GCC": "A", "GCA": "A", "GCG": "A",
-    "GAT": "D", "GAC": "D", "GAA": "E", "GAG": "E",
-    "GGT": "G", "GGC": "G", "GGA": "G", "GGG": "G",
+    "TTT": "F",
+    "TTC": "F",
+    "TTA": "L",
+    "TTG": "L",
+    "TCT": "S",
+    "TCC": "S",
+    "TCA": "S",
+    "TCG": "S",
+    "TAT": "Y",
+    "TAC": "Y",
+    "TAA": "*",
+    "TAG": "*",
+    "TGT": "C",
+    "TGC": "C",
+    "TGA": "*",
+    "TGG": "W",
+    "CTT": "L",
+    "CTC": "L",
+    "CTA": "L",
+    "CTG": "L",
+    "CCT": "P",
+    "CCC": "P",
+    "CCA": "P",
+    "CCG": "P",
+    "CAT": "H",
+    "CAC": "H",
+    "CAA": "Q",
+    "CAG": "Q",
+    "CGT": "R",
+    "CGC": "R",
+    "CGA": "R",
+    "CGG": "R",
+    "ATT": "I",
+    "ATC": "I",
+    "ATA": "I",
+    "ATG": "M",
+    "ACT": "T",
+    "ACC": "T",
+    "ACA": "T",
+    "ACG": "T",
+    "AAT": "N",
+    "AAC": "N",
+    "AAA": "K",
+    "AAG": "K",
+    "AGT": "S",
+    "AGC": "S",
+    "AGA": "R",
+    "AGG": "R",
+    "GTT": "V",
+    "GTC": "V",
+    "GTA": "V",
+    "GTG": "V",
+    "GCT": "A",
+    "GCC": "A",
+    "GCA": "A",
+    "GCG": "A",
+    "GAT": "D",
+    "GAC": "D",
+    "GAA": "E",
+    "GAG": "E",
+    "GGT": "G",
+    "GGC": "G",
+    "GGA": "G",
+    "GGG": "G",
 }
 
 
@@ -124,16 +184,31 @@ def run_igblastn(
     bin_igblastn = IGBLAST_BIN / "igblastn"
     cmd = [
         str(bin_igblastn),
-        "-germline_db_V", germline_db_V,
-        "-query", str(Path(query_fasta_path).resolve()),
-        "-organism", organism,
-        "-outfmt", outfmt,
-        "-num_alignments_V", str(num_alignments_v),
+        "-germline_db_V",
+        germline_db_V,
+        "-query",
+        str(Path(query_fasta_path).resolve()),
+        "-organism",
+        organism,
+        "-outfmt",
+        outfmt,
+        "-num_alignments_V",
+        str(num_alignments_v),
     ]
     if germline_db_D is not None:
-        cmd.extend(["-germline_db_D", germline_db_D, "-num_alignments_D", str(num_alignments_d)])
+        cmd.extend([
+            "-germline_db_D",
+            germline_db_D,
+            "-num_alignments_D",
+            str(num_alignments_d),
+        ])
     if germline_db_J is not None:
-        cmd.extend(["-germline_db_J", germline_db_J, "-num_alignments_J", str(num_alignments_j)])
+        cmd.extend([
+            "-germline_db_J",
+            germline_db_J,
+            "-num_alignments_J",
+            str(num_alignments_j),
+        ])
     if auxiliary_data is not None:
         cmd.extend(["-auxiliary_data", auxiliary_data])
     result = subprocess.run(
@@ -150,7 +225,9 @@ def run_igblastn(
 REARRANGEMENT_SUMMARY_PREFIX = "V-(D)-J rearrangement summary"
 
 
-def _other_genes_same_score(df: Optional[pd.DataFrame], primary_gene: Optional[str]) -> list:
+def _other_genes_same_score(
+    df: Optional[pd.DataFrame], primary_gene: Optional[str]
+) -> list:
     """Return other genes (subject id) with the same best bit score as the top hit."""
     if df is None or df.empty or "bit score" not in df.columns:
         return []
@@ -159,7 +236,11 @@ def _other_genes_same_score(df: Optional[pd.DataFrame], primary_gene: Optional[s
     return [s for s in same if s != primary_gene]
 
 
-def parse_igblastn_outfmt7(stdout: str) -> tuple[dict, Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+def parse_igblastn_outfmt7(
+    stdout: str,
+) -> tuple[
+    dict, Optional[pd.DataFrame], Optional[pd.DataFrame], Optional[pd.DataFrame]
+]:
     """
     Parse igblastn -outfmt 7 output.
     Returns (summary_dict, v_hits_df, d_hits_df, j_hits_df).
@@ -171,21 +252,39 @@ def parse_igblastn_outfmt7(stdout: str) -> tuple[dict, Optional[pd.DataFrame], O
     lines_list = stdout.split("\n")
     for i, line in enumerate(lines_list):
         if REARRANGEMENT_SUMMARY_PREFIX in line:
-            for next_line in lines_list[i + 1:]:
+            for next_line in lines_list[i + 1 :]:
                 next_line = next_line.strip()
                 if not next_line or next_line.startswith("#"):
                     continue
                 parts = next_line.split("\t")
-                if len(parts) >= 2 and (parts[0].startswith("IGH") or parts[0].startswith("IGK") or parts[0].startswith("IGL")):
+                if len(parts) >= 2 and (
+                    parts[0].startswith("IGH")
+                    or parts[0].startswith("IGK")
+                    or parts[0].startswith("IGL")
+                ):
                     summary["V"] = parts[0].strip() or None
-                    p1 = (parts[1].strip().split(",")[0].strip() or "") if len(parts) > 1 else ""
-                    p2 = (parts[2].strip().split(",")[0].strip() or "") if len(parts) > 2 else ""
+                    p1 = (
+                        (parts[1].strip().split(",")[0].strip() or "")
+                        if len(parts) > 1
+                        else ""
+                    )
+                    p2 = (
+                        (parts[2].strip().split(",")[0].strip() or "")
+                        if len(parts) > 2
+                        else ""
+                    )
                     # Light chain: no D gene; summary is V, J, chain_type so parts[1]=J, parts[2]=VL/VK
                     # Heavy chain: summary is V, D, J so parts[1]=D, parts[2]=J
-                    if p1 and (p1.startswith("IGHJ") or p1.startswith("IGKJ") or p1.startswith("IGLJ")):
+                    if p1 and (
+                        p1.startswith("IGHJ")
+                        or p1.startswith("IGKJ")
+                        or p1.startswith("IGLJ")
+                    ):
                         summary["D"] = None
                         summary["J"] = p1 or None
-                        summary["chain_type"] = p2 if p2 and not p2.startswith("IGH") else None
+                        summary["chain_type"] = (
+                            p2 if p2 and not p2.startswith("IGH") else None
+                        )
                     else:
                         summary["D"] = p1 or None
                         summary["J"] = p2 or None
@@ -267,7 +366,11 @@ def parse_igblastn_outfmt3_cdr(stdout: str, query_nt: str) -> dict:
             in_summary = True
             continue
         if in_summary:
-            if not line or line.startswith("Alignments") or line.startswith("Total"):
+            if (
+                not line
+                or line.startswith("Alignments")
+                or line.startswith("Total")
+            ):
                 in_summary = False
                 continue
             parts = line.split("\t")
@@ -275,14 +378,24 @@ def parse_igblastn_outfmt3_cdr(stdout: str, query_nt: str) -> dict:
                 try:
                     start, end = int(parts[1]), int(parts[2])
                     nt = query_nt[start - 1 : end]
-                    cdrs["CDR1"] = {"nt": nt, "aa": _translate_nt(nt), "start": start, "end": end}
+                    cdrs["CDR1"] = {
+                        "nt": nt,
+                        "aa": _translate_nt(nt),
+                        "start": start,
+                        "end": end,
+                    }
                 except (ValueError, IndexError):
                     pass
             elif len(parts) >= 3 and "CDR2-IMGT" in line:
                 try:
                     start, end = int(parts[1]), int(parts[2])
                     nt = query_nt[start - 1 : end]
-                    cdrs["CDR2"] = {"nt": nt, "aa": _translate_nt(nt), "start": start, "end": end}
+                    cdrs["CDR2"] = {
+                        "nt": nt,
+                        "aa": _translate_nt(nt),
+                        "start": start,
+                        "end": end,
+                    }
                 except (ValueError, IndexError):
                     pass
 
@@ -302,7 +415,12 @@ def parse_igblastn_outfmt3_cdr(stdout: str, query_nt: str) -> dict:
                     nt = parts[1].strip()
                     aa = parts[2].strip()
                     start, end = int(parts[3]), int(parts[4])
-                    cdrs["CDR3"] = {"nt": nt, "aa": aa, "start": start, "end": end}
+                    cdrs["CDR3"] = {
+                        "nt": nt,
+                        "aa": aa,
+                        "start": start,
+                        "end": end,
+                    }
                 except (ValueError, IndexError):
                     pass
                 break
@@ -327,29 +445,58 @@ def run_heavy_chain_vdj(
     db_d = f"{IGBLAST_DB_BASE}/{DB_HEAVY_D}"
     db_j = f"{IGBLAST_DB_BASE}/{DB_HEAVY_J}"
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta", delete=False) as f:
+    with tempfile.NamedTemporaryFile(
+        encoding="utf-8", mode="w", suffix=".fasta", delete=False
+    ) as f:
         f.write(">heavy\n")
         f.write(seq + "\n")
         tmp_path = f.name
 
     try:
         stdout, stderr, ret = run_igblastn(
-            tmp_path, db_v, germline_db_D=db_d, germline_db_J=db_j,
-            organism=organism, cwd=IGBLAST_ROOT,
+            tmp_path,
+            db_v,
+            germline_db_D=db_d,
+            germline_db_J=db_j,
+            organism=organism,
+            cwd=IGBLAST_ROOT,
         )
         if ret != 0:
-            return {"V": None, "D": None, "J": None}, f"IgBLAST failed (exit {ret}). stderr: {stderr[:500] if stderr else 'none'}"
+            return (
+                {"V": None, "D": None, "J": None},
+                f"IgBLAST failed (exit {ret}). stderr: {stderr[:500] if stderr else 'none'}",
+            )
         summary, v_df, d_df, j_df = parse_igblastn_outfmt7(stdout)
         out = {
-            "V": {"gene": summary.get("V"), "identity": summary.get("V_identity"), "df": v_df, "ties": _other_genes_same_score(v_df, summary.get("V"))},
-            "D": {"gene": summary.get("D"), "identity": summary.get("D_identity"), "df": d_df, "ties": _other_genes_same_score(d_df, summary.get("D"))},
-            "J": {"gene": summary.get("J"), "identity": summary.get("J_identity"), "df": j_df, "ties": _other_genes_same_score(j_df, summary.get("J"))},
+            "V": {
+                "gene": summary.get("V"),
+                "identity": summary.get("V_identity"),
+                "df": v_df,
+                "ties": _other_genes_same_score(v_df, summary.get("V")),
+            },
+            "D": {
+                "gene": summary.get("D"),
+                "identity": summary.get("D_identity"),
+                "df": d_df,
+                "ties": _other_genes_same_score(d_df, summary.get("D")),
+            },
+            "J": {
+                "gene": summary.get("J"),
+                "identity": summary.get("J_identity"),
+                "df": j_df,
+                "ties": _other_genes_same_score(j_df, summary.get("J")),
+            },
         }
         # CDR1/2/3 from outfmt 3 + auxiliary_data
         stdout3, stderr3, ret3 = run_igblastn(
-            tmp_path, db_v, germline_db_D=db_d, germline_db_J=db_j,
-            organism=organism, cwd=IGBLAST_ROOT,
-            outfmt="3", auxiliary_data=AUXILIARY_DATA_PATH,
+            tmp_path,
+            db_v,
+            germline_db_D=db_d,
+            germline_db_J=db_j,
+            organism=organism,
+            cwd=IGBLAST_ROOT,
+            outfmt="3",
+            auxiliary_data=AUXILIARY_DATA_PATH,
         )
         if ret3 == 0:
             out["cdr"] = parse_igblastn_outfmt3_cdr(stdout3, seq)
@@ -384,17 +531,26 @@ def run_light_chain_vj(
     # IgBLAST requires a D database even for light chain (no D gene in light); use IGHD_clean
     db_d = f"{IGBLAST_DB_BASE}/{DB_HEAVY_D}"
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta", delete=False) as f:
+    with tempfile.NamedTemporaryFile(
+        encoding="utf-8", mode="w", suffix=".fasta", delete=False
+    ) as f:
         f.write(">light\n")
         f.write(seq + "\n")
         tmp_path = f.name
 
     try:
         results = []
-        for (db_v, db_j, chain_type) in [(db_kv, db_kj, "kappa"), (db_lv, db_lj, "lambda")]:
+        for db_v, db_j, chain_type in [
+            (db_kv, db_kj, "kappa"),
+            (db_lv, db_lj, "lambda"),
+        ]:
             stdout, stderr, ret = run_igblastn(
-                tmp_path, db_v, germline_db_D=db_d, germline_db_J=db_j,
-                organism=organism, cwd=IGBLAST_ROOT,
+                tmp_path,
+                db_v,
+                germline_db_D=db_d,
+                germline_db_J=db_j,
+                organism=organism,
+                cwd=IGBLAST_ROOT,
             )
             if ret != 0:
                 continue
@@ -404,30 +560,58 @@ def run_light_chain_vj(
             v_id = summary.get("V_identity")
             j_id = summary.get("J_identity")
             if v_gene or j_gene:
-                results.append((chain_type, v_gene, j_gene, v_id, j_id, v_df, j_df))
+                results.append((
+                    chain_type,
+                    v_gene,
+                    j_gene,
+                    v_id,
+                    j_id,
+                    v_df,
+                    j_df,
+                ))
 
         if not results:
-            return {"V": None, "J": None, "chain_type": None}, "No germline hit for kappa or lambda."
+            return {
+                "V": None,
+                "J": None,
+                "chain_type": None,
+            }, "No germline hit for kappa or lambda."
 
         # Pick by best V identity (or J if V tied)
         def score(r):
             vt = r[3] if r[3] is not None else -1
             jt = r[4] if r[4] is not None else -1
             return (vt, jt)
+
         results.sort(key=score, reverse=True)
         chain_type, v_gene, j_gene, v_id, j_id, v_df, j_df = results[0]
         db_v_win = db_kv if chain_type == "kappa" else db_lv
         db_j_win = db_kj if chain_type == "kappa" else db_lj
         out = {
-            "V": {"gene": v_gene, "identity": v_id, "df": v_df, "ties": _other_genes_same_score(v_df, v_gene)},
-            "J": {"gene": j_gene, "identity": j_id, "df": j_df, "ties": _other_genes_same_score(j_df, j_gene)},
+            "V": {
+                "gene": v_gene,
+                "identity": v_id,
+                "df": v_df,
+                "ties": _other_genes_same_score(v_df, v_gene),
+            },
+            "J": {
+                "gene": j_gene,
+                "identity": j_id,
+                "df": j_df,
+                "ties": _other_genes_same_score(j_df, j_gene),
+            },
             "chain_type": chain_type,
         }
         # CDR1/2/3 from outfmt 3 + auxiliary_data for winning chain (pass D db for compatibility)
         stdout3, stderr3, ret3 = run_igblastn(
-            tmp_path, db_v_win, germline_db_D=db_d, germline_db_J=db_j_win,
-            organism=organism, cwd=IGBLAST_ROOT,
-            outfmt="3", auxiliary_data=AUXILIARY_DATA_PATH,
+            tmp_path,
+            db_v_win,
+            germline_db_D=db_d,
+            germline_db_J=db_j_win,
+            organism=organism,
+            cwd=IGBLAST_ROOT,
+            outfmt="3",
+            auxiliary_data=AUXILIARY_DATA_PATH,
         )
         if ret3 == 0:
             out["cdr"] = parse_igblastn_outfmt3_cdr(stdout3, seq)

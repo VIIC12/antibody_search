@@ -14,6 +14,7 @@ def get_chain_color(chain: str) -> str:
     """Return the hexadecimal color for the given chain type."""
     return HEAVY_COLOR if chain.lower() == "heavy" else LIGHT_COLOR
 
+
 def icon_heading(icon: str, text: str, level: int, margin_top: float = 0):
     """
     Render a heading with an icon.

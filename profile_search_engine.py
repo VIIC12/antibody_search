@@ -11,7 +11,6 @@ Based on: https://docs.python.org/3/library/profile.html#module-cProfile
 import cProfile
 import pstats
 from pstats import SortKey
-import io
 import sys
 from pathlib import Path
 from typing import Optional, Union
@@ -34,11 +33,11 @@ def profile_search(
     full_results: bool = True,
     limit: Optional[int] = 100,
     output_file: Optional[str] = None,
-    sort_by: Union[str, SortKey] = SortKey.CUMULATIVE
+    sort_by: Union[str, SortKey] = SortKey.CUMULATIVE,
 ):
     """
     Profile a search operation and generate performance report.
-    
+
     Args:
         data_dir: Directory containing Parquet files
         chain_mode: Search mode ('paired', 'heavy', or 'light')
@@ -66,19 +65,17 @@ def profile_search(
     print(f"Limit: {limit}")
     print("=" * 80)
     print()
-    
+
     # Use context manager for profiling (cProfile supports this)
     with cProfile.Profile() as profiler:
         # Initialize search engine
         print("Initializing search engine...")
         engine = AntibodySearchEngine(
-            data_dir=data_dir,
-            verbose=True,
-            db_path=":memory:"
+            data_dir=data_dir, verbose=True, db_path=":memory:"
         )
         print("Search engine initialized.")
         print()
-        
+
         # Execute search
         print("Executing search...")
         results = engine.search(
@@ -92,77 +89,79 @@ def profile_search(
             light_j=light_j,
             full_results=full_results,
             limit=limit,
-            verbose=True
+            verbose=True,
         )
-        
+
         if results:
             results_df, stats_df, statistics = results
             print(f"Search completed. Found {len(results_df)} results.")
             print(f"Statistics: {statistics}")
         else:
             print("Search completed with no results.")
-    
+
     print()
     print("=" * 80)
     print("Performance Profile Report")
     print("=" * 80)
     print()
-    
+
     # Create Stats object from profiler
     stats = pstats.Stats(profiler)
-    
+
     # Strip directory paths for cleaner output
     stats.strip_dirs()
-    
+
     # Convert string sort_by to SortKey if needed
     if isinstance(sort_by, str):
         sort_key_map = {
-            'cumulative': SortKey.CUMULATIVE,
-            'time': SortKey.TIME,
-            'calls': SortKey.CALLS,
-            'name': SortKey.NAME,
-            'tottime': SortKey.TIME,
-            'ncalls': SortKey.CALLS,
+            "cumulative": SortKey.CUMULATIVE,
+            "time": SortKey.TIME,
+            "calls": SortKey.CALLS,
+            "name": SortKey.NAME,
+            "tottime": SortKey.TIME,
+            "ncalls": SortKey.CALLS,
         }
         sort_key = sort_key_map.get(sort_by.lower(), SortKey.CUMULATIVE)
     else:
         sort_key = sort_by
-    
+
     # Sort by the specified metric
     stats.sort_stats(sort_key)
-    
+
     # Print top functions
-    print(f"Top 50 functions sorted by {sort_key.name if hasattr(sort_key, 'name') else sort_by}:")
+    print(
+        f"Top 50 functions sorted by {sort_key.name if hasattr(sort_key, 'name') else sort_by}:"
+    )
     print("-" * 80)
     stats.print_stats(50)
-    
+
     # Print additional analysis
     print()
     print("=" * 80)
     print("Detailed Analysis")
     print("=" * 80)
-    
+
     # Print by cumulative time (best for understanding algorithm efficiency)
     print("\nTop 30 functions by cumulative time:")
     print("(Useful for identifying high-level algorithm bottlenecks)")
     print("-" * 80)
     stats.sort_stats(SortKey.CUMULATIVE)
     stats.print_stats(30)
-    
+
     # Print by total time (best for identifying hot loops)
     print("\nTop 30 functions by total time:")
     print("(Useful for identifying 'hot loops' that should be optimized)")
     print("-" * 80)
     stats.sort_stats(SortKey.TIME)
     stats.print_stats(30)
-    
+
     # Print by number of calls (useful for identifying surprising call counts)
     print("\nTop 30 functions by number of calls:")
     print("(Useful for identifying bugs or inline-expansion opportunities)")
     print("-" * 80)
     stats.sort_stats(SortKey.CALLS)
     stats.print_stats(30)
-    
+
     # Use get_stats_profile() for detailed function analysis (Python 3.9+)
     print("\n" + "=" * 80)
     print("Function Profile Details (Top 10 by total time)")
@@ -170,14 +169,12 @@ def profile_search(
     try:
         stats_profile = stats.get_stats_profile()
         func_profiles = stats_profile.func_profiles
-        
+
         # Sort by total time
         sorted_funcs = sorted(
-            func_profiles.items(),
-            key=lambda x: x[1].tottime,
-            reverse=True
+            func_profiles.items(), key=lambda x: x[1].tottime, reverse=True
         )[:10]
-        
+
         for func_name, func_profile in sorted_funcs:
             if func_profile.tottime > 0:
                 print(f"\nFunction: {func_name}")
@@ -185,31 +182,33 @@ def profile_search(
                 print(f"  Cumulative time: {func_profile.cumulative_time:.4f}s")
                 print(f"  Calls: {func_profile.call_count}")
                 if func_profile.callers:
-                    print(f"  Called by:")
-                    for caller, call_info in list(func_profile.callers.items())[:5]:
+                    print("  Called by:")
+                    for caller, call_info in list(func_profile.callers.items())[
+                        :5
+                    ]:
                         print(f"    {caller}: {call_info.call_count} calls")
     except AttributeError:
         # Fallback for Python < 3.9
         print("(Detailed function profile requires Python 3.9+)")
-    
+
     # Print callers for top functions
     print("\n" + "=" * 80)
     print("Caller Analysis (Top 10 functions by cumulative time)")
     print("=" * 80)
     stats.sort_stats(SortKey.CUMULATIVE)
     stats.print_callers(10)
-    
+
     # Print callees for top functions
     print("\n" + "=" * 80)
     print("Callee Analysis (Top 10 functions by cumulative time)")
     print("=" * 80)
     stats.sort_stats(SortKey.CUMULATIVE)
     stats.print_callees(10)
-    
+
     # Save to file if requested
     if output_file:
         print(f"\nSaving full profile report to {output_file}...")
-        with open(output_file, 'w') as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             stats.sort_stats(SortKey.CUMULATIVE)
             stats.print_stats(file=f)
             f.write("\n" + "=" * 80 + "\n")
@@ -221,101 +220,92 @@ def profile_search(
             f.write("=" * 80 + "\n")
             stats.print_callees(file=f)
         print(f"Profile report saved to {output_file}")
-    
+
     return profiler, stats
 
 
 def main():
     """Main entry point with example profiling scenarios."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         description="Profile the search engine to identify bottlenecks"
     )
     parser.add_argument(
-        '--data-dir',
+        "--data-dir",
         type=str,
         default="data/parquet",
-        help="Directory containing Parquet files (default: data/parquet)"
+        help="Directory containing Parquet files (default: data/parquet)",
     )
     parser.add_argument(
-        '--chain-mode',
+        "--chain-mode",
         type=str,
-        choices=['paired', 'heavy', 'light'],
-        default='heavy',
-        help="Search mode (default: heavy)"
+        choices=["paired", "heavy", "light"],
+        default="heavy",
+        help="Search mode (default: heavy)",
     )
     parser.add_argument(
-        '--heavy-v',
+        "--heavy-v",
         type=str,
-        default='',
-        help="Heavy chain V gene filter (default: IGHV3-23)"
+        default="",
+        help="Heavy chain V gene filter (default: IGHV3-23)",
     )
     parser.add_argument(
-        '--heavy-j',
+        "--heavy-j", type=str, default="", help="Heavy chain J gene filter"
+    )
+    parser.add_argument(
+        "--heavy-cdr3-motif",
         type=str,
-        default='',
-        help="Heavy chain J gene filter"
+        default="",
+        help="Heavy chain CDR3 motif filter",
     )
     parser.add_argument(
-        '--heavy-cdr3-motif',
-        type=str,
-        default='',
-        help="Heavy chain CDR3 motif filter"
-    )
-    parser.add_argument(
-        '--heavy-cdr3-length',
+        "--heavy-cdr3-length",
         type=int,
         default=None,
-        help="Heavy chain CDR3 length filter"
+        help="Heavy chain CDR3 length filter",
     )
     parser.add_argument(
-        '--light-v',
-        type=str,
-        default='',
-        help="Light chain V gene filter"
+        "--light-v", type=str, default="", help="Light chain V gene filter"
     )
     parser.add_argument(
-        '--light-j',
-        type=str,
-        default='',
-        help="Light chain J gene filter"
+        "--light-j", type=str, default="", help="Light chain J gene filter"
     )
     parser.add_argument(
-        '--full-results',
-        action='store_true',
+        "--full-results",
+        action="store_true",
         default=True,
-        help="Return full sequence data (default: True)"
+        help="Return full sequence data (default: True)",
     )
     parser.add_argument(
-        '--no-full-results',
-        dest='full_results',
-        action='store_false',
-        help="Don't return full sequence data"
+        "--no-full-results",
+        dest="full_results",
+        action="store_false",
+        help="Don't return full sequence data",
     )
     parser.add_argument(
-        '--limit',
+        "--limit",
         type=int,
         default=100,
-        help="Maximum number of results to return (default: 100)"
+        help="Maximum number of results to return (default: 100)",
     )
     parser.add_argument(
-        '--output',
+        "--output",
         type=str,
         default=None,
-        help="Output file path for profile report"
+        help="Output file path for profile report",
     )
     parser.add_argument(
-        '--sort-by',
+        "--sort-by",
         type=str,
-        default='cumulative',
-        choices=['cumulative', 'time', 'calls', 'name', 'tottime', 'ncalls'],
+        default="cumulative",
+        choices=["cumulative", "time", "calls", "name", "tottime", "ncalls"],
         help="How to sort profile stats: 'cumulative' (algorithm efficiency), "
-             "'time' (hot loops), 'calls' (call frequency) (default: cumulative)"
+        "'time' (hot loops), 'calls' (call frequency) (default: cumulative)",
     )
-    
+
     args = parser.parse_args()
-    
+
     profile_search(
         data_dir=args.data_dir,
         chain_mode=args.chain_mode,
@@ -328,7 +318,7 @@ def main():
         full_results=args.full_results,
         limit=args.limit,
         output_file=args.output,
-        sort_by=args.sort_by
+        sort_by=args.sort_by,
     )
 
 

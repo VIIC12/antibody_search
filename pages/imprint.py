@@ -1,5 +1,4 @@
 import streamlit as st
-from app import render_sidebar
 
 # Override page title (inherits other settings from app.py)
 st.set_page_config(page_title="ABHunter - Imprint")
@@ -11,13 +10,13 @@ st.markdown("---")
 st.markdown("""
 ### Legal Information
 
-**Responsible for Content:**  
-Institute for Drug Discovery, Faculty of Medicine, Leipzig University  
-Liebigstraße 19  
+**Responsible for Content:**
+Institute for Drug Discovery, Faculty of Medicine, Leipzig University
+Liebigstraße 19
 04103 Leipzig, Germany
 
-**Contact:**  
-Email: abhunter[at]uni-leipzig.de  
+**Contact:**
+Email: abhunter[at]uni-leipzig.de
 Phone: On Request
 
 
