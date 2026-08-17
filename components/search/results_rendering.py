@@ -359,6 +359,7 @@ def render_stats_download_button(
     is_paired: bool,
     statistics: Optional[Dict[str, Any]] = None,
     key: Optional[str] = None,
+    disabled: bool = False,
 ) -> None:
     """
     Render download button for statistics CSV (as ZIP with search parameters).
@@ -369,17 +370,19 @@ def render_stats_download_button(
         is_paired: Whether the search is paired
         statistics: Optional statistics dictionary for metadata
         key: Optional unique Streamlit key to avoid duplicate element ID when rendered multiple times.
+        disabled: When True, show a non-clickable button (e.g. while a search is running).
     """
     # Unique key to avoid StreamlitDuplicateElementId when multiple result sets are rendered
     widget_key = key or f"stats_download_{(statistics or {}).get('total_hits', 0)}_{hash(str(search_params))}"
 
-    if stats_df.empty:
+    if stats_df is None or stats_df.empty or disabled:
         st.button(
             "⬇ Download Statistics (ZIP)",
             disabled=True,
             width='stretch',
             type="primary",
             key=f"{widget_key}_disabled",
+            help=("Locked while a search or plot load is in progress." if disabled else None),
         )
         return
 
@@ -534,6 +537,16 @@ def render_full_download_button(
             st.session_state[new_result_key] = None
         
         new_status = st.session_state[new_status_key]
+
+        downloads_locked = (
+            st.session_state.get("search_status") == "running"
+            or bool(st.session_state.get("plotting_controls_locked", False))
+        )
+        lock_help = (
+            "Locked while a search or plot load is in progress."
+            if downloads_locked
+            else None
+        )
         
         # Use column layout to place Statistics CSV, Full Results, and new button side by side
         col_stats, col_full, col_new, _spacer = st.columns([1.5, 1.5, 1.5, 5.5])
@@ -541,12 +554,25 @@ def render_full_download_button(
         # Statistics CSV download button (left column)
         with col_stats:
             render_stats_download_button(
-                stats_df, search_params, is_paired, statistics, key=f"{download_key}_stats"
+                stats_df,
+                search_params,
+                is_paired,
+                statistics,
+                key=f"{download_key}_stats",
+                disabled=downloads_locked,
             )
         
         # Full Results download button (middle column)
         with col_full:
-            if status == "idle":
+            if downloads_locked:
+                st.button(
+                    button_label,
+                    disabled=True,
+                    width='stretch',
+                    key=f"{download_key}_button_locked",
+                    help=lock_help,
+                )
+            elif status == "idle":
                 if st.button(
                     button_label,
                     width='stretch',
@@ -609,7 +635,15 @@ def render_full_download_button(
         
         # FASTA download button (right column)
         with col_new:
-            if new_status == "idle":
+            if downloads_locked:
+                st.button(
+                    new_button_label,
+                    disabled=True,
+                    width='stretch',
+                    key=f"{new_download_key}_button_locked",
+                    help=lock_help,
+                )
+            elif new_status == "idle":
                 if st.button(
                     new_button_label,
                     width='stretch',
