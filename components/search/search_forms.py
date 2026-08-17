@@ -1032,11 +1032,11 @@ def clear_search_mask_session_state() -> None:
     Does not change database selection.
     """
     resets: Dict[str, Any] = {}
-    # Unpaired heavy (no prefix) + paired heavy + dual heavy
-    for prefix in ("", "heavy_", "dual_heavy_"):
+    # Unpaired heavy (no prefix) + paired heavy
+    for prefix in ("", "heavy_"):
         resets.update(_heavy_mask_keys(prefix))
-    # Unpaired/paired light + dual light
-    for prefix in ("light_", "dual_light_"):
+    # Unpaired/paired light
+    for prefix in ("light_",):
         resets.update(_light_mask_keys(prefix))
 
     for key, value in resets.items():
