@@ -348,7 +348,7 @@ def render_sequences_table(
         )
     else:
         if total_hits == 0:
-            st.info(":material/search_off: **No sequences found matching your search criteria.** Try adjusting your search parameters.")
+            st.error(":material/search_off: **No sequences found matching your search criteria.** Try adjusting your search parameters.")
         else:
             st.info("No sequence data available.")
 
