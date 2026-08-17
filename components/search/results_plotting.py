@@ -2763,12 +2763,6 @@ def build_donor_hits_figure(
     yticks = [DONOR_HPM_BIN_VALUE] + list(range(int(DONOR_HPM_BIN_VALUE) + 1, upper + 1))
     ticktext = [_donor_hpm_tick_label(v) for v in yticks]
 
-    if title is None:
-        title = (
-            f"Precursor Frequency by Donor"
-            f"<br><sup>Donors with ≥ {required:,} sequences</sup>"
-        )
-
     # Match heavy/light plot palette used elsewhere (gene bars, spiders)
     if (chain_type or "Heavy").lower() == "light":
         marker_color = "rgb(203, 65, 84)"       # #CB4154
@@ -2819,7 +2813,7 @@ def build_donor_hits_figure(
         margin=margin or dict(l=70, r=20, t=70, b=30),
         template="plotly_white",
         yaxis=dict(
-            title="Precursor Frequency (Per Million)",
+            title="Frequency (Per Million)",
             type="linear",
             range=list(y_axis_range),
             tickmode="array",
@@ -2917,7 +2911,7 @@ def render_subject_hits_boxplot(
     fig = build_donor_hits_figure(
         filtered_df,
         meta,
-        title="Precursor Frequency by Donor",
+        title="Frequency by Donor",
         height=380,
         margin=dict(l=50, r=20, t=45, b=15),
         chain_type=chain_type,

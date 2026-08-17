@@ -214,11 +214,11 @@ def render_subject_statistics(
 
     head_subj, head_sum, head_plot = st.columns([4, 2, 1.5])
     with head_subj:
-        st.markdown("#### :material/group: Statistics by Subject")
+        st.markdown("#### :material/group: Statistics by Donor")
     with head_sum:
         st.markdown("#### :material/analytics: Plot Summary")
     with head_plot:
-        st.markdown("#### :material/candlestick_chart: Precursor Frequency")
+        st.markdown("#### :material/candlestick_chart: Frequency by Donor")
 
     content_col, summary_col, plot_col = st.columns([4, 2, 1.5])
 
