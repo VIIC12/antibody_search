@@ -25,6 +25,7 @@ logs/
 *.egg-info/
 ENV/
 uv.lock
+downloads/
 
 # Database Files
 data/
