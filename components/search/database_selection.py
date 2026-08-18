@@ -162,7 +162,7 @@ def render_database_selection(
         elif heavy_conflict_disabled:
             heavy_help = (
                 "Disabled when Paired or Light is selected. "
-                "Choose Heavy, Light, or Paired — not more than one."
+                "Choose Heavy, Light, or Paired."
             )
         else:
             heavy_help = "Inferred data is automatically included when searching Heavy or Light chains." if has_inferred_overlay else None
@@ -226,7 +226,7 @@ def render_database_selection(
         elif light_conflict_disabled:
             light_help = (
                 "Disabled when Paired or Heavy is selected. "
-                "Choose Heavy, Light, or Paired — not more than one."
+                "Choose Heavy, Light, or Paired."
             )
         else:
             light_help = "Inferred data is automatically included when searching Heavy or Light chains." if has_inferred_overlay else None
