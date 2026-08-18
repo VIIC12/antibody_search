@@ -26,6 +26,7 @@ logs/
 ENV/
 uv.lock
 downloads/
+static/downloads
 
 # Database Files
 data/

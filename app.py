@@ -37,7 +37,7 @@ def render_sidebar():
 
     ---
     ### :material/lab_profile: License & Credits
-    **If you use this software, please cite:** Schlegel et al. (2026). [Link](#)
+    **If you use this software, please cite:** Schlegel et al. (2026). *Under submission.*
     
     **Data Source Citations:**
     - [OAS Database](https://opig.stats.ox.ac.uk/webapps/oas/)
@@ -48,15 +48,6 @@ def render_sidebar():
     
     [ABHunter GitHub Repository](https://github.com/VIIC12/antibody_search#)    
     """)
-    # # Add a blank line and the "Made in" text at the bottom with spacing
-    # flag_path = Path(__file__).parent / "public" / "images" / "flag_leipzig.svg"
-    flag_img = ""
-    # if flag_path.exists():
-    #     import base64
-    #     flag_svg = flag_path.read_text(encoding='utf-8')
-    #     # Encode SVG as base64 data URI
-    #     flag_base64 = base64.b64encode(flag_svg.encode('utf-8')).decode('utf-8')
-    #     flag_img = f'<img src="data:image/svg+xml;base64,{flag_base64}" alt="Leipzig Flag" style="height: 1.2em; vertical-align: middle; margin-right: 0.3em;" />'
     
     # Stick inside the sidebar near the bottom, without overflowing when the sidebar is resized
     st.markdown(
@@ -84,6 +75,17 @@ def main():
             'Report a bug': 'https://github.com/VIIC12/antibody_search/issues',
             'About': "**ABHunter** is a high-performance antibody database search tool that lets you search the Observed Antibody Space (OAS) database in seconds and analyze how frequently specific V/D/J genes, CDR lengths, and motifs appear in human, non-vaccinated, healthy patients. For unpaired heavy or light chain data, ABHunter provides inferred V/J gene pairing information and statistical frequencies based on paired antibody data from the database. Please refer to the sidebar for proper citations when using this tool in your research. Thank you for using ABHunter!"
         }
+    )
+
+    st.markdown(
+        """
+        <style>
+        div.block-container {
+            padding-top: 1.5rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
     st.logo(

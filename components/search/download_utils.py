@@ -15,6 +15,7 @@ import tempfile
 import os
 import uuid
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any, List
 
@@ -74,6 +75,16 @@ def _get_download_directory() -> Path:
     _ensure_env_loaded()
     raw = os.getenv("ABHUNTER_DOWNLOAD_DIR", "./downloads")
     return Path(raw).resolve()
+
+
+def _use_nginx_download_urls() -> bool:
+    """
+    True when nginx serves /downloads/ with Content-Disposition: attachment
+    (Docker Compose). Local Streamlit rewrites /downloads/ to /app/static/downloads/
+    and displays the file in the browser instead of downloading it.
+    """
+    _ensure_env_loaded()
+    return os.getenv("ABHUNTER_DOWNLOAD_DIR") == "/app/downloads" or Path("/.dockerenv").exists()
 
 
 def _count_csv_gz_rows(csv_gz_path: Path) -> int:
@@ -319,6 +330,207 @@ def prepare_stats_download(
     filename = f"ABHunter_statistics_{identifier}.zip"
     
     return zip_data, filename
+
+
+_FREQUENCY_PLOT_EXPORT_COLUMNS = [
+    "subject",
+    "total_sequences",
+    "hits",
+    "percentage",
+    "per_million",
+    "hits_per_million",
+    "log10_hits",
+    "is_binned",
+]
+
+
+def prepare_frequency_download(
+    summary_df: pd.DataFrame,
+    plot_df: Optional[pd.DataFrame],
+    plot_meta: Optional[Dict[str, Any]],
+    search_params: Dict[str, Any],
+    is_paired: bool,
+    statistics: Optional[Dict[str, Any]] = None,
+    selected_databases: Optional[List[str]] = None,
+) -> Tuple[bytes, str]:
+    """
+    Prepare frequency summary + plotted donor data as a ZIP with search parameters.
+    """
+    from datetime import datetime
+
+    summary_buffer = io.StringIO()
+    if summary_df is not None and not summary_df.empty:
+        summary_df.to_csv(summary_buffer, index=False)
+
+    plot_export = pd.DataFrame()
+    if plot_df is not None and not plot_df.empty:
+        export_cols = [c for c in _FREQUENCY_PLOT_EXPORT_COLUMNS if c in plot_df.columns]
+        plot_export = plot_df[export_cols] if export_cols else plot_df.copy()
+
+    plot_buffer = io.StringIO()
+    if not plot_export.empty:
+        plot_export.to_csv(plot_buffer, index=False)
+
+    selected_databases = selected_databases or []
+    statistics = statistics or {}
+    metadata: Dict[str, Any] = {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "is_paired": is_paired,
+        "search_params": search_params,
+        "selected_databases": selected_databases,
+        "statistics_summary": {
+            "total_hits": statistics.get("total_hits"),
+            "total_sequences": statistics.get("total_sequences"),
+            "percentage": statistics.get("percentage"),
+            "per_million": statistics.get("per_million"),
+            "search_time": statistics.get("search_time"),
+        },
+        "plot_options": plot_meta or {},
+    }
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        zip_file.writestr("frequency_summary.csv", summary_buffer.getvalue().encode("utf-8"))
+        zip_file.writestr("frequency_by_donor.csv", plot_buffer.getvalue().encode("utf-8"))
+        zip_file.writestr(
+            "search_parameters.json",
+            json.dumps(metadata, indent=2, sort_keys=True, default=str).encode("utf-8"),
+        )
+
+    zip_buffer.seek(0)
+    identifier = _build_search_identifier({
+        "search_params": search_params,
+        "is_paired": is_paired,
+        "plot_options": plot_meta or {},
+    })
+    filename = f"ABHunter_frequency_{identifier}.zip"
+    return zip_buffer.getvalue(), filename
+
+
+def _consume_generated_download(
+    result: Dict[str, Any],
+    *,
+    data_keys: List[str],
+) -> Tuple[bytes, str]:
+    """Return generated download bytes, reading from disk when nginx-mode wrote a file."""
+    if not result or not result.get("success"):
+        raise ValueError((result or {}).get("error", "Download generation failed."))
+
+    for key in data_keys:
+        payload = result.get(key)
+        if payload:
+            return payload, result.get("filename", "download.bin")
+
+    download_url = result.get("download_url")
+    if not download_url:
+        raise ValueError("Download result did not contain data bytes or a file URL.")
+
+    stored_name = download_url.rsplit("/", 1)[-1]
+    file_path = _get_download_directory() / stored_name
+    if not file_path.exists():
+        raise FileNotFoundError(f"Expected generated download file not found: {file_path}")
+
+    file_bytes = file_path.read_bytes()
+    file_path.unlink(missing_ok=True)
+    return file_bytes, result.get("filename", stored_name)
+
+
+def prepare_all_downloads(
+    database_paths: List[str],
+    search_params: Dict[str, Any],
+    is_paired: bool,
+    chain_label: str,
+    stats_df: pd.DataFrame,
+    summary_df: pd.DataFrame,
+    plot_df: Optional[pd.DataFrame],
+    plot_meta: Optional[Dict[str, Any]],
+    plots_data: List[Dict[str, Any]],
+    statistics: Optional[Dict[str, Any]] = None,
+    selected_databases: Optional[List[str]] = None,
+) -> Tuple[bytes, str]:
+    """Bundle results, FASTA, statistics, frequency data, and figures+raw data into one ZIP."""
+    statistics = statistics or {}
+    selected_databases = selected_databases or []
+    search_params_with_metadata = dict(search_params)
+    search_params_with_metadata["selected_databases"] = selected_databases
+
+    stats_zip, stats_filename = prepare_stats_download(
+        stats_df, search_params, is_paired, statistics, selected_databases
+    )
+    frequency_zip, frequency_filename = prepare_frequency_download(
+        summary_df,
+        plot_df,
+        plot_meta,
+        search_params,
+        is_paired,
+        statistics,
+        selected_databases,
+    )
+
+    full_result = prepare_full_results_download_background(
+        database_paths,
+        search_params_with_metadata,
+        is_paired,
+        chain_label,
+    )
+    full_bytes, full_filename = _consume_generated_download(
+        full_result,
+        data_keys=["parquet_data"],
+    )
+
+    fasta_result = prepare_fasta_download_background(
+        database_paths,
+        search_params_with_metadata,
+        is_paired,
+        chain_label,
+    )
+    fasta_bytes, fasta_filename = _consume_generated_download(
+        fasta_result,
+        data_keys=["data"],
+    )
+
+    plots_metadata: Dict[str, Any] = {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "is_paired": is_paired,
+        "includes_raw_plotting_data": True,
+        "search_params": search_params,
+        "selected_databases": selected_databases,
+        "statistics_summary": {
+            "total_hits": statistics.get("total_hits"),
+            "total_sequences": statistics.get("total_sequences"),
+            "percentage": statistics.get("percentage"),
+            "per_million": statistics.get("per_million"),
+            "search_time": statistics.get("search_time"),
+        },
+    }
+    plots_result = prepare_plots_download_background(
+        plots_data,
+        plots_metadata,
+        include_raw_data=True,
+    )
+    plots_bytes, plots_filename = _consume_generated_download(
+        plots_result,
+        data_keys=["zip_data"],
+    )
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        zip_file.writestr(full_filename, full_bytes)
+        zip_file.writestr(fasta_filename, fasta_bytes)
+        zip_file.writestr(stats_filename, stats_zip)
+        zip_file.writestr(frequency_filename, frequency_zip)
+        zip_file.writestr(plots_filename, plots_bytes)
+
+    zip_buffer.seek(0)
+    identifier = _build_search_identifier(
+        {
+            "search_params": search_params,
+            "is_paired": is_paired,
+            "chain_label": chain_label,
+            "plot_options": plot_meta or {},
+        }
+    )
+    return zip_buffer.getvalue(), f"ABHunter_all_downloads_{chain_label}_{identifier}.zip"
 
 
 def _build_copy_select_columns(schema_column_names: List[str], is_paired: bool) -> str:
@@ -574,8 +786,8 @@ def prepare_full_results_download_background(
 
         logger.info(f"Background full results download: Completed. File size: {file_size_bytes} bytes. Sequences: {sequence_count}")
         
-        # Check if file is too large for direct download
-        if file_size_bytes > LARGE_FILE_THRESHOLD:
+        # Large files: nginx URL in Docker; Streamlit download_button locally
+        if file_size_bytes > LARGE_FILE_THRESHOLD and _use_nginx_download_urls():
             # File already on disk, return URL
             return {
                 'success': True,
@@ -655,6 +867,7 @@ def prepare_plots_download_background(
         from typing import Optional, Tuple
         import pandas as pd
         import plotly.graph_objects as go
+        import plotly.io as pio
         
         project_root = Path(__file__).parent.parent.parent
         sys.path.insert(0, str(project_root))
@@ -744,50 +957,61 @@ def prepare_plots_download_background(
         # Get download path for streaming write
         token, file_path, download_url = _get_download_path(filename, "zip")
         
+        plot_filenames = [
+            _sanitize_plot_filename(title, idx + 1)
+            for idx, (title, _, _) in enumerate(plots)
+        ]
+
         # Create ZIP archive directly on disk (not in memory)
         try:
-            with zipfile.ZipFile(file_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                for index, (title, figure, data) in enumerate(plots, start=1):
-                    # Sanitize filename
-                    from components.search.results_plotting import _sanitize_plot_filename
-                    plot_filename = _sanitize_plot_filename(title, index)
-                    # Generate PNG image
-                    image_bytes = figure.to_image(format="png", scale=2)
-                    zf.writestr(plot_filename, image_bytes)
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_dir_path = Path(temp_dir)
+                image_paths = [temp_dir_path / name for name in plot_filenames]
+
+                pio.write_images(
+                    [figure for _, figure, _ in plots],
+                    [str(path) for path in image_paths],
+                    format="png",
+                    scale=2,
+                )
+
+                with zipfile.ZipFile(file_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                    for plot_filename, (_, _, data), image_path in zip(plot_filenames, plots, image_paths):
+                        zf.writestr(plot_filename, image_path.read_bytes())
                     
-                    # Add raw data if requested
-                    if include_raw_data and data is not None:
-                        if isinstance(data, pd.DataFrame):
-                            export_df = data.copy()
-                        elif isinstance(data, pd.Series):
-                            export_df = data.to_frame()
-                        else:
-                            export_df = pd.DataFrame(data)
-                        
-                        raw_filename = plot_filename.rsplit(".", 1)[0] + ".csv"
-                        raw_path = f"raw_data/{raw_filename}"
-                        csv_bytes = export_df.to_csv(index=False).encode("utf-8")
-                        zf.writestr(raw_path, csv_bytes)
+                        # Add raw data if requested
+                        if include_raw_data and data is not None:
+                            if isinstance(data, pd.DataFrame):
+                                export_df = data.copy()
+                            elif isinstance(data, pd.Series):
+                                export_df = data.to_frame()
+                            else:
+                                export_df = pd.DataFrame(data)
+                            
+                            raw_filename = plot_filename.rsplit(".", 1)[0] + ".csv"
+                            raw_path = f"raw_data/{raw_filename}"
+                            csv_bytes = export_df.to_csv(index=False).encode("utf-8")
+                            zf.writestr(raw_path, csv_bytes)
                 
-                # Add metadata JSON
-                from components.search.results_plotting import _json_default
-                plot_entries = [
-                    {
-                        "title": title,
-                        "image_file": _sanitize_plot_filename(title, idx + 1),
-                    }
-                    for idx, (title, _, _) in enumerate(plots)
-                ]
-                metadata_with_plots = dict(metadata)
-                metadata_with_plots["plots"] = plot_entries
-                metadata_with_plots["includes_raw_plotting_data"] = include_raw_data
-                metadata_bytes = json.dumps(
-                    metadata_with_plots,
-                    indent=2,
-                    sort_keys=True,
-                    default=_json_default
-                ).encode("utf-8")
-                zf.writestr("search_parameters.json", metadata_bytes)
+                    # Add metadata JSON
+                    from components.search.results_plotting import _json_default
+                    plot_entries = [
+                        {
+                            "title": title,
+                            "image_file": plot_filename,
+                        }
+                        for plot_filename, (title, _, _) in zip(plot_filenames, plots)
+                    ]
+                    metadata_with_plots = dict(metadata)
+                    metadata_with_plots["plots"] = plot_entries
+                    metadata_with_plots["includes_raw_plotting_data"] = include_raw_data
+                    metadata_bytes = json.dumps(
+                        metadata_with_plots,
+                        indent=2,
+                        sort_keys=True,
+                        default=_json_default
+                    ).encode("utf-8")
+                    zf.writestr("search_parameters.json", metadata_bytes)
         except Exception as e:
             return {
                 'success': False,
@@ -802,8 +1026,8 @@ def prepare_plots_download_background(
         file_size_bytes = file_path.stat().st_size
         plot_count = len(plots)
         
-        # Check if file is too large for direct download
-        if file_size_bytes > LARGE_FILE_THRESHOLD:
+        # Large files: nginx URL in Docker; Streamlit download_button locally
+        if file_size_bytes > LARGE_FILE_THRESHOLD and _use_nginx_download_urls():
             # File already on disk, return URL
             return {
                 'success': True,
@@ -1028,8 +1252,8 @@ def prepare_fasta_download_background(
         del fasta_files  # Release large in-memory data before return so worker exits quickly
         logger.info(f"Background FASTA download: Completed. File size: {file_size_bytes} bytes. Sequences: {total_sequences}")
         
-        # Check if file is too large for direct download
-        if file_size_bytes > LARGE_FILE_THRESHOLD:
+        # Large files: nginx URL in Docker; Streamlit download_button locally
+        if file_size_bytes > LARGE_FILE_THRESHOLD and _use_nginx_download_urls():
             # File already on disk, return URL
             return {
                 'success': True,

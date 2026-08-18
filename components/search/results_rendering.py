@@ -18,6 +18,7 @@ from components.search.results_display import (
 )
 from components.search.download_utils import (
     prepare_stats_download,
+    prepare_frequency_download,
     prepare_full_results_download_background,
     prepare_fasta_download_background
 )
@@ -29,30 +30,10 @@ from components.search.results_plotting import (
     compute_donor_plot_summary_stats,
 )
 from src.search_engine import AntibodySearchEngine
-from components.search.styling import icon_heading
+from components.search.styling import icon_heading, ensure_spinner_css, render_preparing_button
 
 
-
-
-# Inject CSS for spinner animation
-st.markdown("""
-<style>
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.spinner-dark {
-    border: 2px solid rgba(255, 255, 255, 0.2);
-    border-top: 2px solid #ffffff;
-    border-radius: 50%;
-    width: 16px;
-    height: 16px;
-    animation: spin 1s linear infinite;
-    display: inline-block;
-}
-</style>
-""", unsafe_allow_html=True)
+ensure_spinner_css()
 
 def render_search_results(
     sequences_sample_df: pd.DataFrame,
@@ -83,16 +64,16 @@ def render_search_results(
     # Statistics metrics
     render_statistics_metrics(statistics)
     
-    # Download buttons (Statistics CSV and Full Results) - above Sample Sequences
-    render_full_download_button(
-        sequences_sample_df, statistics, is_paired,
-        search_params, engine, stats_df
-    )
-    
     # Section 1: Sample Sequences (table)
     render_sequences_table(
         sequences_sample_df, statistics, is_paired,
         search_params, engine, stats_df
+    )
+
+    # Full results table and FASTA downloads sit under the sample table
+    render_full_download_button(
+        sequences_sample_df, statistics, is_paired,
+        search_params, engine
     )
 
     # Section 2: Result Distributions (subject statistics + plots)
@@ -106,10 +87,6 @@ def render_search_results(
         engine
     )
     
-    # Search parameters expander
-    render_search_parameters_expander(statistics, is_paired)
-
-
 def _format_hit_percentage(statistics: Dict[str, Any]) -> str:
     """Format overall hit percentage; show <0.01% when tiny but non-zero."""
     try:
@@ -212,6 +189,12 @@ def render_subject_statistics(
                     plot_filtered_df, plot_meta
                 )
 
+    st.session_state[f"{widget_key_prefix}_plot_summary_df"] = plot_summary_df.copy()
+    st.session_state[f"{widget_key_prefix}_plot_filtered_df"] = (
+        plot_filtered_df.copy() if isinstance(plot_filtered_df, pd.DataFrame) else None
+    )
+    st.session_state[f"{widget_key_prefix}_plot_meta"] = dict(plot_meta or {})
+
     head_subj, head_sum, head_plot = st.columns([4, 2, 1.5])
     with head_subj:
         st.markdown("#### :material/group: Statistics by Donor")
@@ -222,43 +205,82 @@ def render_subject_statistics(
 
     content_col, summary_col, plot_col = st.columns([4, 2, 1.5])
 
+    # Header + 6 rows; extra donor rows scroll. Matches Frequency Summary height.
+    donor_table_height = (6 + 1) * 35 + 3
+    # Plot can use the leftover space below the tables (download buttons / toggles).
+    donor_plot_height = donor_table_height + 72
+
+    stats_df_display = stats_df
+    if stats_df is not None and not stats_df.empty:
+        desired_order = [
+            "subject",
+            "total_sequences",
+            "hits",
+            "percentage",
+            "per_million",
+        ]
+        ordered_columns = [col for col in desired_order if col in stats_df.columns]
+        stats_df_display = stats_df[ordered_columns] if ordered_columns else stats_df
+        if "percentage" in stats_df_display.columns:
+            stats_df_display = stats_df_display.sort_values(
+                "percentage", ascending=False, kind="mergesort"
+            ).reset_index(drop=True)
+
+    st.session_state[f"{widget_key_prefix}_stats_df"] = (
+        stats_df_display.copy() if isinstance(stats_df_display, pd.DataFrame) else pd.DataFrame()
+    )
+
     with content_col:
         if stats_df is not None and not stats_df.empty:
-            column_config = get_stats_column_config()
-            desired_order = [
-                "subject",
-                "total_sequences",
-                "hits",
-                "percentage",
-                "per_million",
-            ]
-            ordered_columns = [col for col in desired_order if col in stats_df.columns]
-            stats_df_display = stats_df[ordered_columns] if ordered_columns else stats_df
-            if "percentage" in stats_df_display.columns:
-                stats_df_display = stats_df_display.sort_values(
-                    "percentage", ascending=False, kind="mergesort"
-                ).reset_index(drop=True)
             st.dataframe(
                 stats_df_display,
                 width='stretch',
-                height=380,
+                height=donor_table_height,
                 hide_index=True,
-                column_config=column_config
+                column_config=get_stats_column_config(),
+                row_height=35,
             )
         else:
             st.info("No results found matching your criteria.")
+
+        donor_downloads_locked = (
+            st.session_state.get("search_status") == "running"
+            or bool(st.session_state.get("plotting_controls_locked", False))
+        )
+        col_dl_stats, col_dl_freq, _spacer = st.columns([1.5, 1.5, 2.3])
+        with col_dl_stats:
+            render_stats_download_button(
+                stats_df_display,
+                search_params or {},
+                is_paired,
+                statistics,
+                key=f"{widget_key_prefix}_stats_download",
+                disabled=donor_downloads_locked,
+            )
+        with col_dl_freq:
+            render_frequency_download_button(
+                plot_summary_df,
+                plot_filtered_df,
+                plot_meta,
+                search_params or {},
+                is_paired,
+                statistics,
+                key=f"{widget_key_prefix}_frequency_download",
+                disabled=donor_downloads_locked,
+            )
 
     with summary_col:
         if not plot_summary_df.empty:
             st.dataframe(
                 plot_summary_df,
                 width="stretch",
-                height=250,
+                height=donor_table_height,
                 hide_index=True,
                 column_config={
                     "Metric": st.column_config.TextColumn("Metric", width="small"),
                     "Value": st.column_config.TextColumn("Value", width="medium"),
                 },
+                row_height=35,
             )
         elif plot_meta.get("error"):
             st.info(plot_meta["error"])
@@ -303,6 +325,7 @@ def render_subject_statistics(
             filtered_df=plot_filtered_df,
             meta=plot_meta,
             chain_type=chain_type,
+            height=donor_plot_height,
         )
 
 
@@ -384,14 +407,63 @@ def render_stats_download_button(
         )
 
     st.download_button(
-        label="⬇ Download Statistics",
+        label="Download Donor Statistics",
         data=stats_zip,
         file_name=filename,
         mime="application/zip",
         width="stretch",
         key=widget_key,
         disabled=locked,
-        help=("Locked while a search or plot load is in progress." if disabled else None),
+        help=("Locked while a search or data load is in progress." if disabled else "Statistics by Donor table."),
+        icon="⬇"
+    )
+
+def render_frequency_download_button(
+    summary_df: pd.DataFrame,
+    plot_df: Optional[pd.DataFrame],
+    plot_meta: Optional[Dict[str, Any]],
+    search_params: Dict[str, Any],
+    is_paired: bool,
+    statistics: Optional[Dict[str, Any]] = None,
+    key: Optional[str] = None,
+    disabled: bool = False,
+) -> None:
+    """Instant ZIP of Frequency Summary plus the plotted Frequency-by-Donor points."""
+    widget_key = key or f"frequency_download_{(statistics or {}).get('total_hits', 0)}_{hash(str(search_params))}"
+    has_data = (
+        (summary_df is not None and not summary_df.empty)
+        or (plot_df is not None and not plot_df.empty)
+    )
+    locked = disabled or not has_data
+
+    if locked:
+        freq_zip, filename = b"", "frequency.zip"
+    else:
+        selected_databases = st.session_state.get("selected_databases", [])
+        freq_zip, filename = prepare_frequency_download(
+            summary_df,
+            plot_df,
+            plot_meta,
+            search_params,
+            is_paired,
+            statistics,
+            selected_databases,
+        )
+
+    st.download_button(
+        label="Download Frequency Data",
+        data=freq_zip,
+        file_name=filename,
+        mime="application/zip",
+        width="stretch",
+        key=widget_key,
+        disabled=locked,
+        help=(
+            "Locked while a search or plot load is in progress."
+            if disabled
+            else "Frequency Summary table and the donor points shown in Frequency by Donor."
+        ),
+        icon="⬇",
     )
 
 
@@ -401,11 +473,10 @@ def render_full_download_button(
     is_paired: bool,
     search_params: Dict[str, Any],
     engine: AntibodySearchEngine,
-    stats_df: Optional[pd.DataFrame] = None,
     key_suffix: str = ""
 ) -> None:
     """
-    Render buttons for downloading statistics CSV and full dataset as Parquet (async background processing).
+    Render Download Results Table and Download FASTA under the sample sequences table.
     Buttons show status and transform into download buttons when ready.
     
     Args:
@@ -414,27 +485,11 @@ def render_full_download_button(
         is_paired: Whether this is a paired search
         search_params: Search parameters dictionary
         engine: Search engine instance
-        stats_df: Statistics dataframe for CSV download
         key_suffix: Optional suffix for session state keys
     """
-    # Inject CSS for spinner animation and consistent button heights
+    # Alignment CSS (spinner CSS is shared via ensure_spinner_css())
     st.markdown("""
     <style>
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-
-    .spinner-dark {
-        border: 2px solid rgba(255, 255, 255, 0.2);
-        border-top: 2px solid #ffffff;
-        border-radius: 50%;
-        width: 16px;
-        height: 16px;
-        animation: spin 1s linear infinite;
-        display: inline-block;
-    }
-    
     /* Ensure consistent button heights across all states */
     .download-button-container {
         width: 100%;
@@ -508,15 +563,11 @@ def render_full_download_button(
         
         # Initialize session state
         if full_status_key not in st.session_state:
-            st.session_state[full_status_key] = "idle"  # idle, completed, failed
+            st.session_state[full_status_key] = "idle"  # idle, preparing, completed, failed
         if full_result_key not in st.session_state:
             st.session_state[full_result_key] = None
         
         status = st.session_state[full_status_key]
-        
-        # Button labels
-        button_label = "⬇ Download Results Table"
-        new_button_label = "⬇ Download FASTA"
         
         # Session state keys for FASTA download
         new_download_key = f"{suffix}new_download_{statistics['total_hits']}_{hash(str(download_key_seed))}"
@@ -525,7 +576,7 @@ def render_full_download_button(
         
         # Initialize session state for FASTA download
         if new_status_key not in st.session_state:
-            st.session_state[new_status_key] = "idle"  # idle, completed, failed
+            st.session_state[new_status_key] = "idle"  # idle, preparing, completed, failed
         if new_result_key not in st.session_state:
             st.session_state[new_result_key] = None
         
@@ -535,53 +586,43 @@ def render_full_download_button(
             st.session_state.get("search_status") == "running"
             or bool(st.session_state.get("plotting_controls_locked", False))
         )
-        lock_help = (
-            "Locked while a search or plot load is in progress."
-            if downloads_locked
-            else None
-        )
         
-        # Use column layout to place Statistics CSV, Full Results, and new button side by side
-        col_stats, col_full, col_new, _spacer = st.columns([1.5, 1.5, 1.5, 5.5])
+        # Full Results and FASTA side by side under the sample sequences table
+        col_full, col_new, _spacer = st.columns([1.5, 1.5, 7])
         
-        # Statistics CSV download button (left column)
-        with col_stats:
-            render_stats_download_button(
-                stats_df,
-                search_params,
-                is_paired,
-                statistics,
-                key=f"{download_key}_stats",
-                disabled=downloads_locked,
-            )
-        
-        # Full Results download button (middle column)
+        # Full Results download button
         with col_full:
-            if downloads_locked:
+            if status == "preparing":
+                render_preparing_button()
+                result = prepare_full_results_download_background(
+                    loadable_databases,
+                    search_params_with_metadata,
+                    is_paired,
+                    chain_label
+                )
+                st.session_state[full_result_key] = result
+                st.session_state[full_status_key] = "completed" if result.get("success") else "failed"
+                if result.get("success"):
+                    st.toast("Full results table is ready for download!", icon="⬇")
+                st.rerun()
+            elif downloads_locked:
                 st.button(
-                    button_label,
+                    "Download Results Table",
                     disabled=True,
                     width='stretch',
                     key=f"{download_key}_button_locked",
-                    help=lock_help,
+                    help="Locked while a search or plot load is in progress.",
+                    icon="⬇"
                 )
             elif status == "idle":
                 if st.button(
-                    button_label,
+                    "Download Results Table",
                     width='stretch',
-                    key=f"{download_key}_button"
+                    key=f"{download_key}_button",
+                    help="Full results table and search parameters.",
+                    icon="⬇"
                 ):
-                    with st.spinner("Preparing full results download..."):
-                        result = prepare_full_results_download_background(
-                            loadable_databases,
-                            search_params_with_metadata,
-                            is_paired,
-                            chain_label
-                        )
-                    st.session_state[full_result_key] = result
-                    st.session_state[full_status_key] = "completed" if result.get("success") else "failed"
-                    if result.get("success"):
-                        st.toast("Full results table is ready for download!", icon="⬇")
+                    st.session_state[full_status_key] = "preparing"
                     st.rerun()
             
             elif status == "completed":
@@ -591,68 +632,72 @@ def render_full_download_button(
                     
                     # Check if this is a large file with download URL
                     if result.get('download_url'):
-                        # Large file: redirect to static download link
-                        download_url = result.get('download_url')
-                        st.markdown(
-                            f'<a href="{download_url}" target="_blank" style="text-decoration: none;">'
-                            f'<button style="width: 100%; padding: 0.5rem 1rem; background-color: rgb(19, 124, 189); '
-                            f'color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.875rem;">'
-                            f'⬇ Download Full Results ({file_size_mb:.2f} MB) - Opens in new tab</button></a>',
-                            unsafe_allow_html=True
+                        st.link_button(
+                            f"Download Results Table ({file_size_mb:.2f} MB)",
+                            result['download_url'],
+                            type="primary",
+                            width="stretch",
+                            icon="⬇"
                         )
                     else:
                         # Small file: use direct download button
                         st.download_button(
-                            label=f"⬇ Download Full Results ({file_size_mb:.2f} MB)",
+                            label=f"Download Results Table ({file_size_mb:.2f} MB)",
                             data=result.get('parquet_data', b''),
                             file_name=result.get('filename', 'sequences.csv.gz'),
                             mime="application/octet-stream",
                             width='stretch',
                             type="primary",
-                            key=f"download_{download_key}"
+                            key=f"download_{download_key}",
+                            icon="⬇"
                         )
                 else:
-                    st.button("❌ Generation Failed", disabled=True, key=f"{download_key}_failed", width='stretch')
+                    st.button("Generation Failed", disabled=True, key=f"{download_key}_failed", width='stretch', icon=":material/error:")
                     error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-                    st.error(f"❌ {error_msg}")
+                    st.error(f"{error_msg}", icon=":material/error:")
             
             elif status == "failed":
                 result = st.session_state[full_result_key]
                 error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-                if st.button("🔄 Retry", key=f"{download_key}_retry", width='stretch'):
+                if st.button("Retry", key=f"{download_key}_retry", width='stretch', icon=":material/refresh:"):
                     st.session_state[full_status_key] = "idle"
                     st.session_state[full_result_key] = None
                     st.rerun()
                 else:
-                    st.error(f"❌ {error_msg}")
+                    st.error(f"{error_msg}", icon=":material/error:")
         
         # FASTA download button (right column)
         with col_new:
-            if downloads_locked:
+            if new_status == "preparing":
+                render_preparing_button()
+                result = prepare_fasta_download_background(
+                    loadable_databases,
+                    search_params_with_metadata,
+                    is_paired,
+                    chain_label
+                )
+                st.session_state[new_result_key] = result
+                st.session_state[new_status_key] = "completed" if result.get("success") else "failed"
+                if result.get("success"):
+                    st.toast("FASTA download is ready!", icon="⬇")
+                st.rerun()
+            elif downloads_locked:
                 st.button(
-                    new_button_label,
+                    "Download FASTA",
                     disabled=True,
                     width='stretch',
                     key=f"{new_download_key}_button_locked",
-                    help=lock_help,
+                    help="Locked while a search or plot load is in progress.",
+                    icon="⬇"
                 )
             elif new_status == "idle":
                 if st.button(
-                    new_button_label,
+                    "Download FASTA",
                     width='stretch',
-                    key=f"{new_download_key}_button"
+                    key=f"{new_download_key}_button",
+                    icon="⬇"
                 ):
-                    with st.spinner("Preparing FASTA download..."):
-                        result = prepare_fasta_download_background(
-                            loadable_databases,
-                            search_params_with_metadata,
-                            is_paired,
-                            chain_label
-                        )
-                    st.session_state[new_result_key] = result
-                    st.session_state[new_status_key] = "completed" if result.get("success") else "failed"
-                    if result.get("success"):
-                        st.toast("FASTA download is ready!", icon="⬇")
+                    st.session_state[new_status_key] = "preparing"
                     st.rerun()
             
             elif new_status == "completed":
@@ -663,15 +708,12 @@ def render_full_download_button(
                     
                     # Check if this is a large file with download URL
                     if result.get('download_url'):
-                        # Large file: redirect to static download link
-                        download_url = result.get('download_url')
                         label = f"⬇ Download FASTA ({file_size_mb:.2f} MB)" if file_size_mb > 0 else f"⬇ Download FASTA ({sequence_count:,} seq)"
-                        st.markdown(
-                            f'<a href="{download_url}" target="_blank" style="text-decoration: none;">'
-                            f'<button style="width: 100%; padding: 0.5rem 1rem; background-color: rgb(19, 124, 189); '
-                            f'color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.875rem;">'
-                            f'{label} - Opens in new tab</button></a>',
-                            unsafe_allow_html=True
+                        st.link_button(
+                            label,
+                            result['download_url'],
+                            type="primary",
+                            width="stretch",
                         )
                     else:
                         # Small file: use direct download button
@@ -686,32 +728,25 @@ def render_full_download_button(
                             key=f"download_{new_download_key}"
                         )
                 else:
-                    st.button("❌ Generation Failed", disabled=True, key=f"{new_download_key}_failed", width='stretch')
+                    st.button("Generation Failed", disabled=True, key=f"{new_download_key}_failed", width='stretch', icon=":material/error:")
                     error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-                    st.error(f"❌ {error_msg}")
+                    st.error(f"{error_msg}", icon=":material/error:")
             
             elif new_status == "failed":
                 result = st.session_state[new_result_key]
                 error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-                if st.button("🔄 Retry", key=f"{new_download_key}_retry", width='stretch'):
+                if st.button("Retry", key=f"{new_download_key}_retry", width='stretch', icon=":material/refresh:"):
                     st.session_state[new_status_key] = "idle"
                     st.session_state[new_result_key] = None
                     st.rerun()
                 else:
-                    st.error(f"❌ {error_msg}")
-
-
-LAST_SEARCH_INFO_MESSAGE = (
-    ":material/info: **You are currently viewing results from the search below.** "
-    "Modify the search parameters above to perform a new search."
-)
-
+                    st.error(f"{error_msg}", icon=":material/error:")
 
 def _render_last_search_header(show_info: bool = True) -> None:
     """Render consistent header for last search criteria sections."""
     st.markdown("## :material/search_gear: Last performed Search Criteria")
     if show_info:
-        st.info(LAST_SEARCH_INFO_MESSAGE)
+        st.info("**You are currently viewing results from the search below.** Modify the search parameters above to perform a new search.", icon=":material/info:")
 
 
 def _render_selected_databases_summary(selected_databases: Optional[List[Any]]) -> None:

@@ -31,24 +31,12 @@ from components.test_utils import (
     perform_database_search_background,
 )
 
-# Inject CSS for spinner animation and hide disabled form buttons
+# Shared spinner CSS (used by custom in-button "Preparing..." buttons)
+from components.search.styling import ensure_spinner_css
+
+# Hide disabled form submit buttons globally
 st.markdown("""
 <style>
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.spinner-dark {
-    border: 2px solid rgba(255, 255, 255, 0.2);
-    border-top: 2px solid #ffffff;
-    border-radius: 50%;
-    width: 16px;
-    height: 16px;
-    animation: spin 1s linear infinite;
-    display: inline-block;
-}
-
 /* Hide all disabled form submit buttons globally */
 div[data-testid="stForm"] button[kind="formSubmit"]:disabled,
 button[kind="formSubmit"]:disabled {
@@ -57,6 +45,8 @@ button[kind="formSubmit"]:disabled {
 }
 </style>
 """, unsafe_allow_html=True)
+
+ensure_spinner_css()
 
 # Initialize session state for background search tasks
 if 'search_future' not in st.session_state:
