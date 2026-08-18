@@ -973,6 +973,78 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
 
 
 CLEAR_SEARCH_MASK_FLAG = "_clear_search_mask"
+APPLY_EXAMPLE_SEARCH_FLAG = "_apply_example_search"
+
+EXAMPLE_SEARCH_CRITERIA: Dict[str, Any] = {
+    "unpaired_heavy": {
+        "v": "",
+        "d": "3-3",
+        "j": "",
+        "cdr1_length": "",
+        "cdr2_length": "",
+        "cdr3_length": ">=29",
+        "cdr1_motif": "",
+        "cdr2_motif": "",
+        "cdr3_motif": ".{15}*[FI]W[ST].{8}*",
+        "cdr1_similarity": False,
+        "cdr2_similarity": False,
+        "cdr3_similarity": False,
+        "cdr1_mismatches": 0,
+        "cdr2_mismatches": 0,
+        "cdr3_mismatches": 0,
+    },
+    "unpaired_light": {
+        "v": "K3",
+        "j": "K2",
+        "cdr1_length": "",
+        "cdr2_length": "",
+        "cdr3_length": "9",
+        "cdr1_motif": "",
+        "cdr2_motif": "",
+        "cdr3_motif": "QQY*",
+        "cdr1_similarity": False,
+        "cdr2_similarity": False,
+        "cdr3_similarity": False,
+        "cdr1_mismatches": 0,
+        "cdr2_mismatches": 0,
+        "cdr3_mismatches": 0,
+    },
+    "paired": {
+        "heavy": {
+            "v": "1-69",
+            "d": "",
+            "j": "6",
+            "cdr1_length": "",
+            "cdr2_length": "",
+            "cdr3_length": "18-22",
+            "cdr1_motif": "",
+            "cdr2_motif": "",
+            "cdr3_motif": "",
+            "cdr1_similarity": False,
+            "cdr2_similarity": False,
+            "cdr3_similarity": False,
+            "cdr1_mismatches": 0,
+            "cdr2_mismatches": 0,
+            "cdr3_mismatches": 0,
+        },
+        "light": {
+            "v": "K3",
+            "j": "K4",
+            "cdr1_length": "",
+            "cdr2_length": "",
+            "cdr3_length": "9",
+            "cdr1_motif": "",
+            "cdr2_motif": "",
+            "cdr3_motif": "",
+            "cdr1_similarity": False,
+            "cdr2_similarity": False,
+            "cdr3_similarity": False,
+            "cdr1_mismatches": 0,
+            "cdr2_mismatches": 0,
+            "cdr3_mismatches": 0,
+        },
+    },
+}
 
 
 def _heavy_mask_keys(prefix: str) -> Dict[str, Any]:
@@ -1044,4 +1116,65 @@ def clear_search_mask_session_state() -> None:
 
     st.session_state.pop("search_validation_error", None)
     st.session_state.pop("search_prefill_message", None)
+
+
+def _apply_heavy_example_to_session(prefix: str, example: Dict[str, Any]) -> None:
+    """Write heavy-chain example fields onto the matching widget keys."""
+    if prefix:
+        st.session_state[f"{prefix}v_input"] = example.get("v", "") or ""
+        st.session_state[f"{prefix}d_input"] = example.get("d", "") or ""
+        st.session_state[f"{prefix}j_input"] = example.get("j", "") or ""
+        field_prefix = prefix
+    else:
+        st.session_state["ighv_input"] = example.get("v", "") or ""
+        st.session_state["ighd_input"] = example.get("d", "") or ""
+        st.session_state["ighj_input"] = example.get("j", "") or ""
+        field_prefix = ""
+
+    for cdr in ("cdr1", "cdr2", "cdr3"):
+        st.session_state[f"{field_prefix}{cdr}_length_input"] = example.get(f"{cdr}_length", "") or ""
+        st.session_state[f"{field_prefix}{cdr}_motif_input"] = example.get(f"{cdr}_motif", "") or ""
+        st.session_state[f"{field_prefix}{cdr}_similarity_toggle"] = bool(
+            example.get(f"{cdr}_similarity", False)
+        )
+        st.session_state[f"{field_prefix}{cdr}_mismatches_input"] = int(
+            example.get(f"{cdr}_mismatches", 0) or 0
+        )
+
+
+def _apply_light_example_to_session(prefix: str, example: Dict[str, Any]) -> None:
+    """Write light-chain example fields onto the matching widget keys."""
+    st.session_state[f"{prefix}v_input"] = example.get("v", "") or ""
+    st.session_state[f"{prefix}j_input"] = example.get("j", "") or ""
+    for cdr in ("cdr1", "cdr2", "cdr3"):
+        st.session_state[f"{prefix}{cdr}_length_input"] = example.get(f"{cdr}_length", "") or ""
+        st.session_state[f"{prefix}{cdr}_motif_input"] = example.get(f"{cdr}_motif", "") or ""
+        st.session_state[f"{prefix}{cdr}_similarity_toggle"] = bool(
+            example.get(f"{cdr}_similarity", False)
+        )
+        st.session_state[f"{prefix}{cdr}_mismatches_input"] = int(
+            example.get(f"{cdr}_mismatches", 0) or 0
+        )
+
+
+def apply_example_search_mask(search_mode: str) -> None:
+    """
+    Fill the search mask with the example for the current Heavy / Light / Paired mode.
+
+    Must run before the form widgets are instantiated. Does not change database selection.
+    """
+    clear_search_mask_session_state()
+
+    if search_mode == "paired":
+        paired = EXAMPLE_SEARCH_CRITERIA.get("paired") or {}
+        _apply_heavy_example_to_session("heavy_", paired.get("heavy") or {})
+        _apply_light_example_to_session("light_", paired.get("light") or {})
+    elif search_mode == "unpaired_light":
+        _apply_light_example_to_session(
+            "light_", EXAMPLE_SEARCH_CRITERIA.get("unpaired_light") or {}
+        )
+    else:
+        _apply_heavy_example_to_session(
+            "", EXAMPLE_SEARCH_CRITERIA.get("unpaired_heavy") or {}
+        )
 

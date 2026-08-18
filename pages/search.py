@@ -13,7 +13,9 @@ from components.search.search_forms import (
     create_heavy_chain_form,
     create_light_chain_form,
     clear_search_mask_session_state,
+    apply_example_search_mask,
     CLEAR_SEARCH_MASK_FLAG,
+    APPLY_EXAMPLE_SEARCH_FLAG,
 )
 from components.search.database_utils import (
     get_database_structure
@@ -428,20 +430,22 @@ def search_page_content():
         st.warning("⚠️ Please select at least one database to search")
         return
     
+    engine = st.session_state['search_engine']
+    is_paired = search_mode == 'paired'
+
+    # Clear / example fill must happen before widgets are created
+    if st.session_state.pop(CLEAR_SEARCH_MASK_FLAG, False):
+        clear_search_mask_session_state()
+    if st.session_state.pop(APPLY_EXAMPLE_SEARCH_FLAG, False):
+        apply_example_search_mask(search_mode)
+
     # Show IgBLAST prefill message once, then clear
     prefill_msg = st.session_state.pop('search_prefill_message', None)
     if prefill_msg:
         st.info(f"💡 **{prefill_msg}**")
-    
-    engine = st.session_state['search_engine']
-    is_paired = search_mode == 'paired'
 
     st.markdown("## :material/search: Search Criteria")
     st.divider()
-    
-    # Clear must happen before widgets are created
-    if st.session_state.pop(CLEAR_SEARCH_MASK_FLAG, False):
-        clear_search_mask_session_state()
     
     # Determine if form should be disabled
     search_status = st.session_state.search_status
@@ -536,11 +540,12 @@ def search_page_content():
                     st.rerun()
     
     clear_submitted = False
+    example_submitted = False
     with st.form("search_form"):
         if validation_errors:
             st.error(f"**Please fix the following serach filters before searching:** {', '.join(validation_errors)}", icon=":material/error:")
         
-        btn_search, btn_clear = st.columns([1, 1], gap="small")
+        btn_search, btn_clear, btn_example = st.columns([1, 1, 1], gap="small")
         with btn_search:
             # Always show a submit button (required by Streamlit forms)
             if search_status == "idle":
@@ -583,9 +588,23 @@ def search_page_content():
                 width="content",
                 help="Empty all search criteria fields (database selection is kept).",
             )
+        with btn_example:
+            example_submitted = st.form_submit_button(
+                ":material/science: Example search",
+                type="secondary",
+                disabled=disable_form_controls,
+                width="content",
+                help=(
+                    "Fill the search mask with an example for the currently selected "
+                    "Heavy, Light, or Paired database (database selection is kept)."
+                ),
+            )
 
     if clear_submitted:
         st.session_state[CLEAR_SEARCH_MASK_FLAG] = True
+        st.rerun()
+    if example_submitted:
+        st.session_state[APPLY_EXAMPLE_SEARCH_FLAG] = True
         st.rerun()
     
     # Show validation error (e.g. OAS-disallowed gene) right below the form, not after results
