@@ -588,6 +588,7 @@ def render_full_download_button(
         )
         
         # Full Results and FASTA side by side under the sample sequences table
+        local_large_results_notice: Optional[Tuple[str, str]] = None
         col_full, col_new, _spacer = st.columns([1.5, 1.5, 7])
         
         # Full Results download button
@@ -630,15 +631,32 @@ def render_full_download_button(
                 if result and result.get('success'):
                     file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
                     
-                    # Check if this is a large file with download URL
+                    # Large local files: disabled button + path notice below both buttons.
                     if result.get('download_url'):
-                        st.link_button(
-                            f"Download Results Table ({file_size_mb:.2f} MB)",
-                            result['download_url'],
-                            type="primary",
-                            width="stretch",
-                            icon="⬇"
-                        )
+                        download_url = result.get('download_url', '')
+                        is_nginx_docker = isinstance(download_url, str) and download_url.startswith("/downloads/")
+                        if not is_nginx_docker:
+                            saved_path = result.get("saved_path")
+                            local_large_results_notice = (
+                                "info",
+                                f"**Saved Results Table too large for browser download, saved on disk:**\n{saved_path}",
+                            )
+                            st.button(
+                                "Download Results Table",
+                                disabled=True,
+                                width="stretch",
+                                key=f"{download_key}_button_large_local",
+                                help="File is too large for browser download. Use the path shown below.",
+                                icon="⬇",
+                            )
+                        else:
+                            st.link_button(
+                                f"Download Results Table ({file_size_mb:.2f} MB)",
+                                result['download_url'],
+                                type="primary",
+                                width="stretch",
+                                icon="⬇"
+                            )
                     else:
                         # Small file: use direct download button
                         st.download_button(
@@ -741,6 +759,13 @@ def render_full_download_button(
                     st.rerun()
                 else:
                     st.error(f"{error_msg}", icon=":material/error:")
+
+        if local_large_results_notice:
+            level, message = local_large_results_notice
+            if level == "warning":
+                st.warning(message)
+            else:
+                st.info(message)
 
 def _render_last_search_header(show_info: bool = True) -> None:
     """Render consistent header for last search criteria sections."""

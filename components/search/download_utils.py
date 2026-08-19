@@ -746,6 +746,7 @@ def prepare_full_results_download_background(
                 'filename': tar_gz_filename,
                 'file_size_bytes': file_size_bytes,
                 'is_large_file': True,
+                'saved_path': str(tar_gz_path),
                 'token': token
             }
         else:
