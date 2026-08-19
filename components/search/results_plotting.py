@@ -276,7 +276,7 @@ def _render_plot_download_buttons(
             plot_df = st.session_state.get("donor_plot_plot_filtered_df")
             plot_meta = st.session_state.get("donor_plot_plot_meta", {})
 
-            result_bytes, result_filename = prepare_all_downloads(
+            result = prepare_all_downloads(
                 loadable_databases,
                 search_params,
                 is_paired,
@@ -289,14 +289,10 @@ def _render_plot_download_buttons(
                 statistics,
                 selected_databases,
             )
-            st.session_state[keys["result"]] = {
-                "success": True,
-                "data": result_bytes,
-                "filename": result_filename,
-                "file_size_bytes": len(result_bytes),
-            }
-            st.session_state[keys["status"]] = "completed"
-            st.toast("All downloads are ready!", icon="⬇")
+            st.session_state[keys["result"]] = result
+            st.session_state[keys["status"]] = "completed" if result.get("success") else "failed"
+            if result.get("success"):
+                st.toast("All downloads are ready!", icon="⬇")
         except Exception as exc:
             st.session_state[keys["result"]] = {"success": False, "error": str(exc)}
             st.session_state[keys["status"]] = "failed"
@@ -360,6 +356,7 @@ def _render_plot_download_buttons(
                 st.error(f"{error_msg}", icon=":material/error:")
 
     # Button 2: Download All
+    local_all_large_notice: Optional[Tuple[str, str]] = None
     with col_all:
         keys = _get_state_keys("all")
         status = st.session_state[keys["status"]]
@@ -379,12 +376,48 @@ def _render_plot_download_buttons(
             result = st.session_state[keys["result"]]
             if result and result.get('success'):
                 file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
-                st.download_button(
-                    label=f"Download All ({file_size_mb:.2f} MB)",
-                    data=result.get('data', b''),
-                    file_name=result.get('filename', 'all_downloads.zip'),
-                    mime="application/zip", width='stretch', type="primary",
-                    key=f"download_{download_key}_all", icon="⬇")
+                if result.get("download_url"):
+                    download_url = result.get("download_url", "")
+                    is_nginx_docker = isinstance(download_url, str) and download_url.startswith("/downloads/")
+                    if not is_nginx_docker:
+                        saved_path = result.get("saved_path")
+                        st.button(
+                            "Download All",
+                            disabled=True,
+                            width="stretch",
+                            key=f"{download_key}_button_all_large_local",
+                            help="File is too large for browser download. Use the path shown below.",
+                            icon="⬇",
+                        )
+                        if saved_path:
+                            local_all_large_notice = (
+                                "info",
+                                f"**Saved Results Table too large for browser download, saved on disk:**\n{saved_path}",
+                            )
+                        else:
+                            local_all_large_notice = (
+                                "warning",
+                                "Saved path is missing. Please re-run the download preparation.",
+                            )
+                    else:
+                        st.link_button(
+                            f"Download All ({file_size_mb:.2f} MB)",
+                            download_url,
+                            type="primary",
+                            width="stretch",
+                            icon="⬇",
+                        )
+                else:
+                    st.download_button(
+                        label=f"Download All ({file_size_mb:.2f} MB)",
+                        data=result.get('data', b''),
+                        file_name=result.get('filename', 'all_downloads.tar.gz'),
+                        mime="application/gzip",
+                        width='stretch',
+                        type="primary",
+                        key=f"download_{download_key}_all",
+                        icon="⬇",
+                    )
             else:
                 st.button("Generation Failed", disabled=True,
                           key=f"{download_key}_failed_all", width='stretch',
@@ -401,6 +434,14 @@ def _render_plot_download_buttons(
                 st.rerun()
             else:
                 st.error(f"{error_msg}", icon=":material/error:")
+
+    # Notifications for the full-width layout
+    if local_all_large_notice:
+        level, message = local_all_large_notice
+        if level == "warning":
+            st.warning(message)
+        else:
+            st.info(message)
 
 
 def _get_unpaired_chain_type(search_params: Dict[str, Any]) -> str:

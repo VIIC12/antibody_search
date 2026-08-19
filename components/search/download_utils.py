@@ -456,8 +456,12 @@ def prepare_all_downloads(
     plots_data: List[Dict[str, Any]],
     statistics: Optional[Dict[str, Any]] = None,
     selected_databases: Optional[List[str]] = None,
-) -> Tuple[bytes, str]:
-    """Bundle results, FASTA, statistics, frequency data, and figures+raw data into one ZIP."""
+) -> Dict[str, Any]:
+    """Bundle results, FASTA, statistics, frequency data, and figures+raw data into one tar.gz.
+
+    For large archives, avoid returning bytes in memory and instead return a filesystem-backed
+    `download_url` + `saved_path` (local) so the UI can show a path instead of opening in browser.
+    """
     statistics = statistics or {}
     selected_databases = selected_databases or []
     search_params_with_metadata = dict(search_params)
@@ -482,20 +486,12 @@ def prepare_all_downloads(
         is_paired,
         chain_label,
     )
-    full_bytes, full_filename = _consume_generated_download(
-        full_result,
-        data_keys=["parquet_data"],
-    )
 
     fasta_result = prepare_fasta_download_background(
         database_paths,
         search_params_with_metadata,
         is_paired,
         chain_label,
-    )
-    fasta_bytes, fasta_filename = _consume_generated_download(
-        fasta_result,
-        data_keys=["data"],
     )
 
     plots_metadata: Dict[str, Any] = {
@@ -517,20 +513,6 @@ def prepare_all_downloads(
         plots_metadata,
         include_raw_data=True,
     )
-    plots_bytes, plots_filename = _consume_generated_download(
-        plots_result,
-        data_keys=["zip_data"],
-    )
-
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        zip_file.writestr(full_filename, full_bytes)
-        zip_file.writestr(fasta_filename, fasta_bytes)
-        zip_file.writestr(stats_filename, stats_zip)
-        zip_file.writestr(frequency_filename, frequency_zip)
-        zip_file.writestr(plots_filename, plots_bytes)
-
-    zip_buffer.seek(0)
     identifier = _build_search_identifier(
         {
             "search_params": search_params,
@@ -539,7 +521,87 @@ def prepare_all_downloads(
             "plot_options": plot_meta or {},
         }
     )
-    return zip_buffer.getvalue(), f"ABHunter_all_downloads_{chain_label}_{identifier}.zip"
+
+    tar_gz_filename = f"ABHunter_all_downloads_{chain_label}_{identifier}.tar.gz"
+    token, tar_gz_path, download_url = _get_download_path(tar_gz_filename, "tar.gz")
+
+    staging_dir = _get_tmp_directory() / f"all_downloads_staging_{uuid.uuid4().hex}"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    import shutil
+
+    def _stage_artifact(result: Dict[str, Any], *, staging_name: str) -> None:
+        if not result or not result.get("success"):
+            raise ValueError((result or {}).get("error", "Artifact generation failed"))
+
+        # If bytes were returned (small local case), write them directly.
+        for key in ("parquet_data", "data", "zip_data"):
+            if key in result and result.get(key) is not None:
+                (staging_dir / staging_name).write_bytes(result[key])
+                return
+
+        # If a URL was returned, the file should exist on disk in our downloads directory.
+        download_url_local = result.get("download_url")
+        if download_url_local:
+            stored_name = download_url_local.rsplit("/", 1)[-1]
+            src_path = _get_download_directory() / stored_name
+            if not src_path.exists():
+                raise FileNotFoundError(f"Expected generated artifact not found: {src_path}")
+            shutil.copyfile(src_path, staging_dir / staging_name)
+            return
+
+        raise ValueError("Artifact result did not contain bytes or a download_url")
+
+    try:
+        # Write small byte payloads from stats/frequency.
+        (staging_dir / stats_filename).write_bytes(stats_zip)
+        (staging_dir / frequency_filename).write_bytes(frequency_zip)
+
+        # Stage full results + fasta tarballs + plots archive.
+        _stage_artifact(full_result, staging_name=full_result.get("filename", "full_results.tar.gz"))
+        _stage_artifact(fasta_result, staging_name=fasta_result.get("filename", "fasta.tar.gz"))
+        _stage_artifact(plots_result, staging_name=plots_result.get("filename", "plots.zip"))
+
+        # Create final top-level tar.gz on disk.
+        files_to_tar = [f.name for f in sorted(staging_dir.iterdir())]
+        import subprocess
+        with open(tar_gz_path, "wb") as out_f:
+            subprocess.run(
+                ["tar", "-cf", "-", "--use-compress-program=pigz"] + files_to_tar,
+                cwd=str(staging_dir),
+                stdout=out_f,
+                check=True,
+            )
+
+        os.chmod(tar_gz_path, 0o644)
+        file_size_bytes = tar_gz_path.stat().st_size
+
+        # Large archives: keep on disk, return URL/path for the UI.
+        if file_size_bytes > LARGE_FILE_THRESHOLD:
+            return {
+                "success": True,
+                "download_url": download_url,
+                "filename": tar_gz_filename,
+                "file_size_bytes": file_size_bytes,
+                "is_large_file": True,
+                "token": token,
+                # On local runs, download_url is not /downloads/...; saved_path is what the UI should show.
+                "saved_path": str(tar_gz_path),
+            }
+
+        # Small archives: return bytes for st.download_button, and cleanup disk file.
+        file_bytes = tar_gz_path.read_bytes()
+        tar_gz_path.unlink(missing_ok=True)
+        return {
+            "success": True,
+            "data": file_bytes,
+            "filename": tar_gz_filename,
+            "file_size_bytes": file_size_bytes,
+            "is_large_file": False,
+        }
+
+    finally:
+        shutil.rmtree(staging_dir, ignore_errors=True)
 
 
 def _build_copy_select_columns(schema_column_names: List[str], is_paired: bool) -> str:
