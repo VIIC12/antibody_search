@@ -215,17 +215,17 @@ def create_paired_search_form(disabled: bool = False) -> Dict[str, Any]:
 
 def search_page_content():
     """Main search page content."""
-
+    
     # Print database path once when server starts (only on first call)
     if 'db_path_printed' not in st.session_state:
         abhunter_db_path = os.getenv("ABHUNTER_DB_PATH")
         if abhunter_db_path:
             db_path = Path(abhunter_db_path).absolute()
-            logger.info(f"Database path: {db_path}")
+            print(f"Database path: {db_path}")
         else:
             project_root = Path(__file__).parent.parent.parent
             db_path = (project_root / "data").absolute()
-            logger.info(f"Database path: {db_path} (default)")
+            print(f"Database path: {db_path} (default)")
         st.session_state['db_path_printed'] = True
     
     db_structure = get_database_structure()
@@ -425,10 +425,6 @@ def search_page_content():
         if 'last_search_results' in st.session_state:
             cached_results = st.session_state['last_search_results']
             render_cached_results_for_mode(cached_results, current_mode=search_mode)
-        return
-    
-    if not selected_db:
-        st.warning("⚠️ Please select at least one database to search")
         return
     
     engine = st.session_state['search_engine']

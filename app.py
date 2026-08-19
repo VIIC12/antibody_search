@@ -73,7 +73,7 @@ def main():
     
     # Global page configuration - applies to all pages by default
     st.set_page_config(
-        page_title="ABHunter Database Search",
+        page_title="ABHunter - Antibody Database Search",
         page_icon=':material/vaccines:',
         layout="wide",
         initial_sidebar_state="expanded",
@@ -82,6 +82,17 @@ def main():
             'Report a bug': 'https://github.com/VIIC12/antibody_search/issues',
             'About': "**ABHunter** is a high-performance antibody database search tool that lets you search the Observed Antibody Space (OAS) database in seconds and analyze how frequently specific V/D/J genes, CDR lengths, and motifs appear in human, non-vaccinated, healthy patients. For unpaired heavy or light chain data, ABHunter provides inferred V/J gene pairing information and statistical frequencies based on paired antibody data from the database. Please refer to the sidebar for proper citations when using this tool in your research. Thank you for using ABHunter!"
         }
+    )
+
+    st.markdown(
+        """
+        <style>
+        div.block-container {
+            padding-top: 4rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
     with st.sidebar:
@@ -95,17 +106,6 @@ def main():
     entry_page = st.navigation(
         [search, igblast, statistics, imprint],
         position="top",
-    )
-
-    st.markdown(
-        """
-        <style>
-        div.block-container {
-            padding-top: 4rem;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
     )
 
     # Run the selected page

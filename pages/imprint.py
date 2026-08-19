@@ -3,7 +3,16 @@ from app import render_sidebar
 
 # Override page title (inherits other settings from app.py)
 st.set_page_config(page_title="ABHunter Imprint")
-
+# st.markdown(
+#     """
+#     <style>
+#     div.block-container {
+#         padding-top: 2rem;
+#     }
+#     </style>
+#     """,
+#     unsafe_allow_html=True,
+# )
 # Main content
 st.title(":material/info: Imprint")
 st.markdown("---")
