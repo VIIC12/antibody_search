@@ -32,8 +32,8 @@ from components.search.search_execution import execute_search
 from components.search.results_plotting import build_plotting_where_clause
 from src.search_engine import AntibodySearchEngine
 
-# Threshold for large files (5MB)
-LARGE_FILE_THRESHOLD = 5 * 1024 * 1024  # 5MB in bytes
+# Threshold for large files (1 GB)
+LARGE_FILE_THRESHOLD = 1073741824
 
 # Load .env once so ABHUNTER_DOWNLOAD_DIR / ABHUNTER_TMP_DIR are set when this module is used
 _env_loaded = False
@@ -562,17 +562,22 @@ def _build_copy_select_columns(schema_column_names: List[str], is_paired: bool) 
     return ", ".join(parts)
 
 
-def _copy_query_to_csv_gz_duckdb(
+def _copy_query_to_tar_gz_duckdb(
     conn,
     table_name: str,
     where_clause: str,
-    csv_gz_path: Path,
+    tar_gz_path: Path,
     is_paired: bool,
+    search_params: Dict[str, Any],
+    csv_filename: str,
 ) -> None:
     """
-    Export query result directly to gzip-compressed CSV using DuckDB native COPY.
-    No intermediate cache: streams from the table/view straight to CSV.gz.
+    Export query result to CSV, add search parameters JSON, and package both into
+    a .tar.gz archive using tar + pigz.
     """
+    import subprocess
+    import shutil
+
     df = conn.execute(
         f"SELECT * FROM {table_name} WHERE {where_clause} LIMIT 1"
     ).df()
@@ -582,11 +587,35 @@ def _copy_query_to_csv_gz_duckdb(
         raise ValueError("No columns to export after applying exclude list")
     conn.execute("SET preserve_insertion_order = false")
     conn.execute("SET enable_progress_bar = true")
-    sql = (
-        f"COPY (SELECT {select_clause} FROM {table_name} WHERE {where_clause}) "
-        f"TO ? (HEADER, DELIMITER ',', COMPRESSION GZIP)"
-    )
-    conn.execute(sql, [str(csv_gz_path.resolve())])
+
+    tmp_dir = _get_tmp_directory()
+    staging_dir = tmp_dir / f"results_staging_{uuid.uuid4().hex}"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        staged_csv = staging_dir / csv_filename
+        sql = (
+            f"COPY (SELECT {select_clause} FROM {table_name} WHERE {where_clause}) "
+            f"TO ? (HEADER, DELIMITER ',')"
+        )
+        conn.execute(sql, [str(staged_csv.resolve())])
+
+        params_path = staging_dir / "search_parameters.json"
+        params_path.write_text(
+            json.dumps(search_params, indent=2, sort_keys=True, default=str),
+            encoding="utf-8",
+        )
+
+        files_to_tar = [f.name for f in sorted(staging_dir.iterdir())]
+        with open(tar_gz_path, "wb") as out_f:
+            subprocess.run(
+                ["tar", "-cf", "-", "--use-compress-program=pigz"] + files_to_tar,
+                cwd=str(staging_dir),
+                stdout=out_f,
+                check=True,
+            )
+    finally:
+        shutil.rmtree(staging_dir, ignore_errors=True)
 
 
 def prepare_full_results_download_background(
@@ -687,39 +716,47 @@ def prepare_full_results_download_background(
             "is_paired": is_paired,
         })
         base_filename = f"ABHunter_sequences_{chain_label}_{identifier}"
-        csv_gz_filename = f"{base_filename}.csv.gz"
-        token, csv_gz_path, download_url = _get_download_path(csv_gz_filename, "csv.gz")
+        csv_filename = f"{base_filename}.csv"
+        tar_gz_filename = f"{base_filename}.tar.gz"
+        token, tar_gz_path, download_url = _get_download_path(tar_gz_filename, "tar.gz")
 
-        _copy_query_to_csv_gz_duckdb(
-            engine.conn, table_name, where_clause, csv_gz_path, is_paired
+        _copy_query_to_tar_gz_duckdb(
+            engine.conn,
+            table_name,
+            where_clause,
+            tar_gz_path,
+            is_paired,
+            dict(search_params),
+            csv_filename,
         )
         if hasattr(engine, "conn"):
             engine.conn.close()
 
-        os.chmod(csv_gz_path, 0o644)
-        file_size_bytes = csv_gz_path.stat().st_size
+        os.chmod(tar_gz_path, 0o644)
+        file_size_bytes = tar_gz_path.stat().st_size
 
         logger.info(f"Background full results download: Completed. File size: {file_size_bytes} bytes.")
         
-        # Large files: nginx URL in Docker; Streamlit download_button locally
-        if file_size_bytes > LARGE_FILE_THRESHOLD and _use_nginx_download_urls():
+        # Large files: avoid loading the whole archive into RAM.
+        # We serve from disk via `download_url` (nginx in Docker, static/ in local).
+        if file_size_bytes > LARGE_FILE_THRESHOLD:
             return {
                 'success': True,
                 'download_url': download_url,
-                'filename': csv_gz_filename,
+                'filename': tar_gz_filename,
                 'file_size_bytes': file_size_bytes,
                 'is_large_file': True,
                 'token': token
             }
         else:
             try:
-                with open(csv_gz_path, 'rb') as f:
+                with open(tar_gz_path, 'rb') as f:
                     file_data = f.read()
-                csv_gz_path.unlink()
+                tar_gz_path.unlink()
                 return {
                     'success': True,
                     'parquet_data': file_data,
-                    'filename': csv_gz_filename,
+                    'filename': tar_gz_filename,
                     'file_size_bytes': file_size_bytes,
                     'is_large_file': False
                 }
