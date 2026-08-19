@@ -721,8 +721,8 @@ def render_full_download_button(
                         st.download_button(
                             label=label,
                             data=result.get('data', b''),
-                            file_name=result.get('filename', 'sequences.fasta.zip'),
-                            mime="application/zip",
+                            file_name=result.get('filename', 'sequences.tar.gz'),
+                            mime="application/gzip",
                             width='stretch',
                             type="primary",
                             key=f"download_{new_download_key}"

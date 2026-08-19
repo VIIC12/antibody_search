@@ -160,8 +160,11 @@ def _get_download_path(
         filename = f"{token}.{ext}"
     file_path = download_dir / filename
 
-    # Generate download URL (nginx serves /downloads/)
-    download_url = f"/downloads/{filename}"
+    # nginx serves /downloads/; local Streamlit serves via static/ symlink
+    if _use_nginx_download_urls():
+        download_url = f"/downloads/{filename}"
+    else:
+        download_url = f"app/static/downloads/{filename}"
     return token, file_path, download_url
 
 
@@ -1083,6 +1086,142 @@ def prepare_plots_download_background(
         }
 
 
+def _duckdb_copy_fasta(
+    conn,
+    table_name: str,
+    where_clause: str,
+    col: str,
+    chain_label: str,
+    out_path: Path,
+) -> int:
+    """
+    Use DuckDB COPY TO to write a FASTA file natively in C++ — no Python row loop.
+
+    Each matching row becomes two lines: >rownum_label\\nsequence.
+    Returns the number of sequences written.
+    """
+    conn.execute("SET preserve_insertion_order = false")
+
+    full_where = f"{where_clause} AND \"{col}\" IS NOT NULL AND \"{col}\" != ''"
+
+    # Get count first via DuckDB (fast aggregation, no Python file scan)
+    count_result = conn.execute(
+        f"SELECT COUNT(*) FROM {table_name} WHERE {full_where}"
+    ).fetchone()
+    seq_count = count_result[0] if count_result else 0
+    if seq_count == 0:
+        return 0
+
+    logger.info(f"FASTA COPY TO: writing {seq_count:,} {chain_label} sequences to {out_path.name}")
+
+    # Create a temp table with auto-incrementing rowid to avoid ROW_NUMBER() OVER ()
+    # which forces a full sort. DuckDB base tables expose rowid; views/parquet do not.
+    tmp_tbl = f"_fasta_tmp_{uuid.uuid4().hex[:8]}"
+    conn.execute(
+        f"CREATE TEMPORARY TABLE {tmp_tbl} AS "
+        f"SELECT \"{col}\" FROM {table_name} WHERE {full_where}"
+    )
+    sql = (
+        f"COPY ("
+        f"  SELECT '>' || rowid || '_{chain_label}' || chr(10) || \"{col}\" "
+        f"  FROM {tmp_tbl}"
+        f") TO '{out_path}' (HEADER false, DELIMITER '', QUOTE '')"
+    )
+    conn.execute(sql)
+    conn.execute(f"DROP TABLE IF EXISTS {tmp_tbl}")
+    return seq_count
+
+
+def _native_fasta_to_tar_gz(
+    conn,
+    table_name: str,
+    where_clause: str,
+    seq_columns: List[str],
+    is_paired: bool,
+    chain_label: str,
+    tar_gz_path: Path,
+    search_params: Dict[str, Any],
+) -> Tuple[int, int]:
+    """
+    Write FASTA via DuckDB COPY TO (C++), then package into a .tar.gz with
+    search_parameters.json using tar + pigz.
+
+    Returns (file_size_bytes, total_sequences).
+    """
+    import time as _time
+    import subprocess
+    import shutil
+    tmp_dir = _get_tmp_directory()
+    staging_dir = tmp_dir / f"fasta_staging_{uuid.uuid4().hex}"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    total_sequences = 0
+    t0 = _time.monotonic()
+
+    try:
+        if is_paired:
+            heavy_path = staging_dir / "sequences_heavy.fasta"
+            light_path = staging_dir / "sequences_light.fasta"
+
+            total_sequences += _duckdb_copy_fasta(
+                conn, table_name, where_clause,
+                "sequence_alignment_aa_heavy", "heavy", heavy_path,
+            )
+            total_sequences += _duckdb_copy_fasta(
+                conn, table_name, where_clause,
+                "sequence_alignment_aa_light", "light", light_path,
+            )
+
+        elif len(seq_columns) == 1:
+            fasta_path = staging_dir / f"sequences_{chain_label}.fasta"
+            total_sequences = _duckdb_copy_fasta(
+                conn, table_name, where_clause,
+                seq_columns[0], chain_label, fasta_path,
+            )
+
+        else:
+            for col in seq_columns:
+                lbl = "heavy" if "heavy" in col else "light"
+                fasta_path = staging_dir / f"sequences_{lbl}.fasta"
+                count = _duckdb_copy_fasta(
+                    conn, table_name, where_clause, col, lbl, fasta_path,
+                )
+                if count == 0:
+                    fasta_path.unlink(missing_ok=True)
+                total_sequences += count
+
+        # Write search parameters JSON
+        params_path = staging_dir / "search_parameters.json"
+        params_path.write_text(
+            json.dumps(search_params, indent=2, sort_keys=True, default=str),
+            encoding="utf-8",
+        )
+
+        t_fasta = _time.monotonic()
+        logger.info(f"FASTA COPY TO completed in {t_fasta - t0:.1f}s. Creating tar.gz for {total_sequences:,} sequences...")
+
+        # tar + pigz: create .tar.gz from staging directory contents
+        files_to_tar = [f.name for f in sorted(staging_dir.iterdir())]
+        subprocess.run(
+            ["tar", "-cf", "-", "--use-compress-program=pigz"] + files_to_tar,
+            cwd=str(staging_dir),
+            stdout=open(tar_gz_path, "wb"),
+            check=True,
+        )
+
+        os.chmod(tar_gz_path, 0o644)
+        file_size_bytes = tar_gz_path.stat().st_size
+        t_gz = _time.monotonic()
+        logger.info(
+            f"tar.gz completed in {t_gz - t_fasta:.1f}s. "
+            f"Total FASTA pipeline: {t_gz - t0:.1f}s, "
+            f"File size: {file_size_bytes / 1024 / 1024:.1f} MB"
+        )
+        return file_size_bytes, total_sequences
+
+    finally:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+
+
 def prepare_fasta_download_background(
     database_paths: List[str],
     search_params: Dict[str, Any],
@@ -1091,20 +1230,23 @@ def prepare_fasta_download_background(
 ) -> Dict[str, Any]:
     """
     Prepare FASTA file download in a background process.
-    
-    This function performs a full search (no limit) and generates FASTA content
-    for download. Creates a ZIP file with FASTA files and search parameters.
-    
+
+    Non-nginx (local): streams directly from DuckDB into a ZIP — no temp CSV,
+    no giant in-memory FASTA string.
+    Nginx (Docker): uses the legacy CSV+awk path so the file stays on disk for
+    nginx to serve.
+
     Args:
         database_paths: List of database directory paths
         search_params: Search parameters dictionary (will be copied)
         is_paired: Whether this is a paired search
         chain_label: Chain label ("paired", "heavy", or "light")
-        
+
     Returns:
         Dictionary with keys:
         - 'success': Boolean indicating if operation succeeded
-        - 'data': ZIP file content as bytes
+        - 'data': ZIP file content as bytes (non-nginx)
+        - 'download_url': URL for nginx download (nginx only)
         - 'filename': Suggested filename for download
         - 'file_size_bytes': Size of ZIP file in bytes
         - 'sequence_count': Total number of sequences in FASTA files
@@ -1118,11 +1260,11 @@ def prepare_fasta_download_background(
         project_root = Path(__file__).parent.parent.parent
         sys.path.insert(0, str(project_root))
         sys.path.insert(0, str(project_root / "src"))
-        
+
         # Suppress Streamlit caching warnings in worker processes
         warnings.filterwarnings("ignore", category=UserWarning, module="streamlit.runtime.caching.cache_data_api")
         logging.getLogger("streamlit.runtime.caching.cache_data_api").setLevel(logging.ERROR)
-        
+
         # Ensure logging is configured in worker process
         if not logging.getLogger().handlers:
             logging.basicConfig(
@@ -1130,50 +1272,43 @@ def prepare_fasta_download_background(
                 format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                 handlers=[logging.StreamHandler(sys.stdout)]
             )
-            # Set this module to DEBUG in worker
             logging.getLogger(__name__).setLevel(logging.DEBUG)
 
-        
         from components.search.database_utils import init_search_engine
-        from components.search.search_execution import execute_search
-        
-        # Import helper functions
         from components.search.download_utils import _build_search_identifier
-        
+
         # Create a new search engine instance in the worker process
         engine = init_search_engine(
             data_dir=database_paths,
             db_path=":memory:"
         )
         logger.info("Background FASTA download: Search engine initialized")
-        
+        if hasattr(engine, "configure_threads"):
+            engine.configure_threads(24)
+
         # Copy search params to avoid modifying original
         search_params_copy = search_params.copy()
         selected_databases_formatted = search_params_copy.pop("selected_databases", [])
-        
+
         # Determine chain label if not provided
         if chain_label is None:
             if is_paired:
                 chain_label = "paired"
+            elif any(search_params_copy.get(k) for k in ['light_v', 'light_j', 'light_cdr1_length',
+                                                          'light_cdr2_length', 'light_cdr3_length']):
+                chain_label = "light"
             else:
-                # Check if light chain parameters are present
-                if any(search_params_copy.get(k) for k in ['light_v', 'light_j', 'light_cdr1_length', 
-                                                           'light_cdr2_length', 'light_cdr3_length']):
-                    chain_label = "light"
-                else:
-                    chain_label = "heavy"
-        
-        # Determine chain type for unpaired searches
+                chain_label = "heavy"
+
         unpaired_chain_type = "Heavy" if chain_label == "heavy" else "Light"
-        
-        # Build WHERE clause directly (more efficient than using execute_search)
+
         where_clause = _build_where_clause_from_params(
             engine, search_params_copy, is_paired, unpaired_chain_type
         )
-        
+
         table_name = "antibodies"
 
-        # Infer sequence columns from table schema (LIMIT 1), no cache Parquet
+        # Infer sequence columns from table schema (LIMIT 1)
         df = engine.conn.execute(
             f"SELECT * FROM {table_name} WHERE {where_clause} LIMIT 1"
         ).df()
@@ -1192,40 +1327,13 @@ def prepare_fasta_download_background(
             else:
                 if hasattr(engine, "conn"):
                     engine.conn.close()
-                return {
-                    "success": False,
-                    "error": "No sequence columns found in database.",
-                }
+                return {"success": False, "error": "No sequence columns found in database."}
         seq_columns = [c for c in seq_columns if c in all_columns]
         if not seq_columns:
             if hasattr(engine, "conn"):
                 engine.conn.close()
-            return {
-                "success": False,
-                "error": "No sequence columns found in database.",
-            }
+            return {"success": False, "error": "No sequence columns found in database."}
 
-        fd, temp_csv_path = tempfile.mkstemp(suffix=".csv", dir=_get_tmp_directory())
-        os.close(fd)
-        temp_csv_path = Path(temp_csv_path)
-        try:
-            _copy_query_sequence_columns_to_csv(
-                engine.conn, table_name, where_clause, temp_csv_path, seq_columns
-            )
-            if hasattr(engine, "conn"):
-                engine.conn.close()
-            fasta_files = _csv_to_fasta_files(temp_csv_path, is_paired, seq_columns, chain_label)
-        finally:
-            if temp_csv_path.exists():
-                temp_csv_path.unlink(missing_ok=True)
-
-        if not fasta_files:
-            return {
-                'success': False,
-                'error': 'No sequences available for selected chain types.'
-            }
-
-        # Generate filename first
         identifier = _build_search_identifier({
             "search_params": search_params_copy,
             "chain_label": chain_label,
@@ -1233,42 +1341,31 @@ def prepare_fasta_download_background(
             "selected_databases": sorted(selected_databases_formatted),
         })
 
-        if len(fasta_files) > 1:
-            filename = f"ABHunter_FASTA_{identifier}.zip"
-        else:
-            chain_name = list(fasta_files.keys())[0]
-            filename = f"ABHunter_FASTA_{chain_name}_{identifier}.zip"
+        use_nginx = _use_nginx_download_urls()
 
-        # Get download path for streaming write
-        token, file_path, download_url = _get_download_path(filename, "zip")
+        # ---- DuckDB COPY TO → FASTA → tar.gz (both nginx and local) ----
+        chain_name = "paired" if is_paired else chain_label
+        filename = f"ABHunter_FASTA_{chain_name}_{identifier}.tar.gz"
 
-        try:
-            zip_fp = zipfile.ZipFile(file_path, 'w', zipfile.ZIP_DEFLATED)
-        except PermissionError as e:
-            download_dir = _get_download_directory()
-            raise PermissionError(
-                f"Cannot write to download directory: {download_dir}. "
-                "Ensure the directory exists and is writable by this process. "
-                "In Docker, set ABHUNTER_DOWNLOAD_DIR=/app/downloads and mount the same host path "
-                "(e.g. ./downloads) with write access; fix host permissions if needed (e.g. chmod 775 ./downloads)."
-            ) from e
-        with zip_fp as zip_file:
-            for chain_type, fasta_content in fasta_files.items():
-                fasta_filename = f"sequences_{chain_type}.fasta"
-                zip_file.writestr(fasta_filename, fasta_content.encode('utf-8'))
-            search_params_with_metadata = dict(search_params)
-            search_params_json = json.dumps(search_params_with_metadata, indent=2, sort_keys=True, default=str)
-            zip_file.writestr("search_parameters.json", search_params_json.encode('utf-8'))
+        token, file_path, download_url = _get_download_path(filename, "tar.gz")
+        logger.info("Background FASTA download: DuckDB COPY TO → FASTA → tar.gz")
 
-        os.chmod(file_path, 0o644)
-        total_sequences = sum(content.count('>') for content in fasta_files.values())
-        file_size_bytes = file_path.stat().st_size
-        del fasta_files  # Release large in-memory data before return so worker exits quickly
+        file_size_bytes, total_sequences = _native_fasta_to_tar_gz(
+            engine.conn, table_name, where_clause,
+            seq_columns, is_paired, chain_label,
+            file_path, dict(search_params),
+        )
+        if hasattr(engine, "conn"):
+            engine.conn.close()
+
+        if total_sequences == 0:
+            file_path.unlink(missing_ok=True)
+            return {'success': False, 'error': 'No sequences available for selected chain types.'}
+
         logger.info(f"Background FASTA download: Completed. File size: {file_size_bytes} bytes. Sequences: {total_sequences}")
-        
-        # Large files: nginx URL in Docker; Streamlit download_button locally
-        if file_size_bytes > LARGE_FILE_THRESHOLD and _use_nginx_download_urls():
-            # File already on disk, return URL
+
+        if use_nginx:
+            # Nginx: keep file on disk, return URL for nginx to serve
             return {
                 'success': True,
                 'download_url': download_url,
@@ -1279,15 +1376,14 @@ def prepare_fasta_download_background(
                 'token': token
             }
         else:
-            # For small files, read from disk and return bytes for direct download
+            # Local: read into memory for st.download_button
             try:
                 with open(file_path, 'rb') as f:
-                    zip_data = f.read()
-                # Delete the file since we're returning it in memory
+                    gz_data = f.read()
                 file_path.unlink()
                 return {
                     'success': True,
-                    'data': zip_data,
+                    'data': gz_data,
                     'filename': filename,
                     'file_size_bytes': file_size_bytes,
                     'sequence_count': total_sequences,
@@ -1299,7 +1395,7 @@ def prepare_fasta_download_background(
                     'error': f'Failed to read file for direct download: {str(e)}',
                     'error_type': type(e).__name__
                 }
-        
+
     except Exception as e:
         logger.error(f"Background FASTA download failed: {str(e)}", exc_info=True)
         return {
