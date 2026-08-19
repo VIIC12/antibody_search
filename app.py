@@ -2,7 +2,7 @@
 from pathlib import Path
 import sys
 
-# Load .env from project root so ABHUNTER_DOWNLOAD_DIR, ABHUNTER_DB_PATH, etc. are set when running locally
+# Load .env from project root so ABHUNTER_DOWNLOAD_DIR, ABHUNTER_TMP_DIR, ABHUNTER_DB_PATH, etc. are set when running locally
 try:
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parent / ".env")

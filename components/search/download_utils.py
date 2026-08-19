@@ -35,12 +35,12 @@ from src.search_engine import AntibodySearchEngine
 # Threshold for large files (5MB)
 LARGE_FILE_THRESHOLD = 5 * 1024 * 1024  # 5MB in bytes
 
-# Load .env once so ABHUNTER_DOWNLOAD_DIR is set when this module is used (e.g. from Streamlit or scripts)
+# Load .env once so ABHUNTER_DOWNLOAD_DIR / ABHUNTER_TMP_DIR are set when this module is used
 _env_loaded = False
 
 
 def _ensure_env_loaded() -> None:
-    """Load .env from project root once per process so ABHUNTER_DOWNLOAD_DIR etc. are set."""
+    """Load .env from project root once per process so ABHUNTER_* paths are set."""
     global _env_loaded
     if _env_loaded:
         return
@@ -75,6 +75,20 @@ def _get_download_directory() -> Path:
     _ensure_env_loaded()
     raw = os.getenv("ABHUNTER_DOWNLOAD_DIR", "./downloads")
     return Path(raw).resolve()
+
+
+def _get_tmp_directory() -> Path:
+    """
+    Scratch directory for download preparation (e.g. FASTA sequence CSV, plot PNGs).
+
+    Uses ABHUNTER_TMP_DIR when set, otherwise the OS temp directory.
+    Always returns an absolute path and creates the directory if needed.
+    """
+    _ensure_env_loaded()
+    raw = os.getenv("ABHUNTER_TMP_DIR")
+    path = Path(raw).resolve() if raw else Path(tempfile.gettempdir()).resolve()
+    path.mkdir(parents=True, exist_ok=True, mode=0o775)
+    return path
 
 
 def _use_nginx_download_urls() -> bool:
@@ -964,7 +978,7 @@ def prepare_plots_download_background(
 
         # Create ZIP archive directly on disk (not in memory)
         try:
-            with tempfile.TemporaryDirectory() as temp_dir:
+            with tempfile.TemporaryDirectory(dir=_get_tmp_directory()) as temp_dir:
                 temp_dir_path = Path(temp_dir)
                 image_paths = [temp_dir_path / name for name in plot_filenames]
 
@@ -1191,7 +1205,7 @@ def prepare_fasta_download_background(
                 "error": "No sequence columns found in database.",
             }
 
-        fd, temp_csv_path = tempfile.mkstemp(suffix=".csv")
+        fd, temp_csv_path = tempfile.mkstemp(suffix=".csv", dir=_get_tmp_directory())
         os.close(fd)
         temp_csv_path = Path(temp_csv_path)
         try:
