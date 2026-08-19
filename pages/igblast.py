@@ -11,7 +11,7 @@ from components.igblast_utils import (
 )
 from components.search.styling import get_chain_color
 
-st.set_page_config(page_title="ABHunter - IgBLAST Gene ID", page_icon="🧬")
+st.set_page_config(page_title="ABHunter IgBLAST", page_icon="🧬")
 
 st.title(":material/genetics: IgBLAST Gene Identification")
 st.markdown(

@@ -36,6 +36,9 @@ from components.test_utils import (
 # Shared spinner CSS (used by custom in-button "Preparing..." buttons)
 from components.search.styling import ensure_spinner_css
 
+st.title(":material/vaccines: ABHunter")
+st.markdown("#### :grey[Explore and filter the antibody repertoire of healthy-humans from the OAS database in real-time]")
+
 # Hide disabled form submit buttons globally
 st.markdown("""
 <style>
@@ -212,19 +215,17 @@ def create_paired_search_form(disabled: bool = False) -> Dict[str, Any]:
 
 def search_page_content():
     """Main search page content."""
-    st.title(":material/vaccines: ABHunter")
-    st.markdown("#### :grey[Explore and filter the antibody repertoire of healthy-humans from the OAS database in real-time]")
-    
+
     # Print database path once when server starts (only on first call)
     if 'db_path_printed' not in st.session_state:
         abhunter_db_path = os.getenv("ABHUNTER_DB_PATH")
         if abhunter_db_path:
             db_path = Path(abhunter_db_path).absolute()
-            print(f"Database path: {db_path}")
+            logger.info(f"Database path: {db_path}")
         else:
             project_root = Path(__file__).parent.parent.parent
             db_path = (project_root / "data").absolute()
-            print(f"Database path: {db_path} (default)")
+            logger.info(f"Database path: {db_path} (default)")
         st.session_state['db_path_printed'] = True
     
     db_structure = get_database_structure()

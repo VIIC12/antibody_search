@@ -10,7 +10,7 @@ PLOTLY_DISPLAY_CONFIG = {
 }
 
 # Override page title (inherits other settings from app.py)
-st.set_page_config(page_title="ABHunter - Statistics", layout="wide")
+st.set_page_config(page_title="ABHunter Statistics", layout="wide")
 
 # Main content
 st.markdown("# :material/bar_chart: Statistics")

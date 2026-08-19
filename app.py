@@ -29,6 +29,13 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 def render_sidebar():
     """Render sidebar content (About and License sections)."""
+    st.logo(
+        image="./static/logo.gif",
+        size="large",
+        link=None,
+        icon_image=None,
+    )
+
     st.markdown("""
     ## **ABHunter** - Real time OAS antibody database search
     
@@ -46,7 +53,7 @@ def render_sidebar():
 
     This software is licensed under the GNU GPLv3 License.
     
-    [ABHunter GitHub Repository](https://github.com/VIIC12/antibody_search#)    
+    [ABHunter GitHub Repository](https://github.com/VIIC12/antibody_search#)
     """)
     
     # Stick inside the sidebar near the bottom, without overflowing when the sidebar is resized
@@ -54,7 +61,7 @@ def render_sidebar():
         f"""
         ---
         <div style='bottom: 0px; opacity: 0.85; font-size: 0.9rem;'>
-            Made in Leipzig, Germany <br/>Institute for Drug Discovery, Leipzig University.
+            Made in Leipzig, Germany <br/> Institute for Drug Discovery, Leipzig University
         </div>
         """,
         unsafe_allow_html=True
@@ -66,7 +73,7 @@ def main():
     
     # Global page configuration - applies to all pages by default
     st.set_page_config(
-        page_title="ABHunter - Antibody Database Search",
+        page_title="ABHunter Database Search",
         page_icon=':material/vaccines:',
         layout="wide",
         initial_sidebar_state="expanded",
@@ -77,26 +84,7 @@ def main():
         }
     )
 
-    st.markdown(
-        """
-        <style>
-        div.block-container {
-            padding-top: 1.5rem;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.logo(
-        image="./static/logo.gif",
-        size="large",
-        link=None,
-        icon_image=None,
-    )
-
     with st.sidebar:
-        # Common sidebar content (About and License sections)
         render_sidebar()
 
     search = st.Page("pages/search.py", title="Database Search", icon=":material/search:", default=True)
@@ -107,6 +95,17 @@ def main():
     entry_page = st.navigation(
         [search, igblast, statistics, imprint],
         position="top",
+    )
+
+    st.markdown(
+        """
+        <style>
+        div.block-container {
+            padding-top: 4rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
     # Run the selected page
