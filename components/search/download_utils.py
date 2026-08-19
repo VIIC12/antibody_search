@@ -101,14 +101,6 @@ def _use_nginx_download_urls() -> bool:
     return os.getenv("ABHUNTER_DOWNLOAD_DIR") == "/app/downloads" or Path("/.dockerenv").exists()
 
 
-def _count_csv_gz_rows(csv_gz_path: Path) -> int:
-    """Count data rows in a gzip-compressed CSV (header line is excluded)."""
-    count = 0
-    with gzip.open(csv_gz_path, "rt", encoding="utf-8") as f:
-        for i, _ in enumerate(f):
-            count = i + 1
-    return max(0, count - 1)  # subtract header
-
 
 def _generate_download_token() -> str:
     """
@@ -704,32 +696,22 @@ def prepare_full_results_download_background(
         if hasattr(engine, "conn"):
             engine.conn.close()
 
-        # Count data rows from the exported file (one pass; no separate COUNT(*) scan)
-        sequence_count = _count_csv_gz_rows(csv_gz_path)
-        if not sequence_count:
-            if csv_gz_path.exists():
-                csv_gz_path.unlink(missing_ok=True)
-            return {"success": False, "error": "No sequences found to download."}
-
         os.chmod(csv_gz_path, 0o644)
         file_size_bytes = csv_gz_path.stat().st_size
 
-        logger.info(f"Background full results download: Completed. File size: {file_size_bytes} bytes. Sequences: {sequence_count}")
+        logger.info(f"Background full results download: Completed. File size: {file_size_bytes} bytes.")
         
         # Large files: nginx URL in Docker; Streamlit download_button locally
         if file_size_bytes > LARGE_FILE_THRESHOLD and _use_nginx_download_urls():
-            # File already on disk, return URL
             return {
                 'success': True,
                 'download_url': download_url,
                 'filename': csv_gz_filename,
                 'file_size_bytes': file_size_bytes,
-                'sequence_count': sequence_count,
                 'is_large_file': True,
                 'token': token
             }
         else:
-            # For small files, read from disk and return bytes for direct download
             try:
                 with open(csv_gz_path, 'rb') as f:
                     file_data = f.read()
@@ -739,7 +721,6 @@ def prepare_full_results_download_background(
                     'parquet_data': file_data,
                     'filename': csv_gz_filename,
                     'file_size_bytes': file_size_bytes,
-                    'sequence_count': sequence_count,
                     'is_large_file': False
                 }
             except Exception as e:
