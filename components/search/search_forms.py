@@ -705,8 +705,9 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
     
     icon_heading("light", "Light Chain", level=4, margin_top=0.5)
     
-    # Gene fields (Light chains don't have D genes)
-    col1, col2 = st.columns(2)
+    # Gene fields (Light chains don't have D genes).
+    # Use 3 columns like heavy (V/D/J) so V/J match heavy field width; leave the 3rd empty.
+    col1, col2, _col3 = st.columns(3)
     
     with col1:
         light_v_valid = True
