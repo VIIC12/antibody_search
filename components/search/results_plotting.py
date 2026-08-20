@@ -304,7 +304,7 @@ def _render_plot_download_buttons(
     )
     lock_help = "Locked while a search or plot load is in progress." if downloads_locked else None
 
-    col_raw, col_all, _spacer = st.columns([1.5, 1.5, 7])
+    col_raw, col_all, _spacer = st.columns([2.2, 2.2, 5.6])
 
     # Button 1: Download Figures + Raw Data
     with col_raw:

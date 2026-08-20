@@ -17,7 +17,7 @@ import uuid
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any, List
+from typing import Optional, Tuple, Dict, Any, List, Callable
 
 import pandas as pd
 
@@ -624,6 +624,17 @@ def _build_copy_select_columns(schema_column_names: List[str], is_paired: bool) 
     return ", ".join(parts)
 
 
+def _report_progress(progress_callback: Optional[Callable[[str], None]], message: str) -> None:
+    """Best-effort UI progress update (no-op when callback is None)."""
+    if progress_callback is None:
+        return
+    try:
+        progress_callback(message)
+    except Exception:
+        # Never let UI progress updates break the download pipeline
+        pass
+
+
 def _copy_query_to_tar_gz_duckdb(
     conn,
     table_name: str,
@@ -632,6 +643,7 @@ def _copy_query_to_tar_gz_duckdb(
     is_paired: bool,
     search_params: Dict[str, Any],
     csv_filename: str,
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> None:
     """
     Export query result to CSV, add search parameters JSON, and package both into
@@ -639,6 +651,7 @@ def _copy_query_to_tar_gz_duckdb(
     """
     import subprocess
     import shutil
+    import time as _time
 
     df = conn.execute(
         f"SELECT * FROM {table_name} WHERE {where_clause} LIMIT 1"
@@ -656,11 +669,18 @@ def _copy_query_to_tar_gz_duckdb(
 
     try:
         staged_csv = staging_dir / csv_filename
+        _report_progress(progress_callback, "Writing results table...")
+        t0 = _time.time()
         sql = (
             f"COPY (SELECT {select_clause} FROM {table_name} WHERE {where_clause}) "
             f"TO ? (HEADER, DELIMITER ',')"
         )
         conn.execute(sql, [str(staged_csv.resolve())])
+        t_csv = _time.time()
+        logger.info(
+            f"Results CSV COPY TO completed in {t_csv - t0:.1f}s. "
+            f"Creating tar.gz..."
+        )
 
         params_path = staging_dir / "search_parameters.json"
         params_path.write_text(
@@ -668,6 +688,7 @@ def _copy_query_to_tar_gz_duckdb(
             encoding="utf-8",
         )
 
+        _report_progress(progress_callback, "Compressing archive...")
         files_to_tar = [f.name for f in sorted(staging_dir.iterdir())]
         with open(tar_gz_path, "wb") as out_f:
             subprocess.run(
@@ -676,6 +697,8 @@ def _copy_query_to_tar_gz_duckdb(
                 stdout=out_f,
                 check=True,
             )
+        t_gz = _time.time()
+        logger.info(f"Results tar.gz completed in {t_gz - t_csv:.1f}s.")
     finally:
         shutil.rmtree(staging_dir, ignore_errors=True)
 
@@ -684,7 +707,8 @@ def prepare_full_results_download_background(
     database_paths: List[str],
     search_params: Dict[str, Any],
     is_paired: bool,
-    chain_label: str
+    chain_label: str,
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> Dict[str, Any]:
     """
         Prepare full results table download (gzip-compressed CSV) in a background process.
@@ -698,6 +722,7 @@ def prepare_full_results_download_background(
             search_params: Search parameters dictionary (will be copied)
             is_paired: Whether this is a paired search
             chain_label: Chain label for filename ("paired", "heavy", or "light")
+            progress_callback: Optional UI label updater (e.g. preparing button text)
             
         Returns:
             Dictionary with keys:
@@ -790,6 +815,7 @@ def prepare_full_results_download_background(
             is_paired,
             dict(search_params),
             csv_filename,
+            progress_callback=progress_callback,
         )
         if hasattr(engine, "conn"):
             engine.conn.close()
@@ -799,6 +825,7 @@ def prepare_full_results_download_background(
 
         logger.info(f"Background full results download: Completed. File size: {file_size_bytes} bytes.")
         
+        _report_progress(progress_callback, "Finalizing...")
         # Large files: avoid loading the whole archive into RAM.
         # We serve from disk via `download_url` (nginx in Docker, static/ in local).
         if file_size_bytes > LARGE_FILE_THRESHOLD:
@@ -1135,6 +1162,7 @@ def _native_fasta_to_tar_gz(
     chain_label: str,
     tar_gz_path: Path,
     search_params: Dict[str, Any],
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> Tuple[int, int]:
     """
     Write FASTA via DuckDB COPY TO (C++), then package into a .tar.gz with
@@ -1152,6 +1180,7 @@ def _native_fasta_to_tar_gz(
     t0 = _time.monotonic()
 
     try:
+        _report_progress(progress_callback, "Writing FASTA sequences...")
         if is_paired:
             heavy_path = staging_dir / "sequences_heavy.fasta"
             light_path = staging_dir / "sequences_light.fasta"
@@ -1193,6 +1222,7 @@ def _native_fasta_to_tar_gz(
         t_fasta = _time.monotonic()
         logger.info(f"FASTA COPY TO completed in {t_fasta - t0:.1f}s. Creating tar.gz for {total_sequences:,} sequences...")
 
+        _report_progress(progress_callback, "Compressing archive...")
         # tar + pigz: create .tar.gz from staging directory contents
         files_to_tar = [f.name for f in sorted(staging_dir.iterdir())]
         subprocess.run(
@@ -1220,29 +1250,32 @@ def prepare_fasta_download_background(
     database_paths: List[str],
     search_params: Dict[str, Any],
     is_paired: bool,
-    chain_label: str = None
+    chain_label: str = None,
+    progress_callback: Optional[Callable[[str], None]] = None,
 ) -> Dict[str, Any]:
     """
     Prepare FASTA file download in a background process.
 
-    Non-nginx (local): streams directly from DuckDB into a ZIP — no temp CSV,
-    no giant in-memory FASTA string.
-    Nginx (Docker): uses the legacy CSV+awk path so the file stays on disk for
-    nginx to serve.
+    Generation is always DuckDB COPY TO → FASTA → tar.gz (FASTA + search_parameters.json).
+    Delivery matches Results: files above LARGE_FILE_THRESHOLD stay on disk
+    (nginx URL in Docker, saved_path locally); smaller files are returned as bytes
+    for st.download_button.
 
     Args:
         database_paths: List of database directory paths
         search_params: Search parameters dictionary (will be copied)
         is_paired: Whether this is a paired search
         chain_label: Chain label ("paired", "heavy", or "light")
+        progress_callback: Optional UI label updater (e.g. preparing button text)
 
     Returns:
         Dictionary with keys:
         - 'success': Boolean indicating if operation succeeded
-        - 'data': ZIP file content as bytes (non-nginx)
-        - 'download_url': URL for nginx download (nginx only)
+        - 'data': tar.gz content as bytes (small files)
+        - 'download_url': URL/path for large-file download
+        - 'saved_path': Absolute path when kept on disk (local large files)
         - 'filename': Suggested filename for download
-        - 'file_size_bytes': Size of ZIP file in bytes
+        - 'file_size_bytes': Size of archive in bytes
         - 'sequence_count': Total number of sequences in FASTA files
         - 'error': Error message if failed
     """
@@ -1342,12 +1375,16 @@ def prepare_fasta_download_background(
         filename = f"ABHunter_FASTA_{chain_name}_{identifier}.tar.gz"
 
         token, file_path, download_url = _get_download_path(filename, "tar.gz")
-        logger.info("Background FASTA download: DuckDB COPY TO → FASTA → tar.gz")
+        logger.info(
+            "Background FASTA download: DuckDB COPY TO → FASTA → tar.gz "
+            f"(nginx={use_nginx})"
+        )
 
         file_size_bytes, total_sequences = _native_fasta_to_tar_gz(
             engine.conn, table_name, where_clause,
             seq_columns, is_paired, chain_label,
             file_path, dict(search_params),
+            progress_callback=progress_callback,
         )
         if hasattr(engine, "conn"):
             engine.conn.close()
@@ -1358,8 +1395,12 @@ def prepare_fasta_download_background(
 
         logger.info(f"Background FASTA download: Completed. File size: {file_size_bytes} bytes. Sequences: {total_sequences}")
 
-        if use_nginx:
-            # Nginx: keep file on disk, return URL for nginx to serve
+        _report_progress(progress_callback, "Finalizing...")
+        os.chmod(file_path, 0o644)
+
+        # Large files: keep on disk (nginx URL in Docker; saved_path for local UI).
+        # Small files: load into memory for st.download_button.
+        if file_size_bytes > LARGE_FILE_THRESHOLD:
             return {
                 'success': True,
                 'download_url': download_url,
@@ -1367,28 +1408,28 @@ def prepare_fasta_download_background(
                 'file_size_bytes': file_size_bytes,
                 'sequence_count': total_sequences,
                 'is_large_file': True,
-                'token': token
+                'saved_path': str(file_path),
+                'token': token,
             }
-        else:
-            # Local: read into memory for st.download_button
-            try:
-                with open(file_path, 'rb') as f:
-                    gz_data = f.read()
-                file_path.unlink()
-                return {
-                    'success': True,
-                    'data': gz_data,
-                    'filename': filename,
-                    'file_size_bytes': file_size_bytes,
-                    'sequence_count': total_sequences,
-                    'is_large_file': False
-                }
-            except Exception as e:
-                return {
-                    'success': False,
-                    'error': f'Failed to read file for direct download: {str(e)}',
-                    'error_type': type(e).__name__
-                }
+
+        try:
+            with open(file_path, 'rb') as f:
+                gz_data = f.read()
+            file_path.unlink()
+            return {
+                'success': True,
+                'data': gz_data,
+                'filename': filename,
+                'file_size_bytes': file_size_bytes,
+                'sequence_count': total_sequences,
+                'is_large_file': False,
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': f'Failed to read file for direct download: {str(e)}',
+                'error_type': type(e).__name__,
+            }
 
     except Exception as e:
         logger.error(f"Background FASTA download failed: {str(e)}", exc_info=True)

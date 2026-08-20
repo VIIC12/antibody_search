@@ -30,7 +30,7 @@ from components.search.results_plotting import (
     compute_donor_plot_summary_stats,
 )
 from src.search_engine import AntibodySearchEngine
-from components.search.styling import icon_heading, ensure_spinner_css, render_preparing_button
+from components.search.styling import icon_heading, ensure_spinner_css, render_preparing_button, create_preparing_progress
 
 
 ensure_spinner_css()
@@ -247,7 +247,7 @@ def render_subject_statistics(
             st.session_state.get("search_status") == "running"
             or bool(st.session_state.get("plotting_controls_locked", False))
         )
-        col_dl_stats, col_dl_freq, _spacer = st.columns([1.5, 1.5, 2.3])
+        col_dl_stats, col_dl_freq, _spacer = st.columns([2.3, 2.3, 0.9])
         with col_dl_stats:
             render_stats_download_button(
                 stats_df_display,
@@ -588,18 +588,19 @@ def render_full_download_button(
         )
         
         # Full Results and FASTA side by side under the sample sequences table
-        local_large_results_notice: Optional[Tuple[str, str]] = None
-        col_full, col_new, _spacer = st.columns([1.5, 1.5, 7])
+        local_large_notices: List[str] = []
+        col_full, col_new, _spacer = st.columns([2.2, 2.2, 5.6])
         
         # Full Results download button
         with col_full:
             if status == "preparing":
-                render_preparing_button()
+                set_progress = create_preparing_progress("Writing results table...")
                 result = prepare_full_results_download_background(
                     loadable_databases,
                     search_params_with_metadata,
                     is_paired,
-                    chain_label
+                    chain_label,
+                    progress_callback=set_progress,
                 )
                 st.session_state[full_result_key] = result
                 st.session_state[full_status_key] = "completed" if result.get("success") else "failed"
@@ -637,9 +638,8 @@ def render_full_download_button(
                         is_nginx_docker = isinstance(download_url, str) and download_url.startswith("/downloads/")
                         if not is_nginx_docker:
                             saved_path = result.get("saved_path")
-                            local_large_results_notice = (
-                                "info",
-                                f"**Saved Results Table too large for browser download, saved on disk:**\n{saved_path}",
+                            local_large_notices.append(
+                                f"**Saved Results Table too large for browser download, saved on disk:**\n{saved_path}"
                             )
                             st.button(
                                 "Download Results Table",
@@ -687,12 +687,13 @@ def render_full_download_button(
         # FASTA download button (right column)
         with col_new:
             if new_status == "preparing":
-                render_preparing_button()
+                set_progress = create_preparing_progress("Writing FASTA sequences...")
                 result = prepare_fasta_download_background(
                     loadable_databases,
                     search_params_with_metadata,
                     is_paired,
-                    chain_label
+                    chain_label,
+                    progress_callback=set_progress,
                 )
                 st.session_state[new_result_key] = result
                 st.session_state[new_status_key] = "completed" if result.get("success") else "failed"
@@ -724,18 +725,37 @@ def render_full_download_button(
                     file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
                     sequence_count = result.get('sequence_count', 0)
                     
-                    # Check if this is a large file with download URL
+                    label = (
+                        f"Download FASTA ({file_size_mb:.2f} MB)"
+                        if file_size_mb > 0
+                        else f"Download FASTA ({sequence_count:,} seq)"
+                    )
+
                     if result.get('download_url'):
-                        label = f"⬇ Download FASTA ({file_size_mb:.2f} MB)" if file_size_mb > 0 else f"⬇ Download FASTA ({sequence_count:,} seq)"
-                        st.link_button(
-                            label,
-                            result['download_url'],
-                            type="primary",
-                            width="stretch",
-                        )
+                        download_url = result.get('download_url', '')
+                        is_nginx_docker = isinstance(download_url, str) and download_url.startswith("/downloads/")
+                        if not is_nginx_docker:
+                            saved_path = result.get("saved_path")
+                            local_large_notices.append(
+                                f"**Saved FASTA too large for browser download, saved on disk:**\n{saved_path}"
+                            )
+                            st.button(
+                                "Download FASTA",
+                                disabled=True,
+                                width="stretch",
+                                key=f"{new_download_key}_button_large_local",
+                                help="File is too large for browser download. Use the path shown below.",
+                                icon="⬇",
+                            )
+                        else:
+                            st.link_button(
+                                label,
+                                result['download_url'],
+                                type="primary",
+                                width="stretch",
+                                icon="⬇",
+                            )
                     else:
-                        # Small file: use direct download button
-                        label = f"⬇ Download FASTA ({file_size_mb:.2f} MB)" if file_size_mb > 0 else f"⬇ Download FASTA ({sequence_count:,} seq)"
                         st.download_button(
                             label=label,
                             data=result.get('data', b''),
@@ -743,7 +763,8 @@ def render_full_download_button(
                             mime="application/gzip",
                             width='stretch',
                             type="primary",
-                            key=f"download_{new_download_key}"
+                            key=f"download_{new_download_key}",
+                            icon="⬇",
                         )
                 else:
                     st.button("Generation Failed", disabled=True, key=f"{new_download_key}_failed", width='stretch', icon=":material/error:")
@@ -760,12 +781,8 @@ def render_full_download_button(
                 else:
                     st.error(f"{error_msg}", icon=":material/error:")
 
-        if local_large_results_notice:
-            level, message = local_large_results_notice
-            if level == "warning":
-                st.warning(message)
-            else:
-                st.info(message)
+        for message in local_large_notices:
+            st.info(message)
 
 def _render_last_search_header(show_info: bool = True) -> None:
     """Render consistent header for last search criteria sections."""

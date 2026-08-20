@@ -1,6 +1,7 @@
 """Styling utilities for search components."""
 
 import streamlit as st
+from typing import Callable
 
 HEAVY_COLOR = "#4C6085"
 LIGHT_COLOR = "#CB4154"
@@ -81,6 +82,23 @@ def render_preparing_button(label: str = "Preparing...") -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def create_preparing_progress(initial_label: str = "Preparing...") -> Callable[[str], None]:
+    """
+    Create an updatable preparing-button slot.
+
+    Returns a callback ``set_label(text)`` that rewrites the spinner button
+    label in-place during a blocking prepare step.
+    """
+    slot = st.empty()
+
+    def set_label(label: str) -> None:
+        with slot.container():
+            render_preparing_button(label)
+
+    set_label(initial_label)
+    return set_label
 
 
 def ensure_spinner_css() -> None:
