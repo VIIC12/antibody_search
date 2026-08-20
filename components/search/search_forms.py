@@ -516,6 +516,9 @@ def create_heavy_chain_form(prefix: str = "", disabled: bool = False) -> Tuple[D
                 cdr3_length = cdr3_length.strip()
         else:
             cdr3_length = None
+
+    with col4:
+        st.empty()
     
     # CDR Motif fields
     st.markdown("<h5 style='margin-top: 0.75rem; margin-bottom: 0.25rem;'>CDR Sequence Motifs</h5>", unsafe_allow_html=True)
@@ -665,6 +668,9 @@ def create_heavy_chain_form(prefix: str = "", disabled: bool = False) -> Tuple[D
                 )
             else:
                 cdr3_mismatches = 0
+
+    with col4:
+        st.empty()
     
     # Build parameters dict
     params = {
@@ -707,7 +713,7 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
     
     # Gene fields (Light chains don't have D genes).
     # Use 3 columns like heavy (V/D/J) so V/J match heavy field width; leave the 3rd empty.
-    col1, col2, _col3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         light_v_valid = True
@@ -748,6 +754,9 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
                 st.error(f"{range_err}", icon=":material/error:")
                 light_j_valid = False
                 validation_errors.append("Light IGLJ Gene")
+
+    with col3:
+        st.empty()
     
     # CDR Length fields
     st.markdown("<h5 style='margin-top: 0.75rem; margin-bottom: 0.25rem;'>CDR Lengths (amino acids)</h5>", unsafe_allow_html=True)
@@ -812,6 +821,9 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
                 light_cdr3_length = light_cdr3_length.strip()
         else:
             light_cdr3_length = None
+
+    with col4:
+        st.empty()
     
     # CDR Motif fields
     st.markdown("<h5 style='margin-top: 0.75rem; margin-bottom: 0.25rem;'>CDR Sequence Motifs</h5>", unsafe_allow_html=True)
@@ -949,6 +961,9 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
                 )
             else:
                 light_cdr3_mismatches = 0
+
+    with col4:
+        st.empty()
     
     # Build parameters dict
     params = {
