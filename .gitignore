@@ -6,6 +6,7 @@ igblast/bin/blastdbcmd
 
 
 publication/
+REVISION/
 
 # Python
 __pycache__/
