@@ -28,6 +28,7 @@ from components.search.results_plotting import (
     render_subject_hits_boxplot,
     prepare_donor_plot_data,
     compute_donor_plot_summary_stats,
+    DONOR_HPM_MIN_EXPECTED_HITS,
 )
 from src.search_engine import AntibodySearchEngine
 from components.search.styling import icon_heading, ensure_spinner_css, render_preparing_button, create_preparing_progress
@@ -300,7 +301,8 @@ def render_subject_statistics(
                 disabled=donor_plot_toggles_locked,
                 help=(
                     "When enabled, only donors with enough sequences "
-                    "(⌈10 ÷ overall frequency⌉) are included in the plot and Plot Summary. "
+                    f"(⌈{DONOR_HPM_MIN_EXPECTED_HITS} ÷ overall frequency⌉) "
+                    "are included in the plot and Plot Summary. "
                     "When disabled, all donors with >0 sequences are used."
                     + (" Locked while a search or plot load is in progress." if donor_plot_toggles_locked else "")
                 ),

@@ -516,9 +516,6 @@ def create_heavy_chain_form(prefix: str = "", disabled: bool = False) -> Tuple[D
                 cdr3_length = cdr3_length.strip()
         else:
             cdr3_length = None
-
-    with col4:
-        st.empty()
     
     # CDR Motif fields
     st.markdown("<h5 style='margin-top: 0.75rem; margin-bottom: 0.25rem;'>CDR Sequence Motifs</h5>", unsafe_allow_html=True)

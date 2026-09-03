@@ -2442,6 +2442,7 @@ def plot_gene_distribution(
 DONOR_HPM_BIN_LABEL = "≤0.01"
 DONOR_HPM_BIN_VALUE = -2.0  # log10(0.01)
 DONOR_HPM_DEFAULT_Y_RANGE = (DONOR_HPM_BIN_VALUE - 0.10, 4.0)
+DONOR_HPM_MIN_EXPECTED_HITS = 3
 
 
 def _normalize_donor_stats_columns(stats_df: pd.DataFrame) -> pd.DataFrame:
@@ -2466,7 +2467,8 @@ def prepare_donor_plot_data(
     """
     Prepare donor-level HPM data for the precursor-frequency plot.
 
-    Optionally keeps only donors above the sequence threshold and/or includes
+    Optionally keeps only donors above the sequence threshold
+    (⌈DONOR_HPM_MIN_EXPECTED_HITS ÷ overall frequency⌉) and/or includes
     zero-hit donors. Bins log10(HPM) <= -2 onto DONOR_HPM_BIN_VALUE (≤0.01).
     """
     statistics = statistics or {}
@@ -2476,7 +2478,7 @@ def prepare_donor_plot_data(
         return pd.DataFrame(), {"error": "Insufficient overall statistics"}
 
     overall_frequency = total_hits / total_sequences
-    required_sequences = int(np.ceil(10 / overall_frequency))
+    required_sequences = int(np.ceil(DONOR_HPM_MIN_EXPECTED_HITS / overall_frequency))
 
     df = _normalize_donor_stats_columns(stats_df)
     if "total_sequences" in df.columns:
