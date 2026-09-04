@@ -896,8 +896,13 @@ def _render_chain_criteria(search_params: Dict[str, Any], prefix: str, chain_typ
             similarity = search_params.get(f'{prefix}cdr{cdr}_similarity', False)
             mismatches = search_params.get(f'{prefix}cdr{cdr}_mismatches', 0)
             motif_str = f"**CDR{cdr} Motif:** {motif}"
+            extras = []
+            if mismatches:
+                extras.append(f"max {mismatches} mismatch{'es' if mismatches != 1 else ''}")
             if similarity:
-                motif_str += f" (Similarity search, max {mismatches} mismatches)"
+                extras.append("similarity")
+            if extras:
+                motif_str += f" ({', '.join(extras)})"
             params.append(motif_str)
     
     if params:
@@ -955,8 +960,13 @@ def _render_chain_criteria_compact(search_params: Dict[str, Any], prefix: str, c
             similarity = search_params.get(f'{prefix}cdr{cdr}_similarity', False)
             mismatches = search_params.get(f'{prefix}cdr{cdr}_mismatches', 0)
             motif_str = f"CDR{cdr} Motif: {motif}"
+            extras = []
+            if mismatches:
+                extras.append(f"max {mismatches} mismatch{'es' if mismatches != 1 else ''}")
             if similarity:
-                motif_str += f" (similarity, max {mismatches} mismatches)"
+                extras.append("similarity")
+            if extras:
+                motif_str += f" ({', '.join(extras)})"
             params.append(motif_str)
     
     if params:

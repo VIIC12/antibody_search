@@ -522,5 +522,5 @@ def display_database_status(
             if not parquet_files:
                 st.error("No Parquet files found in this database.")
             elif not check_metadata_freshness(selected_db):
-                st.warning("🔄 Database files have been updated!")
+                st.warning("Database files have been updated!")
 

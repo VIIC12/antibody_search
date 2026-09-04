@@ -18,6 +18,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import duckdb
 import os
+import re
 import sys
 
 # Add src to path for imports
@@ -680,6 +681,56 @@ class TestAntibodySearchEngine:
         assert stats['total_hits'] >= 0  # Should not crash
         
         engine.close()
+
+
+class TestMotifMismatchPatterns:
+    """Unit tests for Hamming-distance motif matching and similarity groups."""
+
+    def setup_method(self):
+        self.engine = AntibodySearchEngine.__new__(AntibodySearchEngine)
+
+    def _matches(self, motif, sequence, mismatches=0, similarity=False):
+        pattern = self.engine._motif_to_search_regex(motif, mismatches, similarity)
+        return re.search(pattern, sequence) is not None
+
+    def test_exact_motif_unchanged_without_mismatches(self):
+        assert self._matches('*FGV*', 'XXFGVYY', 0, False)
+        assert not self._matches('*FGV*', 'XXAGVYY', 0, False)
+
+    def test_mismatches_allow_any_amino_acid(self):
+        # *FGV* with 2 mismatches: up to 2 of F, G, V may be any AA
+        assert self._matches('*FGV*', 'XXFGVYY', 2, False)
+        assert self._matches('*FGV*', 'XXAGVYY', 2, False)  # F->A
+        assert self._matches('*FGV*', 'XXAAVYY', 2, False)  # F->A, G->A
+        assert not self._matches('*FGV*', 'XXAAAYY', 2, False)  # 3 substitutions
+
+    def test_one_mismatch_is_stricter_than_two(self):
+        assert self._matches('*FGV*', 'XXAGVYY', 1, False)
+        assert not self._matches('*FGV*', 'XXAAVYY', 1, False)
+
+    def test_similarity_restricts_mismatch_alphabet(self):
+        # F is aromatic: F/W/Y allowed; A is aliphatic, not similar to F
+        assert self._matches('*FGV*', 'XXWGVYY', 2, True)
+        assert not self._matches('*FGV*', 'XXAGVYY', 2, True)
+        # V is aliphatic: A/I/L/V allowed
+        assert self._matches('*FGV*', 'XXFGAYY', 2, True)
+        # G is unique: cannot be substituted under similarity
+        assert not self._matches('*FGV*', 'XXFAVYY', 2, True)
+
+    def test_wildcards_are_not_counted_as_defined_positions(self):
+        assert self._matches('YY.D.*G', 'YYADXXG', 0, False)
+        assert self._matches('YY.D.*G', 'AYADXXG', 1, False)
+        assert not self._matches('YY.D.*G', 'AAADXXG', 1, False)
+
+    def test_defined_positions_ignore_wildcards_and_count_classes(self):
+        def defined(motif):
+            tokens = AntibodySearchEngine._tokenize_motif(motif)
+            return sum(1 for token in tokens if token[0] in ('aa', 'class'))
+
+        assert defined('*FGV*') == 3
+        assert defined('YY.D.*G') == 4
+        assert defined('[GYW]TT') == 3
+        assert defined('.{6}*[FI]W.{2}*') == 2
 
 
 if __name__ == "__main__":

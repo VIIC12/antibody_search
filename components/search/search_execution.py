@@ -144,9 +144,9 @@ def build_search_kwargs(search_params: Dict[str, Any], is_paired: bool) -> Dict[
             'heavy_cdr1_similarity': search_params.get('heavy_cdr1_similarity', False),
             'heavy_cdr2_similarity': search_params.get('heavy_cdr2_similarity', False),
             'heavy_cdr3_similarity': search_params.get('heavy_cdr3_similarity', False),
-            'heavy_cdr1_mismatches': search_params.get('heavy_cdr1_mismatches', 2),
-            'heavy_cdr2_mismatches': search_params.get('heavy_cdr2_mismatches', 2),
-            'heavy_cdr3_mismatches': search_params.get('heavy_cdr3_mismatches', 2),
+            'heavy_cdr1_mismatches': search_params.get('heavy_cdr1_mismatches', 0),
+            'heavy_cdr2_mismatches': search_params.get('heavy_cdr2_mismatches', 0),
+            'heavy_cdr3_mismatches': search_params.get('heavy_cdr3_mismatches', 0),
             # Light chain parameters
             'light_v': search_params.get('light_v', ''),
             'light_j': search_params.get('light_j', ''),
@@ -162,9 +162,9 @@ def build_search_kwargs(search_params: Dict[str, Any], is_paired: bool) -> Dict[
             'light_cdr1_similarity': search_params.get('light_cdr1_similarity', False),
             'light_cdr2_similarity': search_params.get('light_cdr2_similarity', False),
             'light_cdr3_similarity': search_params.get('light_cdr3_similarity', False),
-            'light_cdr1_mismatches': search_params.get('light_cdr1_mismatches', 2),
-            'light_cdr2_mismatches': search_params.get('light_cdr2_mismatches', 2),
-            'light_cdr3_mismatches': search_params.get('light_cdr3_mismatches', 2),
+            'light_cdr1_mismatches': search_params.get('light_cdr1_mismatches', 0),
+            'light_cdr2_mismatches': search_params.get('light_cdr2_mismatches', 0),
+            'light_cdr3_mismatches': search_params.get('light_cdr3_mismatches', 0),
         }
     else:
         chain_type = search_params.get('chain_type', 'Heavy')
@@ -185,9 +185,9 @@ def build_search_kwargs(search_params: Dict[str, Any], is_paired: bool) -> Dict[
                 'light_cdr1_similarity': search_params.get('light_cdr1_similarity', False),
                 'light_cdr2_similarity': search_params.get('light_cdr2_similarity', False),
                 'light_cdr3_similarity': search_params.get('light_cdr3_similarity', False),
-                'light_cdr1_mismatches': search_params.get('light_cdr1_mismatches', 2),
-                'light_cdr2_mismatches': search_params.get('light_cdr2_mismatches', 2),
-                'light_cdr3_mismatches': search_params.get('light_cdr3_mismatches', 2),
+                'light_cdr1_mismatches': search_params.get('light_cdr1_mismatches', 0),
+                'light_cdr2_mismatches': search_params.get('light_cdr2_mismatches', 0),
+                'light_cdr3_mismatches': search_params.get('light_cdr3_mismatches', 0),
             }
         else:
             return {
@@ -207,9 +207,9 @@ def build_search_kwargs(search_params: Dict[str, Any], is_paired: bool) -> Dict[
                 'heavy_cdr1_similarity': search_params.get('heavy_cdr1_similarity', False),
                 'heavy_cdr2_similarity': search_params.get('heavy_cdr2_similarity', False),
                 'heavy_cdr3_similarity': search_params.get('heavy_cdr3_similarity', False),
-                'heavy_cdr1_mismatches': search_params.get('heavy_cdr1_mismatches', 2),
-                'heavy_cdr2_mismatches': search_params.get('heavy_cdr2_mismatches', 2),
-                'heavy_cdr3_mismatches': search_params.get('heavy_cdr3_mismatches', 2),
+                'heavy_cdr1_mismatches': search_params.get('heavy_cdr1_mismatches', 0),
+                'heavy_cdr2_mismatches': search_params.get('heavy_cdr2_mismatches', 0),
+                'heavy_cdr3_mismatches': search_params.get('heavy_cdr3_mismatches', 0),
             }
 
 

@@ -199,12 +199,8 @@ def _build_where_clause_from_params(
             motif = search_params.get(motif_key, '')
             if motif:
                 similarity = search_params.get(similarity_key, False)
-                mismatches = search_params.get(mismatches_key, 2)
-                
-                if similarity:
-                    regex_pattern = engine.generate_similarity_pattern(motif, mismatches)
-                else:
-                    regex_pattern = engine._convert_motif_to_regex(motif)
+                mismatches = search_params.get(mismatches_key, 0)
+                regex_pattern = engine._motif_to_search_regex(motif, mismatches, similarity)
                 
                 # Find CDR AA columns for heavy chain
                 cdr_aa_key = f'cdr{cdr_num}_aa'
@@ -225,12 +221,8 @@ def _build_where_clause_from_params(
             motif = search_params.get(motif_key, '')
             if motif:
                 similarity = search_params.get(similarity_key, False)
-                mismatches = search_params.get(mismatches_key, 2)
-                
-                if similarity:
-                    regex_pattern = engine.generate_similarity_pattern(motif, mismatches)
-                else:
-                    regex_pattern = engine._convert_motif_to_regex(motif)
+                mismatches = search_params.get(mismatches_key, 0)
+                regex_pattern = engine._motif_to_search_regex(motif, mismatches, similarity)
                 
                 # Find CDR AA columns for light chain
                 cdr_aa_key = f'cdr{cdr_num}_aa'
@@ -253,13 +245,13 @@ def _build_where_clause_from_params(
             # Also check without prefix for backward compatibility
             motif = search_params.get(motif_key) or search_params.get(f'cdr{cdr_num}_motif', '')
             if motif:
-                similarity = search_params.get(similarity_key) or search_params.get(f'cdr{cdr_num}_similarity', False)
-                mismatches = search_params.get(mismatches_key) or search_params.get(f'cdr{cdr_num}_mismatches', 2)
-                
-                if similarity:
-                    regex_pattern = engine.generate_similarity_pattern(motif, mismatches)
-                else:
-                    regex_pattern = engine._convert_motif_to_regex(motif)
+                similarity = search_params.get(similarity_key)
+                if similarity is None:
+                    similarity = search_params.get(f'cdr{cdr_num}_similarity', False)
+                mismatches = search_params.get(mismatches_key)
+                if mismatches is None:
+                    mismatches = search_params.get(f'cdr{cdr_num}_mismatches', 0)
+                regex_pattern = engine._motif_to_search_regex(motif, mismatches, similarity)
                 
                 # Find CDR AA columns
                 cdr_aa_key = f'cdr{cdr_num}_aa'

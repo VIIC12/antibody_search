@@ -879,12 +879,8 @@ def build_plotting_where_clause(
             motif_value = search_params.get(motif_key, '')
             if motif_value:
                 similarity = search_params.get(similarity_key, False)
-                mismatches = search_params.get(mismatches_key, 2)
-                
-                if similarity:
-                    regex_pattern = engine.generate_similarity_pattern(motif_value, mismatches)
-                else:
-                    regex_pattern = engine._convert_motif_to_regex(motif_value)
+                mismatches = search_params.get(mismatches_key, 0)
+                regex_pattern = engine._motif_to_search_regex(motif_value, mismatches, similarity)
                 
                 # Get CDR AA columns from schema
                 cdr_aa_key = f'cdr{cdr_index}_aa'
@@ -902,12 +898,8 @@ def build_plotting_where_clause(
             motif_value = search_params.get(motif_key, '')
             if motif_value:
                 similarity = search_params.get(similarity_key, False)
-                mismatches = search_params.get(mismatches_key, 2)
-                
-                if similarity:
-                    regex_pattern = engine.generate_similarity_pattern(motif_value, mismatches)
-                else:
-                    regex_pattern = engine._convert_motif_to_regex(motif_value)
+                mismatches = search_params.get(mismatches_key, 0)
+                regex_pattern = engine._motif_to_search_regex(motif_value, mismatches, similarity)
                 
                 # Get CDR AA columns from schema
                 cdr_aa_key = f'cdr{cdr_index}_aa'
@@ -996,12 +988,8 @@ def build_plotting_where_clause(
             motif_value = search_params.get(motif_key, '')
             if motif_value:
                 similarity = search_params.get(similarity_key, False)
-                mismatches = search_params.get(mismatches_key, 2)
-                
-                if similarity:
-                    regex_pattern = engine.generate_similarity_pattern(motif_value, mismatches)
-                else:
-                    regex_pattern = engine._convert_motif_to_regex(motif_value)
+                mismatches = search_params.get(mismatches_key, 0)
+                regex_pattern = engine._motif_to_search_regex(motif_value, mismatches, similarity)
                 
                 # Get CDR AA columns from schema
                 # For unpaired searches, use all columns (schema will have correct columns for unpaired DBs)
