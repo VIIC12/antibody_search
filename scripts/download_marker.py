@@ -43,7 +43,7 @@ def extract_downloaded_file(log_line: str) -> Optional[str]:
     Extract downloaded file path from nginx access log line.
     
     Expected log format: standard nginx combined format or custom format
-    Example: '172.22.180.238 - - [01/Jan/2024:12:00:00 +0000] "GET /downloads/abc123.parquet HTTP/1.1" 200 5368709120 ...'
+    Example: '203.0.113.10 - - [01/Jan/2024:12:00:00 +0000] "GET /downloads/abc123.parquet HTTP/1.1" 200 5368709120 ...'
     
     Args:
         log_line: Single line from nginx access log

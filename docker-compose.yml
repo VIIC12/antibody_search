@@ -3,17 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: abhunter-app
-    deploy:
-      resources:
-        limits:
-          cpus: '22.0'
-          memory: 48G
-    env_file:
-      - .env
+    # Resource limits are host-specific; pin cpus/memory in a local
+    # docker-compose.override.yml if the host is shared.
     volumes:
-      # Mount data directory for persistence
-      - ${ABHUNTER_DB_PATH}:/app/data/abhunter
+      # Mount data directory for persistence (default: project-relative ./data)
+      - ${ABHUNTER_DB_PATH:-./data}:/app/data/abhunter
       # Mount logs directory if needed
       - ./logs:/app/logs
       # Mount download directory for large file storage
@@ -47,7 +41,6 @@ services:
   # nginx service for serving large file downloads
   nginx-downloads:
     image: nginx:alpine
-    container_name: nginx-downloads-antibody-search
     ports:
       - "127.0.0.1:9082:80"
     volumes:
@@ -63,7 +56,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: download-callback-antibody-search
     command: ["python3", "scripts/download_callback_service.py", "--port", "8888", "--host", "0.0.0.0"]
     volumes:
       - ${ABHUNTER_DOWNLOAD_DIR:-./downloads}:/app/downloads
@@ -79,7 +71,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: download-cleanup-antibody-search
     command: ["python3", "scripts/cleanup_downloads.py", "--interval", "300"]
     volumes:
       - ${ABHUNTER_DOWNLOAD_DIR:-./downloads}:/app/downloads
@@ -95,8 +86,4 @@ services:
 
 networks:
   antibody-search-network:
-    name: antibody-search-network
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.31.0.0/16
