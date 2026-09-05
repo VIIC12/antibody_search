@@ -1116,7 +1116,11 @@ class AntibodySearchEngine:
             SQL condition string or None if input is empty/invalid
         """
         import re
-        if not length_str or not length_str.strip():
+        if length_str is None:
+            return None
+        if not isinstance(length_str, str):
+            length_str = str(length_str)
+        if not length_str.strip():
             return None
         
         length_str = length_str.strip()
@@ -1130,6 +1134,8 @@ class AntibodySearchEngine:
             parts = length_str.split('-')
             min_val = int(parts[0])
             max_val = int(parts[1])
+            if min_val > max_val:
+                return None
             return f"{column_name} >= {min_val} AND {column_name} <= {max_val}"
         
         # Greater than: ">2" -> "cdr1_length > 2"

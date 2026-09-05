@@ -192,7 +192,6 @@ def test_extract_j_family_valid_and_edge_inputs_returns_expected(gene_name, expe
         (">=2", "cdr1_length >= 2"),
         ("<5", "cdr1_length < 5"),
         ("<=10", "cdr1_length <= 10"),
-        ("5-3", "cdr1_length >= 5 AND cdr1_length <= 3"),
     ],
     ids=[
         "fixed_value",
@@ -201,7 +200,6 @@ def test_extract_j_family_valid_and_edge_inputs_returns_expected(gene_name, expe
         "gte",
         "lt",
         "lte",
-        "reversed_range_accepted",
     ],
 )
 def test_parse_cdr_length_condition_valid_formats_returns_sql(
@@ -228,6 +226,7 @@ def test_parse_cdr_length_condition_valid_formats_returns_sql(
         "-5",
         "5..10",
         "> 2",
+        "5-3",
     ],
     ids=[
         "none",
@@ -238,6 +237,7 @@ def test_parse_cdr_length_condition_valid_formats_returns_sql(
         "leading_dash",
         "double_dot_range",
         "space_after_operator",
+        "reversed_range_rejected",
     ],
 )
 def test_parse_cdr_length_condition_empty_or_invalid_returns_none(engine, length_str):
@@ -251,14 +251,14 @@ def test_parse_cdr_length_condition_empty_or_invalid_returns_none(engine, length
     assert result is None
 
 
-def test_parse_cdr_length_condition_non_string_int_raises_attribute_error(engine):
+def test_parse_cdr_length_condition_non_string_int_coerced_to_string(engine):
     # Arrange
     column_name = "cdr1_length"
-    length_str = 5  # known limitation: strip() called without type check
 
     # Act / Assert
-    with pytest.raises(AttributeError):
-        engine._parse_cdr_length_condition(column_name, length_str)
+    assert engine._parse_cdr_length_condition(column_name, 5) == "cdr1_length = 5"
+    # float coerces to "5.0", which is not a valid length format
+    assert engine._parse_cdr_length_condition(column_name, 5.0) is None
 
 
 # -------------------------------------------------------------------
