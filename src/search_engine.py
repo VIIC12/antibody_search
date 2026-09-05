@@ -1703,7 +1703,7 @@ class AntibodySearchEngine:
             stats_df['per_million'] = 0.0
             stats_df.loc[stats_df['total_sequences'] > 0, 'per_million'] = (
                 stats_df['hits'] / stats_df['total_sequences'] * 1000000
-            ).round(0)
+            ).round(1)
         elif not stats_df.empty:
             # Fallback: if we can't get total_sequences_lookup, use stats_df as-is
             if 'total_sequences' not in stats_df.columns:
@@ -1716,7 +1716,7 @@ class AntibodySearchEngine:
             stats_df['per_million'] = 0.0
             stats_df.loc[stats_df['total_sequences'] > 0, 'per_million'] = (
                 stats_df['hits'] / stats_df['total_sequences'] * 1000000
-            ).round(0)
+            ).round(1)
         else:
             # No results and no metadata - create empty stats_df with proper columns
             import pandas as pd
@@ -2207,7 +2207,7 @@ class AntibodySearchEngine:
             stats_df['per_million'] = 0.0
             stats_df.loc[stats_df['total_sequences'] > 0, 'per_million'] = (
                 stats_df['hits'] / stats_df['total_sequences'] * 1000000
-            ).round(0)
+            ).round(1)
         elif not stats_df.empty:
             # Fallback: if we can't get total_sequences_lookup, use stats_df as-is
             if 'total_sequences' not in stats_df.columns:
@@ -2220,7 +2220,7 @@ class AntibodySearchEngine:
             stats_df['per_million'] = 0.0
             stats_df.loc[stats_df['total_sequences'] > 0, 'per_million'] = (
                 stats_df['hits'] / stats_df['total_sequences'] * 1000000
-            ).round(0)
+            ).round(1)
         else:
             # No results and no metadata - create empty stats_df with proper columns
             import pandas as pd
