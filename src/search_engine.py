@@ -1116,7 +1116,11 @@ class AntibodySearchEngine:
             SQL condition string or None if input is empty/invalid
         """
         import re
-        if not length_str or not length_str.strip():
+        if length_str is None:
+            return None
+        if not isinstance(length_str, str):
+            length_str = str(length_str)
+        if not length_str.strip():
             return None
         
         length_str = length_str.strip()
@@ -1130,6 +1134,8 @@ class AntibodySearchEngine:
             parts = length_str.split('-')
             min_val = int(parts[0])
             max_val = int(parts[1])
+            if min_val > max_val:
+                return None
             return f"{column_name} >= {min_val} AND {column_name} <= {max_val}"
         
         # Greater than: ">2" -> "cdr1_length > 2"
@@ -1232,7 +1238,7 @@ class AntibodySearchEngine:
                 gene = gene + '-'
         
         # Helper function to build light chain pattern
-        def build_light_chain_pattern(gene_pattern: str, is_v: bool, is_j: bool) -> tuple:
+        def build_light_chain_pattern(gene_pattern: str, is_v: bool, is_j: bool, is_d: bool = False) -> tuple:
             """Returns (pattern_string, is_or_pattern)"""
             if is_v:
                 if light_chain_type == 'L':
@@ -1250,6 +1256,14 @@ class AntibodySearchEngine:
                 else:
                     # Search both Lambda and Kappa
                     return (f"IGLJ{gene_pattern}%", f"IGKJ{gene_pattern}%", True)
+            elif is_d:
+                if light_chain_type == 'L':
+                    return (f"IGLD{gene_pattern}%", False)
+                elif light_chain_type == 'K':
+                    return (f"IGKD{gene_pattern}%", False)
+                else:
+                    # Search both Lambda and Kappa
+                    return (f"IGLD{gene_pattern}%", f"IGKD{gene_pattern}%", True)
             else:
                 return (f"IGKV{gene_pattern}%", False)  # Default for other cases
         
@@ -1265,7 +1279,10 @@ class AntibodySearchEngine:
                 else:
                     pattern = f"IGHV{gene}%"
             elif is_d_gene:
-                pattern = f"IGHD{gene}%" if not is_light_chain else f"IGKD{gene}%"
+                if is_light_chain:
+                    pattern_result = build_light_chain_pattern(gene, False, False, True)
+                else:
+                    pattern = f"IGHD{gene}%"
             elif is_j_gene:
                 if is_light_chain:
                     pattern_result = build_light_chain_pattern(gene, False, True)
@@ -1281,7 +1298,10 @@ class AntibodySearchEngine:
                 else:
                     pattern = f"IGHV{gene}%"
             elif is_d_gene:
-                pattern = f"IGHD{gene}%" if not is_light_chain else f"IGKD{gene}%"
+                if is_light_chain:
+                    pattern_result = build_light_chain_pattern(gene, False, False, True)
+                else:
+                    pattern = f"IGHD{gene}%"
             elif is_j_gene:
                 if is_light_chain:
                     pattern_result = build_light_chain_pattern(gene, False, True)
@@ -1298,7 +1318,10 @@ class AntibodySearchEngine:
                 else:
                     pattern = f"IGHV{gene}*%"
             elif is_d_gene:
-                pattern = f"IGHD{gene}*%" if not is_light_chain else f"IGKD{gene}*%"
+                if is_light_chain:
+                    pattern_result = build_light_chain_pattern(gene + '*', False, False, True)
+                else:
+                    pattern = f"IGHD{gene}*%"
             elif is_j_gene:
                 if is_light_chain:
                     pattern_result = build_light_chain_pattern(gene + '*', False, True)
@@ -1314,7 +1337,10 @@ class AntibodySearchEngine:
                 else:
                     pattern = f"IGHV{gene}%"
             elif is_d_gene:
-                pattern = f"IGHD{gene}%" if not is_light_chain else f"IGKD{gene}%"
+                if is_light_chain:
+                    pattern_result = build_light_chain_pattern(gene, False, False, True)
+                else:
+                    pattern = f"IGHD{gene}%"
             elif is_j_gene:
                 if is_light_chain:
                     pattern_result = build_light_chain_pattern(gene, False, True)
@@ -1703,7 +1729,7 @@ class AntibodySearchEngine:
             stats_df['per_million'] = 0.0
             stats_df.loc[stats_df['total_sequences'] > 0, 'per_million'] = (
                 stats_df['hits'] / stats_df['total_sequences'] * 1000000
-            ).round(0)
+            ).round(1)
         elif not stats_df.empty:
             # Fallback: if we can't get total_sequences_lookup, use stats_df as-is
             if 'total_sequences' not in stats_df.columns:
@@ -1716,7 +1742,7 @@ class AntibodySearchEngine:
             stats_df['per_million'] = 0.0
             stats_df.loc[stats_df['total_sequences'] > 0, 'per_million'] = (
                 stats_df['hits'] / stats_df['total_sequences'] * 1000000
-            ).round(0)
+            ).round(1)
         else:
             # No results and no metadata - create empty stats_df with proper columns
             import pandas as pd
@@ -2207,7 +2233,7 @@ class AntibodySearchEngine:
             stats_df['per_million'] = 0.0
             stats_df.loc[stats_df['total_sequences'] > 0, 'per_million'] = (
                 stats_df['hits'] / stats_df['total_sequences'] * 1000000
-            ).round(0)
+            ).round(1)
         elif not stats_df.empty:
             # Fallback: if we can't get total_sequences_lookup, use stats_df as-is
             if 'total_sequences' not in stats_df.columns:
@@ -2220,7 +2246,7 @@ class AntibodySearchEngine:
             stats_df['per_million'] = 0.0
             stats_df.loc[stats_df['total_sequences'] > 0, 'per_million'] = (
                 stats_df['hits'] / stats_df['total_sequences'] * 1000000
-            ).round(0)
+            ).round(1)
         else:
             # No results and no metadata - create empty stats_df with proper columns
             import pandas as pd

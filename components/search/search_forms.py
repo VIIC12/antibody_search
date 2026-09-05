@@ -108,9 +108,14 @@ def _render_motif_match_controls(
     with col_toggle:
         if not motif and st.session_state.get(similarity_key, False):
             st.session_state[similarity_key] = False
+        # No `value=` here either -- same Session State API conflict as the
+        # Mismatches input below: this key can already be set in
+        # st.session_state (line above, an example search, or a mask reset)
+        # before this widget is created. st.toggle already defaults to False
+        # with no `value=` passed, so dropping it changes nothing when no
+        # prior session_state entry exists.
         similarity = st.toggle(
             "Similarity Search",
-            value=False,
             disabled=disabled or not bool(motif),
             help=SIMILARITY_HELP_NO_MOTIF if not motif else SIMILARITY_HELP_TEXT,
             key=similarity_key
@@ -127,11 +132,18 @@ def _render_motif_match_controls(
                     current = 0
                 if current > max_mismatches:
                     st.session_state[mismatches_key] = max_mismatches
+                # No `value=` here: the widget's key may already carry a value
+                # in st.session_state (set above on clamp, or by an example
+                # search / mask reset before this widget is created). Passing
+                # `value=` alongside a pre-set session_state key makes
+                # Streamlit warn that the default conflicts with the Session
+                # State API, even when the two agree. Without `value=`,
+                # Streamlit falls back to session_state if present, else to
+                # `min_value` (0 here) -- same default, no warning.
                 mismatches = st.number_input(
                     "Mismatches",
                     min_value=0,
                     max_value=max_mismatches,
-                    value=0,
                     step=1,
                     help=f"{MISMATCH_HELP_TEXT} Max: {max_mismatches}.",
                     key=mismatches_key,
