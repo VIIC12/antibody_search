@@ -160,6 +160,107 @@ def _get_download_path(
     return token, file_path, download_url
 
 
+_THROUGHPUT_STATS_FILENAME = ".download_throughput_stats.json"
+
+
+def _get_throughput_stats_path() -> Path:
+    """Return the path to the persisted download throughput stats file."""
+    return _get_download_directory() / _THROUGHPUT_STATS_FILENAME
+
+
+def _load_throughput_stats() -> Dict[str, Dict[str, float]]:
+    """Load throughput stats from disk; return {} on any read/parse failure."""
+    path = _get_throughput_stats_path()
+    try:
+        if not path.exists():
+            return {}
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.loads(f.read())
+        if not isinstance(data, dict):
+            return {}
+        return data
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_throughput_stats(stats: Dict[str, Dict[str, float]]) -> None:
+    """Atomically write throughput stats; swallow OSError (never raise)."""
+    path = _get_throughput_stats_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o775)
+        tmp_path = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(stats, f)
+        tmp_path.replace(path)
+    except OSError as e:
+        logger.debug("Failed to save download throughput stats: %s", e)
+
+
+def record_download_throughput(
+    job_type: str,
+    elapsed_seconds: float,
+    total_hits: int,
+    file_size_bytes: int,
+) -> None:
+    """
+    Best-effort record of download throughput for ETA estimates.
+
+    Updates an exponential moving average (alpha=0.3) of hits/sec and bytes/hit
+    for the given job_type. Never raises.
+    """
+    try:
+        if elapsed_seconds <= 0 or total_hits <= 0:
+            return
+        hits_per_sec = total_hits / elapsed_seconds
+        bytes_per_hit = file_size_bytes / total_hits
+        stats = _load_throughput_stats()
+        existing = stats.get(job_type)
+        alpha = 0.3
+        if existing and existing.get("samples", 0) > 0:
+            existing["hits_per_sec"] = (
+                alpha * hits_per_sec + (1 - alpha) * existing["hits_per_sec"]
+            )
+            existing["bytes_per_hit"] = (
+                alpha * bytes_per_hit + (1 - alpha) * existing["bytes_per_hit"]
+            )
+            existing["samples"] = existing.get("samples", 0) + 1
+            stats[job_type] = existing
+        else:
+            stats[job_type] = {
+                "hits_per_sec": hits_per_sec,
+                "bytes_per_hit": bytes_per_hit,
+                "samples": 1,
+            }
+        _save_throughput_stats(stats)
+    except Exception as e:
+        logger.debug("Failed to record download throughput: %s", e)
+
+
+def estimate_download_seconds(job_type: str, total_hits: int) -> Optional[float]:
+    """Estimate download preparation seconds from EMA hits/sec; None if unknown."""
+    if not total_hits or total_hits <= 0:
+        return None
+    stats = _load_throughput_stats()
+    entry = stats.get(job_type)
+    if not entry:
+        return None
+    hits_per_sec = entry.get("hits_per_sec")
+    if not hits_per_sec:
+        return None
+    return total_hits / hits_per_sec
+
+
+def format_eta_seconds(seconds: Optional[float]) -> Optional[str]:
+    """Format an ETA as a short human string (~Ns / ~Nm Ns / ~Nh)."""
+    if seconds is None:
+        return None
+    if seconds < 60:
+        return f"~{round(seconds)}s"
+    if seconds < 3600:
+        return f"~{int(seconds // 60)}m {round(seconds % 60)}s"
+    return f"~{seconds / 3600:.1f}h"
+
+
 def _build_where_clause_from_params(
     engine,
     search_params: Dict[str, Any],
@@ -472,20 +573,6 @@ def prepare_all_downloads(
         selected_databases,
     )
 
-    full_result = prepare_full_results_download_background(
-        database_paths,
-        search_params_with_metadata,
-        is_paired,
-        chain_label,
-    )
-
-    fasta_result = prepare_fasta_download_background(
-        database_paths,
-        search_params_with_metadata,
-        is_paired,
-        chain_label,
-    )
-
     plots_metadata: Dict[str, Any] = {
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "is_paired": is_paired,
@@ -500,11 +587,39 @@ def prepare_all_downloads(
             "search_time": statistics.get("search_time"),
         },
     }
-    plots_result = prepare_plots_download_background(
-        plots_data,
-        plots_metadata,
-        include_raw_data=True,
-    )
+
+    import concurrent.futures
+
+    # Use 12 threads each for the two concurrent DuckDB jobs to fit within the 22-core container CPU limit.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        future_full = executor.submit(
+            prepare_full_results_download_background,
+            database_paths,
+            search_params_with_metadata,
+            is_paired,
+            chain_label,
+            duckdb_threads=12
+        )
+
+        future_fasta = executor.submit(
+            prepare_fasta_download_background,
+            database_paths,
+            search_params_with_metadata,
+            is_paired,
+            chain_label,
+            duckdb_threads=12
+        )
+
+        future_plots = executor.submit(
+            prepare_plots_download_background,
+            plots_data,
+            plots_metadata,
+            include_raw_data=True
+        )
+
+        full_result = future_full.result()
+        fasta_result = future_fasta.result()
+        plots_result = future_plots.result()
     identifier = _build_search_identifier(
         {
             "search_params": search_params,
@@ -701,6 +816,7 @@ def prepare_full_results_download_background(
     is_paired: bool,
     chain_label: str,
     progress_callback: Optional[Callable[[str], None]] = None,
+    duckdb_threads: int = 24,
 ) -> Dict[str, Any]:
     """
         Prepare full results table download (gzip-compressed CSV) in a background process.
@@ -766,9 +882,9 @@ def prepare_full_results_download_background(
             db_path=":memory:"
         )
         logger.info("Background full results download: Search engine initialized")
-        # use 24 threads when loading full results
+        # use configured threads when loading full results
         if hasattr(engine, "configure_threads"):
-            engine.configure_threads(24)
+            engine.configure_threads(duckdb_threads)
 
         # Copy search params to avoid modifying original
         search_params_copy = search_params.copy()
@@ -1244,6 +1360,7 @@ def prepare_fasta_download_background(
     is_paired: bool,
     chain_label: str = None,
     progress_callback: Optional[Callable[[str], None]] = None,
+    duckdb_threads: int = 24,
 ) -> Dict[str, Any]:
     """
     Prepare FASTA file download in a background process.
@@ -1303,7 +1420,7 @@ def prepare_fasta_download_background(
         )
         logger.info("Background FASTA download: Search engine initialized")
         if hasattr(engine, "configure_threads"):
-            engine.configure_threads(24)
+            engine.configure_threads(duckdb_threads)
 
         # Copy search params to avoid modifying original
         search_params_copy = search_params.copy()
