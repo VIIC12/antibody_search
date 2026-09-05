@@ -117,11 +117,11 @@ class TestStatisticsAndInferredPairing:
         subj_c = stats_df[stats_df['subject'] == 'SubjC'].iloc[0]
         assert subj_c['percentage'] == 16.67
         
-        # 2. Per-subject stats_df per_million column equals hits/total_sequences*1000000 rounded to 0 decimals
-        # SubjA: 3/8*1000000 = 375000.0, round(0) is 375000.0
-        # SubjC: 1/6*1000000 = 166666.666..., round(0) is 166667.0
+        # 2. Per-subject stats_df per_million column equals hits/total_sequences*1000000 rounded to 1 decimal
+        # SubjA: 3/8*1000000 = 375000.0, round(1) is 375000.0
+        # SubjC: 1/6*1000000 = 166666.666..., round(1) is 166666.7
         assert subj_a['per_million'] == 375000.0
-        assert subj_c['per_million'] == 166667.0
+        assert subj_c['per_million'] == 166666.7
         
         # 3. Overall stats percentage key equals total_hits/total_sequences*100 rounded to 2 decimals
         # Total hits = 4, Total seqs = 18, so 4/18*100 = 22.222..., round(2) is 22.22
@@ -134,15 +134,13 @@ class TestStatisticsAndInferredPairing:
         assert isinstance(subj_b['percentage'], float)
         assert isinstance(subj_b['per_million'], float)
 
-    def test_precision_mismatch_documented_behavior(self, temp_dir):
-        # 4. Overall stats per_million key equals total_hits/total_sequences*1000000 rounded to 1 decimal
+    def test_per_million_consistent_precision_across_subject_and_overall(self, temp_dir):
+        # 4. Per-subject and overall per_million both use 1-decimal rounding
         
         # Arrange
-        # We need a hit rate where rounding to 0 decimals vs 1 decimal yields different values.
         # Total=3, hits=1 -> hit rate = 1/3
         # per_million = 333333.333...
-        # round(0) -> 333333.0
-        # round(1) -> 333333.3
+        # round(1) -> 333333.3 for both subject and overall stats
         dd = temp_dir / "Subj1"
         dd.mkdir()
         df = make_subject_data("Subj1", 3, 1)
@@ -157,11 +155,8 @@ class TestStatisticsAndInferredPairing:
         
         # Assert
         subj_stats = stats_df.iloc[0]
-        # This flags a real, surprising inconsistency in current production code:
-        # Per-subject per_million is rounded to 0 decimals (yielding ...0 float),
-        # but overall per_million is rounded to 1 decimal (yielding ...X float).
-        # This test pins down that documented behavior.
-        assert subj_stats['per_million'] == 333333.0
+        # Per-subject and overall per_million share the same 1-decimal precision.
+        assert subj_stats['per_million'] == 333333.3
         assert stats['per_million'] == 333333.3
 
     def test_zero_sequences_across_dataset(self, temp_dir):
