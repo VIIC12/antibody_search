@@ -19,9 +19,35 @@ source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
+```
 
-# Download and convert OAS files to Parquet format
+#### Try the app with the minimal example dataset (no OAS download)
+
+A small real OAS subset (~100 KB, ~125 sequences) is shipped under `examples/minimal/` so you can explore Heavy, Light, and Paired search before downloading the full healthy-human OAS.
+
+```bash
+export ABHUNTER_DB_PATH=./examples/minimal
+python -m streamlit run app.py
+# Open the "Local URL" link in your browser
+```
+
+In the UI, select the `Demo` databases under Heavy / Light / Paired. The built-in Example Search buttons return hits on this subset.
+
+To regenerate the example tree from a local full OAS conversion (maintainers only):
+
+```bash
+python scripts/create_example_data.py --source ./data
+```
+
+#### Download the full OAS (healthy humans)
+
+```bash
+# Download and convert OAS files to Parquet format (large; needs disk space)
 python scripts/update_from_oas.py --healthy_humans --download-and-convert
+
+# Point the app at the full dataset (default layout under ./data)
+unset ABHUNTER_DB_PATH
+# or: export ABHUNTER_DB_PATH=./data
 ```
 
 #### Run the web interface
@@ -50,22 +76,31 @@ antibody_search/               # Self-contained antibody_search directory
 │       ├── ... *.py           # Search components
 │
 ├── scripts/
-│   └── convert_to_parquet.py  # CSV.gz → Parquet converter
+│   ├── convert_to_parquet.py  # CSV.gz → Parquet converter
+│   └── create_example_data.py # Rebuild examples/minimal from local OAS
 │
-├── data/                      # All data contained here
-│   └── parquet/               # Converted database files
-│       ├── IGHM/              # Partitioned by isotype
-│       │   ├── *.parquet      # Individual sequence files
-│       └── metadata.parquet   # Subject and study metadata
+├── examples/
+│   └── minimal/               # Tiny real OAS subset for local try-out
+│       ├── Heavy/Demo/
+│       ├── Light/Demo/
+│       └── Paired/Demo/
+│
+├── data/                      # Full OAS conversion (not in git; large)
+│   ├── Heavy/                 # Partitioned by isotype (e.g. IGHM/)
+│   ├── Light/
+│   ├── Paired/
+│   └── Inferred/              # Optional pairing overlays
 │
 ├── tests/                     # Validation tests
 │
-└── venv/                      # Virtual environment (gitignored)
+└── .venv/                     # Virtual environment (gitignored)
 ```
 ## Customization
 ```bash
 # custom database path (default: project data/)
 export ABHUNTER_DB_PATH=./data
+# try-out without full OAS:
+# export ABHUNTER_DB_PATH=./examples/minimal
 
 # custom IgBLAST directory (default: project igblast/)
 export ABHUNTER_IGBLAST_PATH=./igblast
