@@ -8,6 +8,7 @@ analytical query engine on Parquet files.
 import time
 import os
 import logging
+from itertools import combinations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 import re
@@ -48,6 +49,32 @@ try:
     DUCKDB_THREADS = int(_duckdb_threads_env) if _duckdb_threads_env is not None else 4
 except (ValueError, TypeError):
     DUCKDB_THREADS = 4
+
+# Chemically similar amino-acid groups used when Similarity Search is enabled.
+# Unique residues (C, G, H, M, P) have no substitutes.
+AMINO_ACID_SIMILARITY_GROUPS = {
+    'A': 'AILV',  # Aliphatic
+    'C': 'C',     # Cysteine (unique)
+    'D': 'DE',    # Acidic
+    'E': 'DE',    # Acidic
+    'F': 'FWY',   # Aromatic
+    'G': 'G',     # Glycine (unique)
+    'H': 'H',     # Histidine (unique)
+    'I': 'AILV',  # Aliphatic
+    'K': 'KR',    # Basic
+    'L': 'AILV',  # Aliphatic
+    'M': 'M',     # Methionine (unique)
+    'N': 'NQ',    # Amide
+    'P': 'P',     # Proline (unique)
+    'Q': 'NQ',    # Amide
+    'R': 'KR',    # Basic
+    'S': 'ST',    # Hydroxyl
+    'T': 'ST',    # Hydroxyl
+    'V': 'AILV',  # Aliphatic
+    'W': 'FWY',   # Aromatic
+    'Y': 'FWY',   # Aromatic
+}
+DEFINED_AMINO_ACIDS = frozenset(AMINO_ACID_SIMILARITY_GROUPS)
 
 # Configuration: Verbose output control via environment variable
 # Set ABHUNTER_VERBOSE=true to enable verbose output (default: false)
@@ -843,78 +870,46 @@ class AntibodySearchEngine:
         summary = ", ".join(f"{partner} ({percent:.1f}%)" for partner, percent in partners)
         return f"{partner_label} {gene_label} families: {summary}"
     
-    def generate_similarity_pattern(self, motif: str, max_mismatches: int = 2) -> str:
-        """
-        Generate a regex pattern for similarity-based motif matching.
-        
-        This method uses amino acid similarity groups to allow matches with similar
-        amino acids. When max_mismatches > 0, each position can match either the
-        exact amino acid or similar ones (based on chemical properties).
-        
-        Args:
-            motif: The motif pattern (e.g., "YY.D.*G")
-            max_mismatches: Controls similarity matching behavior:
-                - If > 0: Allows similar amino acids at each position (e.g., Y matches F, W, Y)
-                - If 0: Requires exact amino acid matches (no similarity groups)
-                Note: This does NOT limit the number of positions that can differ,
-                but rather controls whether similarity groups are applied at each position.
-        
-        Returns:
-            A regex pattern that matches sequences with similarity-based matching
-        """
+    def _motif_to_search_regex(
+        self,
+        motif: str,
+        max_mismatches: int = 0,
+        similarity: bool = False
+    ) -> str:
+        """Convert a CDR motif into a regex, applying mismatch and similarity rules."""
         if not motif:
             return ""
-        
-        # Define amino acid similarity groups (based on chemical properties)
-        amino_acid_groups = {
-            'A': '[AILV]',  # Aliphatic
-            'C': '[C]',     # Cysteine (unique)
-            'D': '[DE]',    # Acidic
-            'E': '[DE]',    # Acidic
-            'F': '[FWY]',   # Aromatic
-            'G': '[G]',     # Glycine (unique)
-            'H': '[H]',     # Histidine (unique)
-            'I': '[AILV]',  # Aliphatic
-            'K': '[KR]',    # Basic
-            'L': '[AILV]',  # Aliphatic
-            'M': '[M]',     # Methionine (unique)
-            'N': '[NQ]',    # Amide
-            'P': '[P]',     # Proline (unique)
-            'Q': '[NQ]',    # Amide
-            'R': '[KR]',    # Basic
-            'S': '[ST]',    # Hydroxyl
-            'T': '[ST]',    # Hydroxyl
-            'V': '[AILV]',  # Aliphatic
-            'W': '[FWY]',   # Aromatic
-            'Y': '[FWY]',   # Aromatic
-        }
-        
-        # Convert motif to regex pattern
-        regex_pattern = ""
+        try:
+            mismatches = int(max_mismatches or 0)
+        except (TypeError, ValueError):
+            mismatches = 0
+        if mismatches > 0:
+            return self.generate_similarity_pattern(
+                motif, mismatches, similarity=bool(similarity)
+            )
+        return self._convert_motif_to_regex(motif)
+
+    @staticmethod
+    def _tokenize_motif(motif: str) -> List[Tuple[str, str]]:
+        """Parse a motif into tokens: aa, class, wild, or lit."""
+        tokens: List[Tuple[str, str]] = []
         i = 0
         while i < len(motif):
             char = motif[i].upper()
-            
+
             if char == '[':
-                # Square bracket for explicit alternatives: [ABC] -> [ABC] in regex
                 bracket_end = motif.find(']', i + 1)
                 if bracket_end != -1:
                     bracket_content = motif[i + 1:bracket_end].upper()
-                    # Validate that content contains only amino acids
                     if re.match(r'^[ACDEFGHIKLMNPQRSTVWY]+$', bracket_content):
-                        regex_pattern += f'[{bracket_content}]'
+                        tokens.append(('class', bracket_content))
                         i = bracket_end + 1
                         continue
-                    else:
-                        # Invalid bracket content - escape the bracket
-                        regex_pattern += re.escape(char)
+                    tokens.append(('lit', re.escape(char)))
                 else:
-                    # Unmatched bracket - escape it
-                    regex_pattern += re.escape(char)
-            elif char == '*':
-                # Check if followed by curly braces {n} or {n-m}
+                    tokens.append(('lit', re.escape(char)))
+            elif char in '*.':
                 if i + 1 < len(motif) and motif[i + 1] == '{':
-                    # Find the closing brace
                     brace_end = motif.find('}', i + 1)
                     if brace_end != -1:
                         brace_content = motif[i + 2:brace_end]
@@ -922,68 +917,95 @@ class AntibodySearchEngine:
                             parts = brace_content.split('-')
                             n = parts[0].strip()
                             if len(parts) == 2 and parts[1].strip():
-                                # Range: {n-m}
                                 m = parts[1].strip()
-                                regex_pattern += f'.{{{n},{m}}}'
+                                tokens.append(('wild', f'.{{{n},{m}}}'))
                             else:
-                                # Invalid format - escape the brace sequence
-                                regex_pattern += re.escape(char) + re.escape('{') + re.escape(brace_content) + re.escape('}')
-                                i = brace_end + 1
-                                continue
+                                tokens.append((
+                                    'lit',
+                                    re.escape(char) + re.escape('{') + re.escape(brace_content) + re.escape('}')
+                                ))
                         else:
-                            # Exact: {n}
-                            regex_pattern += f'.{{{brace_content.strip()}}}'
+                            tokens.append(('wild', f'.{{{brace_content.strip()}}}'))
                         i = brace_end + 1
                         continue
-                # Wildcard - match any characters
-                regex_pattern += '.*'
-            elif char == '.':
-                # Check if followed by curly braces {n} or {n-m}
-                if i + 1 < len(motif) and motif[i + 1] == '{':
-                    # Find the closing brace
-                    brace_end = motif.find('}', i + 1)
-                    if brace_end != -1:
-                        brace_content = motif[i + 2:brace_end]
-                        if '-' in brace_content:
-                            parts = brace_content.split('-')
-                            n = parts[0].strip()
-                            if len(parts) == 2 and parts[1].strip():
-                                # Range: {n-m}
-                                m = parts[1].strip()
-                                regex_pattern += f'.{{{n},{m}}}'
-                            else:
-                                # Invalid format - escape the brace sequence
-                                regex_pattern += re.escape(char) + re.escape('{') + re.escape(brace_content) + re.escape('}')
-                                i = brace_end + 1
-                                continue
-                        else:
-                            # Exact: {n}
-                            regex_pattern += f'.{{{brace_content.strip()}}}'
-                        i = brace_end + 1
-                        continue
-                # Single character wildcard
-                regex_pattern += '.'
-            elif char in amino_acid_groups:
-                # Amino acid - create similarity group
-                if max_mismatches > 0:
-                    # Allow the original amino acid or similar ones
-                    original = f'[{char}]'
-                    similar = amino_acid_groups[char]
-                    # Create a pattern that matches either the original or similar amino acids
-                    regex_pattern += f'({original}|{similar})'
-                else:
-                    # Exact match only
-                    regex_pattern += f'[{char}]'
+                tokens.append(('wild', '.*' if char == '*' else '.'))
+            elif char in DEFINED_AMINO_ACIDS:
+                tokens.append(('aa', char))
             elif char == '{':
-                # Standalone brace - escape it
-                regex_pattern += re.escape(char)
+                tokens.append(('lit', re.escape(char)))
             else:
-                # Other characters (shouldn't happen with validation)
-                regex_pattern += re.escape(char)
-            
+                tokens.append(('lit', re.escape(char)))
+
             i += 1
-        
-        return regex_pattern
+        return tokens
+
+    @staticmethod
+    def _similarity_class(residues: str) -> str:
+        """Character class covering chemically similar amino acids for the given residues."""
+        chars = set()
+        for aa in residues:
+            chars.update(AMINO_ACID_SIMILARITY_GROUPS.get(aa, aa))
+        return '[' + ''.join(sorted(chars)) + ']'
+
+    @classmethod
+    def _token_to_regex(cls, token: Tuple[str, str], flexible: bool, similarity: bool) -> str:
+        kind, value = token
+        if kind == 'aa':
+            if flexible:
+                return cls._similarity_class(value) if similarity else '.{1}'
+            return re.escape(value)
+        if kind == 'class':
+            if flexible:
+                return cls._similarity_class(value) if similarity else '.{1}'
+            return f'[{value}]'
+        return value
+
+    def generate_similarity_pattern(
+        self,
+        motif: str,
+        max_mismatches: int = 0,
+        similarity: bool = False
+    ) -> str:
+        """
+        Generate a regex that allows up to `max_mismatches` substitutions among
+        defined motif positions (amino acids and `[...]` classes). Wildcards
+        (`.` and `*`) are never counted as mismatchable.
+
+        When `similarity` is False, a mismatched position may be any amino acid.
+        When `similarity` is True, a mismatched position may only be a chemically
+        similar amino acid. Unique residues (C, G, H, M, P) have no substitutes.
+        """
+        if not motif:
+            return ""
+
+        try:
+            mismatches = int(max_mismatches or 0)
+        except (TypeError, ValueError):
+            mismatches = 0
+
+        if mismatches <= 0:
+            return self._convert_motif_to_regex(motif)
+
+        tokens = self._tokenize_motif(motif)
+        mismatchable = [i for i, token in enumerate(tokens) if token[0] in ('aa', 'class')]
+        k = len(mismatchable)
+        if k == 0:
+            return self._convert_motif_to_regex(motif)
+
+        n = min(mismatches, k)
+        # Flexible classes include the original residue, so choosing exactly n
+        # flexible positions already allows 0..n substitutions.
+        alternatives = []
+        for combo in combinations(mismatchable, n):
+            flexible = set(combo)
+            alternatives.append(''.join(
+                self._token_to_regex(token, idx in flexible, similarity)
+                for idx, token in enumerate(tokens)
+            ))
+
+        if len(alternatives) == 1:
+            return alternatives[0]
+        return f"({'|'.join(alternatives)})"
     
     def _convert_motif_to_regex(self, motif: str) -> str:
         """
@@ -1327,9 +1349,9 @@ class AntibodySearchEngine:
         heavy_cdr1_similarity: bool = False,
         heavy_cdr2_similarity: bool = False,
         heavy_cdr3_similarity: bool = False,
-        heavy_cdr1_mismatches: int = 2,
-        heavy_cdr2_mismatches: int = 2,
-        heavy_cdr3_mismatches: int = 2,
+        heavy_cdr1_mismatches: int = 0,
+        heavy_cdr2_mismatches: int = 0,
+        heavy_cdr3_mismatches: int = 0,
         light_v: str = "",
         light_d: str = "",
         light_j: str = "",
@@ -1342,9 +1364,9 @@ class AntibodySearchEngine:
         light_cdr1_similarity: bool = False,
         light_cdr2_similarity: bool = False,
         light_cdr3_similarity: bool = False,
-        light_cdr1_mismatches: int = 2,
-        light_cdr2_mismatches: int = 2,
-        light_cdr3_mismatches: int = 2,
+        light_cdr1_mismatches: int = 0,
+        light_cdr2_mismatches: int = 0,
+        light_cdr3_mismatches: int = 0,
         full_results: bool = False,
         limit: Optional[int] = None,
         columns: Optional[List[str]] = None,
@@ -1458,9 +1480,9 @@ class AntibodySearchEngine:
         cdr1_similarity: bool = False,
         cdr2_similarity: bool = False,
         cdr3_similarity: bool = False,
-        cdr1_mismatches: int = 2,
-        cdr2_mismatches: int = 2,
-        cdr3_mismatches: int = 2,
+        cdr1_mismatches: int = 0,
+        cdr2_mismatches: int = 0,
+        cdr3_mismatches: int = 0,
         chain_type: str = "Heavy",
         full_results: bool = False,
         limit: Optional[int] = None,
@@ -1533,34 +1555,18 @@ class AntibodySearchEngine:
             if condition:
                 conditions.append(condition)
         
-        # Use class method instead of duplicate local function
-        # When similarity=False: exact pattern matching (mismatches parameter is ignored)
-        # When similarity=True: uses similarity groups based on mismatches parameter
+        # mismatches: how many defined positions may differ
+        # similarity: restrict those substitutions to chemically similar amino acids
         if cdr1_motif:
-            if cdr1_similarity:
-                # Use similarity pattern with mismatch tolerance
-                regex_pattern = self.generate_similarity_pattern(cdr1_motif, cdr1_mismatches)
-            else:
-                # Exact pattern matching - mismatches parameter is not applicable
-                regex_pattern = self._convert_motif_to_regex(cdr1_motif)
+            regex_pattern = self._motif_to_search_regex(cdr1_motif, cdr1_mismatches, cdr1_similarity)
             conditions.append(f"cdr1_aa ~ '{regex_pattern}'")
         
         if cdr2_motif:
-            if cdr2_similarity:
-                # Use similarity pattern with mismatch tolerance
-                regex_pattern = self.generate_similarity_pattern(cdr2_motif, cdr2_mismatches)
-            else:
-                # Exact pattern matching - mismatches parameter is not applicable
-                regex_pattern = self._convert_motif_to_regex(cdr2_motif)
+            regex_pattern = self._motif_to_search_regex(cdr2_motif, cdr2_mismatches, cdr2_similarity)
             conditions.append(f"cdr2_aa ~ '{regex_pattern}'")
         
         if cdr3_motif:
-            if cdr3_similarity:
-                # Use similarity pattern with mismatch tolerance
-                regex_pattern = self.generate_similarity_pattern(cdr3_motif, cdr3_mismatches)
-            else:
-                # Exact pattern matching - mismatches parameter is not applicable
-                regex_pattern = self._convert_motif_to_regex(cdr3_motif)
+            regex_pattern = self._motif_to_search_regex(cdr3_motif, cdr3_mismatches, cdr3_similarity)
             conditions.append(f"cdr3_aa ~ '{regex_pattern}'")
         
         where_clause = " AND ".join(conditions) if conditions else "1=1"
@@ -1843,9 +1849,9 @@ class AntibodySearchEngine:
         heavy_cdr1_similarity: bool = False,
         heavy_cdr2_similarity: bool = False,
         heavy_cdr3_similarity: bool = False,
-        heavy_cdr1_mismatches: int = 2,
-        heavy_cdr2_mismatches: int = 2,
-        heavy_cdr3_mismatches: int = 2,
+        heavy_cdr1_mismatches: int = 0,
+        heavy_cdr2_mismatches: int = 0,
+        heavy_cdr3_mismatches: int = 0,
         light_v: str = "",
         light_d: str = "",
         light_j: str = "",
@@ -1858,9 +1864,9 @@ class AntibodySearchEngine:
         light_cdr1_similarity: bool = False,
         light_cdr2_similarity: bool = False,
         light_cdr3_similarity: bool = False,
-        light_cdr1_mismatches: int = 2,
-        light_cdr2_mismatches: int = 2,
-        light_cdr3_mismatches: int = 2,
+        light_cdr1_mismatches: int = 0,
+        light_cdr2_mismatches: int = 0,
+        light_cdr3_mismatches: int = 0,
         full_results: bool = False,
         limit: Optional[int] = None,
         columns: Optional[List[str]] = None,
@@ -1944,37 +1950,28 @@ class AntibodySearchEngine:
                         conditions.append(condition)
         
         # Heavy chain CDR motifs
-        # When similarity=False: exact pattern matching (mismatches parameter is ignored)
-        # When similarity=True: uses similarity groups based on mismatches parameter
+        # mismatches: how many defined positions may differ
+        # similarity: restrict those substitutions to chemically similar amino acids
         if heavy_cdr1_motif:
-            if heavy_cdr1_similarity:
-                # Use similarity pattern with mismatch tolerance
-                regex_pattern = self.generate_similarity_pattern(heavy_cdr1_motif, heavy_cdr1_mismatches)
-            else:
-                # Exact pattern matching - mismatches parameter is not applicable
-                regex_pattern = self._convert_motif_to_regex(heavy_cdr1_motif)
+            regex_pattern = self._motif_to_search_regex(
+                heavy_cdr1_motif, heavy_cdr1_mismatches, heavy_cdr1_similarity
+            )
             for col in self.schema['chain_columns']['cdr1_aa']:
                 if '_heavy' in col:
                     conditions.append(f"{col} ~ '{regex_pattern}'")
         
         if heavy_cdr2_motif:
-            if heavy_cdr2_similarity:
-                # Use similarity pattern with mismatch tolerance
-                regex_pattern = self.generate_similarity_pattern(heavy_cdr2_motif, heavy_cdr2_mismatches)
-            else:
-                # Exact pattern matching - mismatches parameter is not applicable
-                regex_pattern = self._convert_motif_to_regex(heavy_cdr2_motif)
+            regex_pattern = self._motif_to_search_regex(
+                heavy_cdr2_motif, heavy_cdr2_mismatches, heavy_cdr2_similarity
+            )
             for col in self.schema['chain_columns']['cdr2_aa']:
                 if '_heavy' in col:
                     conditions.append(f"{col} ~ '{regex_pattern}'")
         
         if heavy_cdr3_motif:
-            if heavy_cdr3_similarity:
-                # Use similarity pattern with mismatch tolerance
-                regex_pattern = self.generate_similarity_pattern(heavy_cdr3_motif, heavy_cdr3_mismatches)
-            else:
-                # Exact pattern matching - mismatches parameter is not applicable
-                regex_pattern = self._convert_motif_to_regex(heavy_cdr3_motif)
+            regex_pattern = self._motif_to_search_regex(
+                heavy_cdr3_motif, heavy_cdr3_mismatches, heavy_cdr3_similarity
+            )
             for col in self.schema['chain_columns']['cdr3_aa']:
                 if '_heavy' in col:
                     conditions.append(f"{col} ~ '{regex_pattern}'")
@@ -2057,37 +2054,28 @@ class AntibodySearchEngine:
                         conditions.append(condition)
         
         # Light chain CDR motifs
-        # When similarity=False: exact pattern matching (mismatches parameter is ignored)
-        # When similarity=True: uses similarity groups based on mismatches parameter
+        # mismatches: how many defined positions may differ
+        # similarity: restrict those substitutions to chemically similar amino acids
         if light_cdr1_motif:
-            if light_cdr1_similarity:
-                # Use similarity pattern with mismatch tolerance
-                regex_pattern = self.generate_similarity_pattern(light_cdr1_motif, light_cdr1_mismatches)
-            else:
-                # Exact pattern matching - mismatches parameter is not applicable
-                regex_pattern = self._convert_motif_to_regex(light_cdr1_motif)
+            regex_pattern = self._motif_to_search_regex(
+                light_cdr1_motif, light_cdr1_mismatches, light_cdr1_similarity
+            )
             for col in self.schema['chain_columns']['cdr1_aa']:
                 if '_light' in col:
                     conditions.append(f"{col} ~ '{regex_pattern}'")
         
         if light_cdr2_motif:
-            if light_cdr2_similarity:
-                # Use similarity pattern with mismatch tolerance
-                regex_pattern = self.generate_similarity_pattern(light_cdr2_motif, light_cdr2_mismatches)
-            else:
-                # Exact pattern matching - mismatches parameter is not applicable
-                regex_pattern = self._convert_motif_to_regex(light_cdr2_motif)
+            regex_pattern = self._motif_to_search_regex(
+                light_cdr2_motif, light_cdr2_mismatches, light_cdr2_similarity
+            )
             for col in self.schema['chain_columns']['cdr2_aa']:
                 if '_light' in col:
                     conditions.append(f"{col} ~ '{regex_pattern}'")
         
         if light_cdr3_motif:
-            if light_cdr3_similarity:
-                # Use similarity pattern with mismatch tolerance
-                regex_pattern = self.generate_similarity_pattern(light_cdr3_motif, light_cdr3_mismatches)
-            else:
-                # Exact pattern matching - mismatches parameter is not applicable
-                regex_pattern = self._convert_motif_to_regex(light_cdr3_motif)
+            regex_pattern = self._motif_to_search_regex(
+                light_cdr3_motif, light_cdr3_mismatches, light_cdr3_similarity
+            )
             for col in self.schema['chain_columns']['cdr3_aa']:
                 if '_light' in col:
                     conditions.append(f"{col} ~ '{regex_pattern}'")

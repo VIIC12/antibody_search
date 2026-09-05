@@ -1283,7 +1283,12 @@ def download_and_convert_study_files(matching_studies: List, tmp_dir: Path, outp
                     
                     # Convert immediately to Parquet using the imported function
                     logger.info(f"    Converting to Parquet...")
-                    stats = convert_file(temp_csv_path, output_dir, extraction_level=1)
+                    stats = convert_file(
+                        temp_csv_path,
+                        output_dir,
+                        extraction_level=1,
+                        metadata_override=metadata,
+                    )
                     
                     if "error" not in stats:
                         successful_conversions += 1

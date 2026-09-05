@@ -52,6 +52,92 @@ CDR_LENGTH_HELP_TEXT = "Fixed: 2 | Range: 2-5 | Comparison: >2, <5, >=2, <=10"
 MOTIF_PLACEHOLDER = "e.g., *TT or YY.D.*G or YY.{2-6}G or [GYW]TT or .{6}*[FI]W.{2}*"
 MOTIF_HELP_TEXT = ". for one character, \* for 0-many, {n} for exactly n chars, {n-m} for n to m chars, .{n}* for at least n chars, [ACD] for explicit alternatives (e.g., [GYW] matches G, Y, or W). Valid amino acids: ACDEFGHIKLMNPQRSTVWY"
 MOTIF_ERROR_TEXT = "Invalid character(s)! Allowed are ACDEFGHIKLMNPQRSTVWY and placeholders, see help text for details."
+SIMILARITY_HELP_NO_MOTIF = "Restrict mismatched positions to chemically similar amino acids (requires motif input)."
+SIMILARITY_HELP_TEXT = (
+    "When on, mismatched positions may only be chemically similar amino acids: "
+    "A/I/L/V (Aliphatic), D/E (Acidic), F/W/Y (Aromatic), K/R (Basic), N/Q (Amide), S/T (Hydroxyl). "
+    "Unique residues C, G, H, M, P have no substitutes. Requires Mismatches > 0."
+)
+MISMATCH_HELP_TEXT = (
+    "How many defined motif positions may differ. "
+    "Without Similarity Search those positions can be any amino acid; "
+    "with Similarity Search they must be chemically similar. "
+    "Wildcards (. and *) are not counted."
+)
+
+
+def _count_defined_motif_positions(motif: str) -> int:
+    """Count amino-acid / [class] positions that can take a mismatch."""
+    if not motif:
+        return 0
+    count = 0
+    i = 0
+    while i < len(motif):
+        char = motif[i]
+        if char == '[':
+            end = motif.find(']', i + 1)
+            if end != -1:
+                count += 1
+                i = end + 1
+                continue
+        elif char in '*.':
+            if i + 1 < len(motif) and motif[i + 1] == '{':
+                end = motif.find('}', i + 1)
+                i = end + 1 if end != -1 else i + 1
+                continue
+            i += 1
+            continue
+        elif char == '{':
+            end = motif.find('}', i + 1)
+            i = end + 1 if end != -1 else i + 1
+            continue
+        elif char.upper() in 'ACDEFGHIKLMNPQRSTVWY':
+            count += 1
+        i += 1
+    return count
+
+
+def _render_motif_match_controls(
+    motif: str,
+    similarity_key: str,
+    mismatches_key: str,
+    disabled: bool
+) -> Tuple[bool, int]:
+    """Render Similarity Search toggle and always-available Mismatches input."""
+    col_toggle, col_mismatch = st.columns([2, 1])
+    with col_toggle:
+        if not motif and st.session_state.get(similarity_key, False):
+            st.session_state[similarity_key] = False
+        similarity = st.toggle(
+            "Similarity Search",
+            value=False,
+            disabled=disabled or not bool(motif),
+            help=SIMILARITY_HELP_NO_MOTIF if not motif else SIMILARITY_HELP_TEXT,
+            key=similarity_key
+        )
+    with col_mismatch:
+        mismatches = 0
+        if motif:
+            max_mismatches = _count_defined_motif_positions(motif)
+            if max_mismatches > 0:
+                current = st.session_state.get(mismatches_key, 0)
+                try:
+                    current = int(current or 0)
+                except (TypeError, ValueError):
+                    current = 0
+                if current > max_mismatches:
+                    st.session_state[mismatches_key] = max_mismatches
+                mismatches = st.number_input(
+                    "Mismatches",
+                    min_value=0,
+                    max_value=max_mismatches,
+                    value=0,
+                    step=1,
+                    help=f"{MISMATCH_HELP_TEXT} Max: {max_mismatches}.",
+                    key=mismatches_key,
+                    disabled=disabled
+                )
+    return similarity, int(mismatches or 0)
 
 def _parse_gene_tokens(gene_str: str) -> List[int]:
     """Parse comma/pipe separated gene tokens and return the first number from each (family or gene number)."""
@@ -541,34 +627,9 @@ def create_heavy_chain_form(prefix: str = "", disabled: bool = False) -> Tuple[D
             cdr1_motif_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH1 Motif")
         
-        col_toggle, col_mismatch = st.columns([2, 1])
-        with col_toggle:
-            if not cdr1_motif and st.session_state.get(cdr1_similarity_key, False):
-                st.session_state[cdr1_similarity_key] = False
-            
-            similarity_help_text = (
-                "Enable similarity-based matching (requires motif input)" if not cdr1_motif else
-                "Enable similarity-based matching. Similar amino acids: A/I/L/V (Aliphatic), D/E (Acidic), F/W/Y (Aromatic), K/R (Basic), N/Q (Amide), S/T (Hydroxyl). Unique: C, G, H, M, P."
-            )
-            cdr1_similarity = st.toggle(
-                "Similarity Search",
-                value=False,
-                disabled=disabled or not bool(cdr1_motif),
-                help=similarity_help_text,
-                key=cdr1_similarity_key
-            )
-        with col_mismatch:
-            if cdr1_motif and cdr1_similarity:
-                max_mismatches = len(cdr1_motif.replace('.', '').replace('*', ''))
-                cdr1_mismatches = st.number_input(
-                    "Mismatches",
-                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
-                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
-                    key=cdr1_mismatches_key,
-                    disabled=disabled
-                )
-            else:
-                cdr1_mismatches = 0
+        cdr1_similarity, cdr1_mismatches = _render_motif_match_controls(
+            cdr1_motif, cdr1_similarity_key, cdr1_mismatches_key, disabled
+        )
     
     # CDR2 Motif
     cdr2_motif_key = f"{prefix}cdr2_motif_input" if prefix else "cdr2_motif_input"
@@ -589,34 +650,9 @@ def create_heavy_chain_form(prefix: str = "", disabled: bool = False) -> Tuple[D
             cdr2_motif_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH2 Motif")
         
-        col_toggle, col_mismatch = st.columns([2, 1])
-        with col_toggle:
-            if not cdr2_motif and st.session_state.get(cdr2_similarity_key, False):
-                st.session_state[cdr2_similarity_key] = False
-            
-            similarity_help_text = (
-                "Enable similarity-based matching (requires motif input)" if not cdr2_motif else
-                "Enable similarity-based matching. Similar amino acids: A/I/L/V (Aliphatic), D/E (Acidic), F/W/Y (Aromatic), K/R (Basic), N/Q (Amide), S/T (Hydroxyl). Unique: C, G, H, M, P."
-            )
-            cdr2_similarity = st.toggle(
-                "Similarity Search",
-                value=False,
-                disabled=disabled or not bool(cdr2_motif),
-                help=similarity_help_text,
-                key=cdr2_similarity_key
-            )
-        with col_mismatch:
-            if cdr2_motif and cdr2_similarity:
-                max_mismatches = len(cdr2_motif.replace('.', '').replace('*', ''))
-                cdr2_mismatches = st.number_input(
-                    "Mismatches",
-                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
-                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
-                    key=cdr2_mismatches_key,
-                    disabled=disabled
-                )
-            else:
-                cdr2_mismatches = 0
+        cdr2_similarity, cdr2_mismatches = _render_motif_match_controls(
+            cdr2_motif, cdr2_similarity_key, cdr2_mismatches_key, disabled
+        )
     
     # CDR3 Motif
     cdr3_motif_key = f"{prefix}cdr3_motif_input" if prefix else "cdr3_motif_input"
@@ -637,34 +673,12 @@ def create_heavy_chain_form(prefix: str = "", disabled: bool = False) -> Tuple[D
             cdr3_motif_valid = False
             validation_errors.append(f"{'Heavy ' if prefix else ''}CDRH3 Motif")
         
-        col_toggle, col_mismatch = st.columns([2, 1])
-        with col_toggle:
-            if not cdr3_motif and st.session_state.get(cdr3_similarity_key, False):
-                st.session_state[cdr3_similarity_key] = False
-            
-            similarity_help_text = (
-                "Enable similarity-based matching (requires motif input)" if not cdr3_motif else
-                "Enable similarity-based matching. Similar amino acids: A/I/L/V (Aliphatic), D/E (Acidic), F/W/Y (Aromatic), K/R (Basic), N/Q (Amide), S/T (Hydroxyl). Unique: C, G, H, M, P."
-            )
-            cdr3_similarity = st.toggle(
-                "Similarity Search",
-                value=False,
-                disabled=disabled or not bool(cdr3_motif),
-                help=similarity_help_text,
-                key=cdr3_similarity_key
-            )
-        with col_mismatch:
-            if cdr3_motif and cdr3_similarity:
-                max_mismatches = len(cdr3_motif.replace('.', '').replace('*', ''))
-                cdr3_mismatches = st.number_input(
-                    "Mismatches",
-                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
-                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
-                    key=cdr3_mismatches_key,
-                    disabled=disabled
-                )
-            else:
-                cdr3_mismatches = 0
+        cdr3_similarity, cdr3_mismatches = _render_motif_match_controls(
+            cdr3_motif, cdr3_similarity_key, cdr3_mismatches_key, disabled
+        )
+
+    with col4:
+        st.empty()
     
     # Build parameters dict
     params = {
@@ -705,8 +719,9 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
     
     icon_heading("light", "Light Chain", level=4, margin_top=0.5)
     
-    # Gene fields (Light chains don't have D genes)
-    col1, col2 = st.columns(2)
+    # Gene fields (Light chains don't have D genes).
+    # Use 3 columns like heavy (V/D/J) so V/J match heavy field width; leave the 3rd empty.
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         light_v_valid = True
@@ -747,6 +762,9 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
                 st.error(f"{range_err}", icon=":material/error:")
                 light_j_valid = False
                 validation_errors.append("Light IGLJ Gene")
+
+    with col3:
+        st.empty()
     
     # CDR Length fields
     st.markdown("<h5 style='margin-top: 0.75rem; margin-bottom: 0.25rem;'>CDR Lengths (amino acids)</h5>", unsafe_allow_html=True)
@@ -811,6 +829,9 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
                 light_cdr3_length = light_cdr3_length.strip()
         else:
             light_cdr3_length = None
+
+    with col4:
+        st.empty()
     
     # CDR Motif fields
     st.markdown("<h5 style='margin-top: 0.75rem; margin-bottom: 0.25rem;'>CDR Sequence Motifs</h5>", unsafe_allow_html=True)
@@ -832,34 +853,12 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
             light_cdr1_motif_valid = False
             validation_errors.append("Light CDRL1 Motif")
         
-        col_toggle, col_mismatch = st.columns([2, 1])
-        with col_toggle:
-            if not light_cdr1_motif and st.session_state.get(f"{prefix}cdr1_similarity_toggle", False):
-                st.session_state[f"{prefix}cdr1_similarity_toggle"] = False
-            
-            similarity_help_text = (
-                "Enable similarity-based matching (requires motif input)" if not light_cdr1_motif else
-                "Enable similarity-based matching. Similar amino acids: A/I/L/V (Aliphatic), D/E (Acidic), F/W/Y (Aromatic), K/R (Basic), N/Q (Amide), S/T (Hydroxyl). Unique: C, G, H, M, P."
-            )
-            light_cdr1_similarity = st.toggle(
-                "Similarity Search",
-                value=False,
-                disabled=disabled or not bool(light_cdr1_motif),
-                help=similarity_help_text,
-                key=f"{prefix}cdr1_similarity_toggle"
-            )
-        with col_mismatch:
-            if light_cdr1_motif and light_cdr1_similarity:
-                max_mismatches = len(light_cdr1_motif.replace('.', '').replace('*', ''))
-                light_cdr1_mismatches = st.number_input(
-                    "Mismatches",
-                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
-                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
-                    key=f"{prefix}cdr1_mismatches_input",
-                    disabled=disabled
-                )
-            else:
-                light_cdr1_mismatches = 0
+        light_cdr1_similarity, light_cdr1_mismatches = _render_motif_match_controls(
+            light_cdr1_motif,
+            f"{prefix}cdr1_similarity_toggle",
+            f"{prefix}cdr1_mismatches_input",
+            disabled
+        )
     
     # CDR2 Motif
     with col2:
@@ -876,34 +875,12 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
             light_cdr2_motif_valid = False
             validation_errors.append("Light CDRL2 Motif")
         
-        col_toggle, col_mismatch = st.columns([2, 1])
-        with col_toggle:
-            if not light_cdr2_motif and st.session_state.get(f"{prefix}cdr2_similarity_toggle", False):
-                st.session_state[f"{prefix}cdr2_similarity_toggle"] = False
-            
-            similarity_help_text = (
-                "Enable similarity-based matching (requires motif input)" if not light_cdr2_motif else
-                "Enable similarity-based matching. Similar amino acids: A/I/L/V (Aliphatic), D/E (Acidic), F/W/Y (Aromatic), K/R (Basic), N/Q (Amide), S/T (Hydroxyl). Unique: C, G, H, M, P."
-            )
-            light_cdr2_similarity = st.toggle(
-                "Similarity Search",
-                value=False,
-                disabled=disabled or not bool(light_cdr2_motif),
-                help=similarity_help_text,
-                key=f"{prefix}cdr2_similarity_toggle"
-            )
-        with col_mismatch:
-            if light_cdr2_motif and light_cdr2_similarity:
-                max_mismatches = len(light_cdr2_motif.replace('.', '').replace('*', ''))
-                light_cdr2_mismatches = st.number_input(
-                    "Mismatches",
-                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
-                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
-                    key=f"{prefix}cdr2_mismatches_input",
-                    disabled=disabled
-                )
-            else:
-                light_cdr2_mismatches = 0
+        light_cdr2_similarity, light_cdr2_mismatches = _render_motif_match_controls(
+            light_cdr2_motif,
+            f"{prefix}cdr2_similarity_toggle",
+            f"{prefix}cdr2_mismatches_input",
+            disabled
+        )
     
     # CDR3 Motif
     with col3:
@@ -920,34 +897,15 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
             light_cdr3_motif_valid = False
             validation_errors.append("Light CDRL3 Motif")
         
-        col_toggle, col_mismatch = st.columns([2, 1])
-        with col_toggle:
-            if not light_cdr3_motif and st.session_state.get(f"{prefix}cdr3_similarity_toggle", False):
-                st.session_state[f"{prefix}cdr3_similarity_toggle"] = False
-            
-            similarity_help_text = (
-                "Enable similarity-based matching (requires motif input)" if not light_cdr3_motif else
-                "Enable similarity-based matching. Similar amino acids: A/I/L/V (Aliphatic), D/E (Acidic), F/W/Y (Aromatic), K/R (Basic), N/Q (Amide), S/T (Hydroxyl). Unique: C, G, H, M, P."
-            )
-            light_cdr3_similarity = st.toggle(
-                "Similarity Search",
-                value=False,
-                disabled=disabled or not bool(light_cdr3_motif),
-                help=similarity_help_text,
-                key=f"{prefix}cdr3_similarity_toggle"
-            )
-        with col_mismatch:
-            if light_cdr3_motif and light_cdr3_similarity:
-                max_mismatches = len(light_cdr3_motif.replace('.', '').replace('*', ''))
-                light_cdr3_mismatches = st.number_input(
-                    "Mismatches",
-                    min_value=0, max_value=max_mismatches, value=min(2, max_mismatches), step=1,
-                    help=f"Max amino acid differences allowed (max: {max_mismatches})",
-                    key=f"{prefix}cdr3_mismatches_input",
-                    disabled=disabled
-                )
-            else:
-                light_cdr3_mismatches = 0
+        light_cdr3_similarity, light_cdr3_mismatches = _render_motif_match_controls(
+            light_cdr3_motif,
+            f"{prefix}cdr3_similarity_toggle",
+            f"{prefix}cdr3_mismatches_input",
+            disabled
+        )
+
+    with col4:
+        st.empty()
     
     # Build parameters dict
     params = {
@@ -971,4 +929,210 @@ def create_light_chain_form(prefix: str = "light_", disabled: bool = False) -> T
     
     return params, validation_errors, valid
 
+
+CLEAR_SEARCH_MASK_FLAG = "_clear_search_mask"
+APPLY_EXAMPLE_SEARCH_FLAG = "_apply_example_search"
+
+EXAMPLE_SEARCH_CRITERIA: Dict[str, Any] = {
+    "unpaired_heavy": {
+        "v": "",
+        "d": "3-3",
+        "j": "",
+        "cdr1_length": "",
+        "cdr2_length": "",
+        "cdr3_length": ">=29",
+        "cdr1_motif": "",
+        "cdr2_motif": "",
+        "cdr3_motif": ".{15}*[FI]W[ST].{8}*",
+        "cdr1_similarity": False,
+        "cdr2_similarity": False,
+        "cdr3_similarity": False,
+        "cdr1_mismatches": 0,
+        "cdr2_mismatches": 0,
+        "cdr3_mismatches": 0,
+    },
+    "unpaired_light": {
+        "v": "K3",
+        "j": "K2",
+        "cdr1_length": "",
+        "cdr2_length": "",
+        "cdr3_length": "9",
+        "cdr1_motif": "",
+        "cdr2_motif": "",
+        "cdr3_motif": "QQY*",
+        "cdr1_similarity": False,
+        "cdr2_similarity": False,
+        "cdr3_similarity": False,
+        "cdr1_mismatches": 0,
+        "cdr2_mismatches": 0,
+        "cdr3_mismatches": 0,
+    },
+    "paired": {
+        "heavy": {
+            "v": "1-69",
+            "d": "",
+            "j": "6",
+            "cdr1_length": "",
+            "cdr2_length": "",
+            "cdr3_length": "18-22",
+            "cdr1_motif": "",
+            "cdr2_motif": "",
+            "cdr3_motif": "",
+            "cdr1_similarity": False,
+            "cdr2_similarity": False,
+            "cdr3_similarity": False,
+            "cdr1_mismatches": 0,
+            "cdr2_mismatches": 0,
+            "cdr3_mismatches": 0,
+        },
+        "light": {
+            "v": "K3",
+            "j": "K4",
+            "cdr1_length": "",
+            "cdr2_length": "",
+            "cdr3_length": "9",
+            "cdr1_motif": "",
+            "cdr2_motif": "",
+            "cdr3_motif": "",
+            "cdr1_similarity": False,
+            "cdr2_similarity": False,
+            "cdr3_similarity": False,
+            "cdr1_mismatches": 0,
+            "cdr2_mismatches": 0,
+            "cdr3_mismatches": 0,
+        },
+    },
+}
+
+
+def _heavy_mask_keys(prefix: str) -> Dict[str, Any]:
+    """Widget keys + reset values for a heavy-chain search mask."""
+    if prefix:
+        v_key, d_key, j_key = f"{prefix}v_input", f"{prefix}d_input", f"{prefix}j_input"
+        length_prefix = motif_prefix = sim_prefix = mm_prefix = prefix
+    else:
+        v_key, d_key, j_key = "ighv_input", "ighd_input", "ighj_input"
+        length_prefix = motif_prefix = sim_prefix = mm_prefix = ""
+
+    keys: Dict[str, Any] = {
+        v_key: "",
+        d_key: "",
+        j_key: "",
+        f"{length_prefix}cdr1_length_input": "",
+        f"{length_prefix}cdr2_length_input": "",
+        f"{length_prefix}cdr3_length_input": "",
+        f"{motif_prefix}cdr1_motif_input": "",
+        f"{motif_prefix}cdr2_motif_input": "",
+        f"{motif_prefix}cdr3_motif_input": "",
+        f"{sim_prefix}cdr1_similarity_toggle": False,
+        f"{sim_prefix}cdr2_similarity_toggle": False,
+        f"{sim_prefix}cdr3_similarity_toggle": False,
+        f"{mm_prefix}cdr1_mismatches_input": 0,
+        f"{mm_prefix}cdr2_mismatches_input": 0,
+        f"{mm_prefix}cdr3_mismatches_input": 0,
+    }
+    return keys
+
+
+def _light_mask_keys(prefix: str = "light_") -> Dict[str, Any]:
+    """Widget keys + reset values for a light-chain search mask."""
+    return {
+        f"{prefix}v_input": "",
+        f"{prefix}j_input": "",
+        f"{prefix}cdr1_length_input": "",
+        f"{prefix}cdr2_length_input": "",
+        f"{prefix}cdr3_length_input": "",
+        f"{prefix}cdr1_motif_input": "",
+        f"{prefix}cdr2_motif_input": "",
+        f"{prefix}cdr3_motif_input": "",
+        f"{prefix}cdr1_similarity_toggle": False,
+        f"{prefix}cdr2_similarity_toggle": False,
+        f"{prefix}cdr3_similarity_toggle": False,
+        f"{prefix}cdr1_mismatches_input": 0,
+        f"{prefix}cdr2_mismatches_input": 0,
+        f"{prefix}cdr3_mismatches_input": 0,
+    }
+
+
+def clear_search_mask_session_state() -> None:
+    """
+    Reset all Database Search criteria widgets in session state.
+
+    Must run before the form widgets are instantiated (Streamlit requirement).
+    Does not change database selection.
+    """
+    resets: Dict[str, Any] = {}
+    # Unpaired heavy (no prefix) + paired heavy
+    for prefix in ("", "heavy_"):
+        resets.update(_heavy_mask_keys(prefix))
+    # Unpaired/paired light
+    for prefix in ("light_",):
+        resets.update(_light_mask_keys(prefix))
+
+    for key, value in resets.items():
+        st.session_state[key] = value
+
+    st.session_state.pop("search_validation_error", None)
+    st.session_state.pop("search_prefill_message", None)
+
+
+def _apply_heavy_example_to_session(prefix: str, example: Dict[str, Any]) -> None:
+    """Write heavy-chain example fields onto the matching widget keys."""
+    if prefix:
+        st.session_state[f"{prefix}v_input"] = example.get("v", "") or ""
+        st.session_state[f"{prefix}d_input"] = example.get("d", "") or ""
+        st.session_state[f"{prefix}j_input"] = example.get("j", "") or ""
+        field_prefix = prefix
+    else:
+        st.session_state["ighv_input"] = example.get("v", "") or ""
+        st.session_state["ighd_input"] = example.get("d", "") or ""
+        st.session_state["ighj_input"] = example.get("j", "") or ""
+        field_prefix = ""
+
+    for cdr in ("cdr1", "cdr2", "cdr3"):
+        st.session_state[f"{field_prefix}{cdr}_length_input"] = example.get(f"{cdr}_length", "") or ""
+        st.session_state[f"{field_prefix}{cdr}_motif_input"] = example.get(f"{cdr}_motif", "") or ""
+        st.session_state[f"{field_prefix}{cdr}_similarity_toggle"] = bool(
+            example.get(f"{cdr}_similarity", False)
+        )
+        st.session_state[f"{field_prefix}{cdr}_mismatches_input"] = int(
+            example.get(f"{cdr}_mismatches", 0) or 0
+        )
+
+
+def _apply_light_example_to_session(prefix: str, example: Dict[str, Any]) -> None:
+    """Write light-chain example fields onto the matching widget keys."""
+    st.session_state[f"{prefix}v_input"] = example.get("v", "") or ""
+    st.session_state[f"{prefix}j_input"] = example.get("j", "") or ""
+    for cdr in ("cdr1", "cdr2", "cdr3"):
+        st.session_state[f"{prefix}{cdr}_length_input"] = example.get(f"{cdr}_length", "") or ""
+        st.session_state[f"{prefix}{cdr}_motif_input"] = example.get(f"{cdr}_motif", "") or ""
+        st.session_state[f"{prefix}{cdr}_similarity_toggle"] = bool(
+            example.get(f"{cdr}_similarity", False)
+        )
+        st.session_state[f"{prefix}{cdr}_mismatches_input"] = int(
+            example.get(f"{cdr}_mismatches", 0) or 0
+        )
+
+
+def apply_example_search_mask(search_mode: str) -> None:
+    """
+    Fill the search mask with the example for the current Heavy / Light / Paired mode.
+
+    Must run before the form widgets are instantiated. Does not change database selection.
+    """
+    clear_search_mask_session_state()
+
+    if search_mode == "paired":
+        paired = EXAMPLE_SEARCH_CRITERIA.get("paired") or {}
+        _apply_heavy_example_to_session("heavy_", paired.get("heavy") or {})
+        _apply_light_example_to_session("light_", paired.get("light") or {})
+    elif search_mode == "unpaired_light":
+        _apply_light_example_to_session(
+            "light_", EXAMPLE_SEARCH_CRITERIA.get("unpaired_light") or {}
+        )
+    else:
+        _apply_heavy_example_to_session(
+            "", EXAMPLE_SEARCH_CRITERIA.get("unpaired_heavy") or {}
+        )
 

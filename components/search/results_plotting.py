@@ -15,7 +15,20 @@ import plotly.express as px
 import plotly.graph_objects as go
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from components.search.styling import icon_heading
+from components.search.styling import (
+    HEAVY_COLOR,
+    HEAVY_COLORSCALE,
+    HEAVY_FILL,
+    HEAVY_LINE,
+    LIGHT_COLOR,
+    LIGHT_COLORSCALE,
+    LIGHT_FILL,
+    LIGHT_LINE,
+    get_chain_color,
+    icon_heading,
+    ensure_spinner_css,
+    render_preparing_button,
+)
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -171,7 +184,7 @@ def render_results_plots(
         collected_plots.append((plot_name, go.Figure(plot_figure), plot_data_copy))
 
     if collected_plots:
-        # Render async download buttons (Option C style)
+        # Render synchronous plot download buttons
         _render_plot_download_buttons(
             collected_plots,
             search_params,
@@ -189,34 +202,16 @@ def _render_plot_download_buttons(
     unpaired_chain_type: str
 ) -> None:
     """
-    Render async download buttons for plots (Option C style).
-    Button shows status and transforms into download button when ready.
+    Render synchronous download buttons for plots (locked while preparing).
+    Identical pattern to FASTA: idle → preparing (locked) → completed/failed.
     """
-    import concurrent.futures
-    import time
-    from streamlit_autorefresh import st_autorefresh
-    from components.search.download_utils import prepare_plots_download_background
-    
-    # Inject CSS for spinner animation
-    st.markdown("""
-    <style>
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
+    from components.search.download_utils import (
+        prepare_all_downloads,
+        prepare_plots_download_background,
+    )
 
-    .spinner-dark {
-        border: 2px solid rgba(255, 255, 255, 0.2);
-        border-top: 2px solid #ffffff;
-        border-radius: 50%;
-        width: 16px;
-        height: 16px;
-        animation: spin 1s linear infinite;
-        display: inline-block;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
+    ensure_spinner_css()
+
     download_key_seed = {
         "search_params": search_params,
         "is_paired": is_paired,
@@ -224,317 +219,229 @@ def _render_plot_download_buttons(
     }
     seed_hash = abs(hash(str(download_key_seed)))
     download_key = f"plot_zip_{seed_hash}"
-    chain_label = "paired" if is_paired else unpaired_chain_type.lower()
-    
-    # Session state keys for async plot downloads
-    def _get_state_keys(include_raw: bool) -> Dict[str, str]:
-        suffix = "figures_raw" if include_raw else "figures"
+
+    def _get_state_keys(kind: str) -> Dict[str, str]:
         return {
-            "future": f"{download_key}_future_{suffix}",
-            "status": f"{download_key}_status_{suffix}",
-            "result": f"{download_key}_result_{suffix}",
-            "start_time": f"{download_key}_start_time_{suffix}",
+            "status": f"{download_key}_status_{kind}",
+            "result": f"{download_key}_result_{kind}",
         }
-    
-    # Initialize session state for both buttons
-    for include_raw in [False, True]:
-        keys = _get_state_keys(include_raw)
+
+    for kind in ("all", "figures_raw"):
+        keys = _get_state_keys(kind)
         if keys["status"] not in st.session_state:
             st.session_state[keys["status"]] = "idle"
         if keys["result"] not in st.session_state:
             st.session_state[keys["result"]] = None
-        if keys["start_time"] not in st.session_state:
-            st.session_state[keys["start_time"]] = None
-    
-    # Get executor (cached)
-    @st.cache_resource
-    def get_plots_executor():
-        return concurrent.futures.ProcessPoolExecutor(max_workers=2)
-    
-    executor = get_plots_executor()
-    
-    # Check task status (non-blocking)
-    def check_plots_status(include_raw: bool):
-        keys = _get_state_keys(include_raw)
-        future = st.session_state.get(keys["future"])
-        if future is not None and future.done():
-            try:
-                result = future.result()
-                st.session_state[keys["future"]] = None
-                st.session_state[keys["result"]] = result
-                if result.get('success'):
-                    st.session_state[keys["status"]] = "completed"
-                    st.toast("✅ Plot archive is ready for download!", icon="✅")
+
+    def _serialize_plots():
+        plots_data = []
+        for title, figure, data in collected_plots:
+            plot_info = {
+                'title': title,
+                'figure_dict': figure.to_dict(),
+                'data': None,
+            }
+            if data is not None:
+                if isinstance(data, pd.DataFrame):
+                    plot_info['data'] = data.to_dict('records')
+                elif isinstance(data, pd.Series):
+                    plot_info['data'] = data.to_dict()
                 else:
-                    st.session_state[keys["status"]] = "failed"
-                return result
-            except Exception as e:
-                st.session_state[keys["future"]] = None
-                st.session_state[keys["status"]] = "failed"
-                st.session_state[keys["result"]] = {'success': False, 'error': str(e)}
-        return None
-    
-    # Check status on every run
-    check_plots_status(False)  # Figures only
-    check_plots_status(True)   # Figures + Raw Data
-    
-    # Auto-refresh when any task is running
-    status_figures = st.session_state[_get_state_keys(False)["status"]]
-    status_raw = st.session_state[_get_state_keys(True)["status"]]
-    if status_figures == "running" or status_raw == "running":
-        st_autorefresh(interval=2000, key=f"plots_refresh_{download_key}")
-    
-    # Estimate phase based on elapsed time
-    def estimate_phase(elapsed: float) -> str:
-        if elapsed < 3:
-            return "Initializing..."
-        elif elapsed < 10:
-            return "Rendering plots..."
-        elif elapsed < 30:
-            return "Creating archive..."
-        else:
-            return "Finalizing..."
-    
-    # Render buttons
-    col_figures, col_raw, _spacer = st.columns([1.5, 1.5, 7])
-    
-    # Button 1: Download Figures
-    with col_figures:
-        status = st.session_state[_get_state_keys(False)["status"]]
-        keys = _get_state_keys(False)
-        
-        if status == "idle":
-            if st.button(
-                "⬇ Download Figures",
-                key=f"{download_key}_button_figures",
-                width='stretch'
-            ):
-                # Serialize plots for background processing
-                plots_data = []
-                for title, figure, data in collected_plots:
-                    plot_info = {
-                        'title': title,
-                        'figure_dict': figure.to_dict(),
-                        'data': None
-                    }
-                    if data is not None:
-                        if isinstance(data, pd.DataFrame):
-                            plot_info['data'] = data.to_dict('records')  # Convert to list of dicts
-                        elif isinstance(data, pd.Series):
-                            plot_info['data'] = data.to_dict()
-                        else:
-                            plot_info['data'] = data
-                    plots_data.append(plot_info)
-                
-                # Build metadata
-                search_metadata = build_search_metadata(
-                    search_params,
-                    statistics,
-                    is_paired,
-                    include_raw_data=False
-                )
-                
-                # Submit background task
-                future = executor.submit(
-                    prepare_plots_download_background,
-                    plots_data,
-                    search_metadata,
-                    include_raw_data=False
-                )
-                st.session_state[keys["future"]] = future
-                st.session_state[keys["start_time"]] = time.time()
-                st.session_state[keys["status"]] = "running"
-                st.rerun()
-        
-        elif status == "running":
-            elapsed = time.time() - st.session_state[keys["start_time"]] if st.session_state[keys["start_time"]] else 0
-            phase = estimate_phase(elapsed)
-            
-            # Custom button with CSS spinner
-            st.markdown(f"""
-            <div style="width: 100%;">
-                <button disabled style="
-                    width: 100%;
-                    padding: 0.5rem 1rem;
-                    background-color: rgb(49, 51, 63);
-                    color: rgb(250, 250, 250);
-                    border: 1px solid rgb(49, 51, 63);
-                    border-radius: 0.25rem;
-                    cursor: not-allowed;
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 8px;
-                    font-size: 0.875rem;
-                ">
-                    <div class="spinner-dark"></div>
-                    <span>{phase}</span>
-                </button>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        elif status == "completed":
-            result = st.session_state[keys["result"]]
-            if result and result.get('success'):
-                file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
-                plot_count = result.get('plot_count', 0)
-                
-                # Check if this is a large file with download URL
-                if result.get('download_url'):
-                    # Large file: redirect to static download link
-                    download_url = result.get('download_url')
-                    st.markdown(
-                        f'<a href="{download_url}" target="_blank" style="text-decoration: none;">'
-                        f'<button style="width: 100%; padding: 0.5rem 1rem; background-color: rgb(19, 124, 189); '
-                        f'color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.875rem;">'
-                        f'✅ Download Figures ({file_size_mb:.2f} MB) - Opens in new tab</button></a>',
-                        unsafe_allow_html=True
-                    )
-                else:
-                    # Small file: use direct download button
-                    st.download_button(
-                        label=f"✅ Download Figures ({file_size_mb:.2f} MB)",
-                        data=result.get('zip_data', b''),
-                        file_name=result.get('filename', 'plots.zip'),
-                        mime="application/zip",
-                        width='stretch',
-                        type="primary",
-                        key=f"download_{download_key}_figures"
-                    )
-            else:
-                st.button("❌ Generation Failed", disabled=True, key=f"{download_key}_failed_figures", width='stretch')
-                error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-                st.error(f"❌ {error_msg}")
-        
-        elif status == "failed":
-            result = st.session_state[keys["result"]]
-            error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-            if st.button("🔄 Retry", key=f"{download_key}_retry_figures"):
-                st.session_state[keys["status"]] = "idle"
-                st.session_state[keys["result"]] = None
-                st.session_state[keys["start_time"]] = None
-                st.rerun()
-            else:
-                st.error(f"❌ {error_msg}")
-    
-    # Button 2: Download Figures + Raw Data
+                    plot_info['data'] = data
+            plots_data.append(plot_info)
+        return plots_data
+
+    def _prepare_plots_sync(include_raw: bool):
+        keys = _get_state_keys("figures_raw")
+        plots_data = _serialize_plots()
+        search_metadata = build_search_metadata(
+            search_params, statistics, is_paired, include_raw_data=include_raw
+        )
+        result = prepare_plots_download_background(
+            plots_data, search_metadata, include_raw_data=include_raw
+        )
+        st.session_state[keys["result"]] = result
+        st.session_state[keys["status"]] = "completed" if result.get("success") else "failed"
+        if result.get("success"):
+            st.toast("Plot archive is ready for download!", icon="⬇")
+        st.rerun()
+
+    def _prepare_all_sync():
+        keys = _get_state_keys("all")
+        try:
+            plots_data = _serialize_plots()
+            selected_databases = st.session_state.get("selected_databases", [])
+            loadable_databases = st.session_state.get("loadable_databases_active", []) or selected_databases
+            summary_df = st.session_state.get("donor_plot_plot_summary_df", pd.DataFrame(columns=["Metric", "Value"]))
+            plot_df = st.session_state.get("donor_plot_plot_filtered_df")
+            plot_meta = st.session_state.get("donor_plot_plot_meta", {})
+
+            result = prepare_all_downloads(
+                loadable_databases,
+                search_params,
+                is_paired,
+                "paired" if is_paired else unpaired_chain_type.lower(),
+                st.session_state.get("donor_plot_stats_df", pd.DataFrame()),
+                summary_df,
+                plot_df,
+                plot_meta,
+                plots_data,
+                statistics,
+                selected_databases,
+            )
+            st.session_state[keys["result"]] = result
+            st.session_state[keys["status"]] = "completed" if result.get("success") else "failed"
+            if result.get("success"):
+                st.toast("All downloads are ready!", icon="⬇")
+        except Exception as exc:
+            st.session_state[keys["result"]] = {"success": False, "error": str(exc)}
+            st.session_state[keys["status"]] = "failed"
+        st.rerun()
+
+    downloads_locked = (
+        st.session_state.get("search_status") == "running"
+        or bool(st.session_state.get("plotting_controls_locked", False))
+    )
+    lock_help = "Locked while a search or plot load is in progress." if downloads_locked else None
+
+    col_raw, col_all, _spacer = st.columns([2.2, 2.2, 5.6])
+
+    # Button 1: Download Figures + Raw Data
     with col_raw:
-        status = st.session_state[_get_state_keys(True)["status"]]
-        keys = _get_state_keys(True)
-        
-        if status == "idle":
-            if st.button(
-                "⬇ Download Figures + Raw Data",
-                key=f"{download_key}_button_raw",
-                width='stretch'
-            ):
-                # Serialize plots for background processing
-                plots_data = []
-                for title, figure, data in collected_plots:
-                    plot_info = {
-                        'title': title,
-                        'figure_dict': figure.to_dict(),
-                        'data': None
-                    }
-                    if data is not None:
-                        if isinstance(data, pd.DataFrame):
-                            plot_info['data'] = data.to_dict('records')  # Convert to list of dicts
-                        elif isinstance(data, pd.Series):
-                            plot_info['data'] = data.to_dict()
-                        else:
-                            plot_info['data'] = data
-                    plots_data.append(plot_info)
-                
-                # Build metadata
-                search_metadata = build_search_metadata(
-                    search_params,
-                    statistics,
-                    is_paired,
-                    include_raw_data=True
-                )
-                
-                # Submit background task
-                future = executor.submit(
-                    prepare_plots_download_background,
-                    plots_data,
-                    search_metadata,
-                    include_raw_data=True
-                )
-                st.session_state[keys["future"]] = future
-                st.session_state[keys["start_time"]] = time.time()
-                st.session_state[keys["status"]] = "running"
+        keys = _get_state_keys("figures_raw")
+        status = st.session_state[keys["status"]]
+
+        if status == "preparing":
+            render_preparing_button()
+            _prepare_plots_sync(include_raw=True)
+        elif downloads_locked:
+            st.button("Download Figures + Data", disabled=True, width='stretch',
+                      key=f"{download_key}_button_raw_locked", help=lock_help, icon="⬇")
+        elif status == "idle":
+            if st.button("Download Figures + Data", key=f"{download_key}_button_raw",
+                         width='stretch', icon="⬇"):
+                st.session_state[keys["status"]] = "preparing"
                 st.rerun()
-        
-        elif status == "running":
-            elapsed = time.time() - st.session_state[keys["start_time"]] if st.session_state[keys["start_time"]] else 0
-            phase = estimate_phase(elapsed)
-            
-            # Custom button with CSS spinner
-            st.markdown(f"""
-            <div style="width: 100%;">
-                <button disabled style="
-                    width: 100%;
-                    padding: 0.5rem 1rem;
-                    background-color: rgb(49, 51, 63);
-                    color: rgb(250, 250, 250);
-                    border: 1px solid rgb(49, 51, 63);
-                    border-radius: 0.25rem;
-                    cursor: not-allowed;
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: 8px;
-                    font-size: 0.875rem;
-                ">
-                    <div class="spinner-dark"></div>
-                    <span>{phase}</span>
-                </button>
-            </div>
-            """, unsafe_allow_html=True)
-        
         elif status == "completed":
             result = st.session_state[keys["result"]]
             if result and result.get('success'):
                 file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
-                plot_count = result.get('plot_count', 0)
-                
-                # Check if this is a large file with download URL
                 if result.get('download_url'):
-                    # Large file: redirect to static download link
-                    download_url = result.get('download_url')
-                    st.markdown(
-                        f'<a href="{download_url}" target="_blank" style="text-decoration: none;">'
-                        f'<button style="width: 100%; padding: 0.5rem 1rem; background-color: rgb(19, 124, 189); '
-                        f'color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.875rem;">'
-                        f'✅ Download Figures + Raw Data ({file_size_mb:.2f} MB) - Opens in new tab</button></a>',
-                        unsafe_allow_html=True
-                    )
+                    st.link_button(
+                        f"Download Figures + Data ({file_size_mb:.2f} MB)",
+                        result['download_url'], type="primary",
+                        width="stretch", icon="⬇")
                 else:
-                    # Small file: use direct download button
                     st.download_button(
-                        label=f"✅ Download Figures + Raw Data ({file_size_mb:.2f} MB)",
+                        label=f"Download Figures + Data ({file_size_mb:.2f} MB)",
                         data=result.get('zip_data', b''),
                         file_name=result.get('filename', 'plots_raw.zip'),
-                        mime="application/zip",
-                        width='stretch',
-                        type="primary",
-                        key=f"download_{download_key}_raw"
-                    )
+                        mime="application/zip", width='stretch', type="primary",
+                        key=f"download_{download_key}_raw", icon="⬇")
             else:
-                st.button("❌ Generation Failed", disabled=True, key=f"{download_key}_failed_raw", width='stretch')
+                st.button("Generation Failed", disabled=True,
+                          key=f"{download_key}_failed_raw", width='stretch',
+                          icon=":material/error:")
                 error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-                st.error(f"❌ {error_msg}")
-        
+                st.error(f"{error_msg}", icon=":material/error:")
         elif status == "failed":
             result = st.session_state[keys["result"]]
             error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
-            if st.button("🔄 Retry", key=f"{download_key}_retry_raw"):
+            if st.button("Retry", key=f"{download_key}_retry_raw",
+                         icon=":material/refresh:"):
                 st.session_state[keys["status"]] = "idle"
                 st.session_state[keys["result"]] = None
-                st.session_state[keys["start_time"]] = None
                 st.rerun()
             else:
-                st.error(f"❌ {error_msg}")
+                st.error(f"{error_msg}", icon=":material/error:")
+
+    # Button 2: Download All
+    local_all_large_notice: Optional[Tuple[str, str]] = None
+    with col_all:
+        keys = _get_state_keys("all")
+        status = st.session_state[keys["status"]]
+
+        if status == "preparing":
+            render_preparing_button()
+            _prepare_all_sync()
+        elif downloads_locked:
+            st.button("Download All", disabled=True, width='stretch',
+                      key=f"{download_key}_button_all_locked", help=lock_help, icon="⬇")
+        elif status == "idle":
+            if st.button("Download All", key=f"{download_key}_button_all",
+                         width='stretch', icon="⬇"):
+                st.session_state[keys["status"]] = "preparing"
+                st.rerun()
+        elif status == "completed":
+            result = st.session_state[keys["result"]]
+            if result and result.get('success'):
+                file_size_mb = result.get('file_size_bytes', 0) / 1024 / 1024
+                if result.get("download_url"):
+                    download_url = result.get("download_url", "")
+                    is_nginx_docker = isinstance(download_url, str) and download_url.startswith("/downloads/")
+                    if not is_nginx_docker:
+                        saved_path = result.get("saved_path")
+                        st.button(
+                            "Download All",
+                            disabled=True,
+                            width="stretch",
+                            key=f"{download_key}_button_all_large_local",
+                            help="File is too large for browser download. Use the path shown below.",
+                            icon="⬇",
+                        )
+                        if saved_path:
+                            local_all_large_notice = (
+                                "info",
+                                f"**Saved Results Table too large for browser download, saved on disk:**\n{saved_path}",
+                            )
+                        else:
+                            local_all_large_notice = (
+                                "warning",
+                                "Saved path is missing. Please re-run the download preparation.",
+                            )
+                    else:
+                        st.link_button(
+                            f"Download All ({file_size_mb:.2f} MB)",
+                            download_url,
+                            type="primary",
+                            width="stretch",
+                            icon="⬇",
+                        )
+                else:
+                    st.download_button(
+                        label=f"Download All ({file_size_mb:.2f} MB)",
+                        data=result.get('data', b''),
+                        file_name=result.get('filename', 'all_downloads.tar.gz'),
+                        mime="application/gzip",
+                        width='stretch',
+                        type="primary",
+                        key=f"download_{download_key}_all",
+                        icon="⬇",
+                    )
+            else:
+                st.button("Generation Failed", disabled=True,
+                          key=f"{download_key}_failed_all", width='stretch',
+                          icon=":material/error:")
+                error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
+                st.error(f"{error_msg}", icon=":material/error:")
+        elif status == "failed":
+            result = st.session_state[keys["result"]]
+            error_msg = result.get('error', 'Unknown error') if result else 'Unknown error'
+            if st.button("Retry", key=f"{download_key}_retry_all",
+                         icon=":material/refresh:"):
+                st.session_state[keys["status"]] = "idle"
+                st.session_state[keys["result"]] = None
+                st.rerun()
+            else:
+                st.error(f"{error_msg}", icon=":material/error:")
+
+    # Notifications for the full-width layout
+    if local_all_large_notice:
+        level, message = local_all_large_notice
+        if level == "warning":
+            st.warning(message)
+        else:
+            st.info(message)
 
 
 def _get_unpaired_chain_type(search_params: Dict[str, Any]) -> str:
@@ -972,12 +879,8 @@ def build_plotting_where_clause(
             motif_value = search_params.get(motif_key, '')
             if motif_value:
                 similarity = search_params.get(similarity_key, False)
-                mismatches = search_params.get(mismatches_key, 2)
-                
-                if similarity:
-                    regex_pattern = engine.generate_similarity_pattern(motif_value, mismatches)
-                else:
-                    regex_pattern = engine._convert_motif_to_regex(motif_value)
+                mismatches = search_params.get(mismatches_key, 0)
+                regex_pattern = engine._motif_to_search_regex(motif_value, mismatches, similarity)
                 
                 # Get CDR AA columns from schema
                 cdr_aa_key = f'cdr{cdr_index}_aa'
@@ -995,12 +898,8 @@ def build_plotting_where_clause(
             motif_value = search_params.get(motif_key, '')
             if motif_value:
                 similarity = search_params.get(similarity_key, False)
-                mismatches = search_params.get(mismatches_key, 2)
-                
-                if similarity:
-                    regex_pattern = engine.generate_similarity_pattern(motif_value, mismatches)
-                else:
-                    regex_pattern = engine._convert_motif_to_regex(motif_value)
+                mismatches = search_params.get(mismatches_key, 0)
+                regex_pattern = engine._motif_to_search_regex(motif_value, mismatches, similarity)
                 
                 # Get CDR AA columns from schema
                 cdr_aa_key = f'cdr{cdr_index}_aa'
@@ -1089,12 +988,8 @@ def build_plotting_where_clause(
             motif_value = search_params.get(motif_key, '')
             if motif_value:
                 similarity = search_params.get(similarity_key, False)
-                mismatches = search_params.get(mismatches_key, 2)
-                
-                if similarity:
-                    regex_pattern = engine.generate_similarity_pattern(motif_value, mismatches)
-                else:
-                    regex_pattern = engine._convert_motif_to_regex(motif_value)
+                mismatches = search_params.get(mismatches_key, 0)
+                regex_pattern = engine._motif_to_search_regex(motif_value, mismatches, similarity)
                 
                 # Get CDR AA columns from schema
                 # For unpaired searches, use all columns (schema will have correct columns for unpaired DBs)
@@ -1376,23 +1271,23 @@ def _create_inferred_heatmap(
         if gene_type == 'V':
             row_label = "Heavy V Family"
             col_label = "Predicted Light V Family"
-            title = "Predicted Light V Families"
+            title = "Predicted V<sub>L</sub> Families"
             caption = "Based on heavy-to-light V pairing frequencies (`h_to_l`)."
         else:  # J
             row_label = "Heavy J Family"
             col_label = "Predicted Light J Family"
-            title = "Predicted Light J Families"
+            title = "Predicted J<sub>L</sub> Families"
             caption = "Based on heavy-to-light J pairing frequencies (`h_to_l`)."
     else:  # Light
         if gene_type == 'V':
             row_label = "Light V Family"
             col_label = "Predicted Heavy V Family"
-            title = "Predicted Heavy V Families"
+            title = "Predicted V<sub>H</sub> Families"
             caption = "Based on light-to-heavy V pairing frequencies (`l_to_h`)."
         else:  # J
             row_label = "Light J Family"
             col_label = "Predicted Heavy J Family"
-            title = "Predicted Heavy J Families"
+            title = "Predicted J<sub>H</sub> Families"
             caption = "Based on light-to-heavy J pairing frequencies (`l_to_h`)."
     
     return (pivot_df, row_label, col_label, title, caption)
@@ -1496,19 +1391,11 @@ def render_inferred_pairing_plots(
     # "Inferred Light" -> red (matching light chain plots)
     # "Inferred Heavy" -> blue (matching heavy chain plots)
     if chain_type == 'Heavy':
-        # We're inferring Light families, so use RED color scheme (matching light chain plots)
-        color_scale = [
-            (0.0, "#FFFFFF"),
-            (0.5, "#F7D5DB"),
-            (1.0, "#CB4154"),
-        ]
+        # Inferring Light families — light-chain palette
+        color_scale = LIGHT_COLORSCALE
     else:
-        # We're inferring Heavy families, so use BLUE color scheme (matching heavy chain plots)
-        color_scale = [
-            (0.0, "#FFFFFF"),
-            (0.5, "#D8DEE9"),
-            (1.0, "#4C6085"),
-        ]
+        # Inferring Heavy families — heavy-chain palette
+        color_scale = HEAVY_COLORSCALE
     
     # Render plots in a row matching the gene plot widths
     # For heavy: V plot in first column (same width as IGHV), J plot in third column (same width as IGHJ)
@@ -1712,7 +1599,7 @@ def render_paired_v_gene_heatmap(
     fig = px.imshow(
         heatmap_df,
         labels=dict(x="Light V Gene", y="Heavy V Gene", color="Pair Count"),
-        color_continuous_scale=[(0.0, "#F8F8F8"), (0.5, "#D8DEE9"), (1.0, "#4C6085")],
+        color_continuous_scale=HEAVY_COLORSCALE,
         aspect="auto"
     )
 
@@ -1808,7 +1695,7 @@ def render_paired_j_gene_heatmap(
     fig = px.imshow(
         heatmap_df,
         labels=dict(x="Light J Gene", y="Heavy J Gene", color="Pair Count"),
-        color_continuous_scale=[(0.0, "#F8F8F8"), (0.5, "#F7D5DB"), (1.0, "#CB4154")],
+        color_continuous_scale=LIGHT_COLORSCALE,
         aspect="auto"
     )
 
@@ -2357,10 +2244,7 @@ def plot_cdr_aa_spider(
         fill="toself",
         name=title,
     ))
-    if chain_type == "light":
-        color = "#CB4154"
-    else:
-        color = "#4C6085"
+    color = get_chain_color(chain_type)
     fig.update_traces(
         line_color=color,
         fillcolor=color,
@@ -2408,34 +2292,19 @@ def plot_cdr_length_distribution(
     # Count occurrences of each length (each length gets its own bar)
     length_counts = lengths.value_counts().sort_index()
     
-    # Prepare title with highlighting
-    display_title = f"{title}" if is_highlighted else title
     title_config = {
-        'text': display_title,
+        'text': title,
         'x': 0.5,
         'xanchor': 'center'
     }
-    if is_highlighted:
-        title_config['font'] = {'color': '#B4DCEA', 'size': 16}
-    
-    if chain_type == "light":
-        color_scale = [
-            (0.0, "#FFFFFF"),
-            (0.5, "#F7D5DB"),
-            (1.0, "#CB4154"),
-        ]
-    else:
-        color_scale = [
-            (0.0, "#FFFFFF"),
-            (0.5, "#D8DEE9"),
-            (1.0, "#4C6085"),
-        ]
+
+    color_scale = LIGHT_COLORSCALE if chain_type == "light" else HEAVY_COLORSCALE
 
     # Create bar chart (not histogram) so each length is a separate bar
     fig = px.bar(
         x=length_counts.index,
         y=length_counts.values,
-        title=display_title,
+        title=title,
         labels={'x': 'Length (amino acids)', 'y': 'Frequency'},
         color=length_counts.values,
         color_continuous_scale=color_scale
@@ -2452,6 +2321,9 @@ def plot_cdr_length_distribution(
     )
     
     fig.update_coloraxes(colorscale=color_scale, showscale=False)
+    fig.update_traces(
+        hovertemplate="Length: %{x}<br>Frequency: %{y}<extra></extra>"
+    )
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
@@ -2498,28 +2370,13 @@ def plot_gene_distribution(
     if len(gene_counts) == 0:
         return
     
-    # Prepare title with highlighting
-    display_title = f"{title}" if is_highlighted else title
     title_config = {
-        'text': display_title,
+        'text': title,
         'x': 0.5,
         'xanchor': 'center'
     }
-    if is_highlighted:
-        title_config['font'] = {'color': '#B4DCEA', 'size': 16}  # Orange-red color for highlighting
-    
-    if chain_type == "light":
-        color_scale = [
-            (0.0, "#FFFFFF"),
-            (0.5, "#F7D5DB"),
-            (1.0, "#CB4154"),
-        ]
-    else:
-        color_scale = [
-            (0.0, "#FFFFFF"),
-            (0.5, "#D8DEE9"),
-            (1.0, "#4C6085"),
-        ]
+
+    color_scale = LIGHT_COLORSCALE if chain_type == "light" else HEAVY_COLORSCALE
 
     # Anchor color scale at 0 so the top count always maps to the dark end.
     # Without this, a single bar (e.g. one family after grouping) sits mid-scale.
@@ -2531,7 +2388,7 @@ def plot_gene_distribution(
         x=gene_counts.values,
         y=gene_counts.index,
         orientation='h',
-        title=display_title,
+        title=title,
         labels={'x': 'Count', 'y': y_label},
         color=gene_counts.values,
         color_continuous_scale=color_scale,
@@ -2554,6 +2411,9 @@ def plot_gene_distribution(
         cmin=0,
         cmax=color_range_max,
     )
+    fig.update_traces(
+        hovertemplate=f"{y_label}: %{{y}}<br>Count: %{{x}}<extra></extra>"
+    )
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
@@ -2570,6 +2430,7 @@ def plot_gene_distribution(
 DONOR_HPM_BIN_LABEL = "≤0.01"
 DONOR_HPM_BIN_VALUE = -2.0  # log10(0.01)
 DONOR_HPM_DEFAULT_Y_RANGE = (DONOR_HPM_BIN_VALUE - 0.10, 4.0)
+DONOR_HPM_MIN_EXPECTED_HITS = 3
 
 
 def _normalize_donor_stats_columns(stats_df: pd.DataFrame) -> pd.DataFrame:
@@ -2594,7 +2455,8 @@ def prepare_donor_plot_data(
     """
     Prepare donor-level HPM data for the precursor-frequency plot.
 
-    Optionally keeps only donors above the sequence threshold and/or includes
+    Optionally keeps only donors above the sequence threshold
+    (⌈DONOR_HPM_MIN_EXPECTED_HITS ÷ overall frequency⌉) and/or includes
     zero-hit donors. Bins log10(HPM) <= -2 onto DONOR_HPM_BIN_VALUE (≤0.01).
     """
     statistics = statistics or {}
@@ -2604,7 +2466,7 @@ def prepare_donor_plot_data(
         return pd.DataFrame(), {"error": "Insufficient overall statistics"}
 
     overall_frequency = total_hits / total_sequences
-    required_sequences = int(np.ceil(10 / overall_frequency))
+    required_sequences = int(np.ceil(DONOR_HPM_MIN_EXPECTED_HITS / overall_frequency))
 
     df = _normalize_donor_stats_columns(stats_df)
     if "total_sequences" in df.columns:
@@ -2763,21 +2625,14 @@ def build_donor_hits_figure(
     yticks = [DONOR_HPM_BIN_VALUE] + list(range(int(DONOR_HPM_BIN_VALUE) + 1, upper + 1))
     ticktext = [_donor_hpm_tick_label(v) for v in yticks]
 
-    if title is None:
-        title = (
-            f"Precursor Frequency by Donor"
-            f"<br><sup>Donors with ≥ {required:,} sequences</sup>"
-        )
-
-    # Match heavy/light plot palette used elsewhere (gene bars, spiders)
     if (chain_type or "Heavy").lower() == "light":
-        marker_color = "rgb(203, 65, 84)"       # #CB4154
-        line_color = "rgba(203, 65, 84, 0.5)"
-        fill_color = "rgba(203, 65, 84, 0.2)"
+        marker_color = LIGHT_COLOR
+        line_color = LIGHT_LINE
+        fill_color = LIGHT_FILL
     else:
-        marker_color = "rgb(76, 96, 133)"       # #4C6085
-        line_color = "rgba(76, 96, 133, 0.5)"
-        fill_color = "rgba(76, 96, 133, 0.2)"
+        marker_color = HEAVY_COLOR
+        line_color = HEAVY_LINE
+        fill_color = HEAVY_FILL
 
     fig = go.Figure()
     fig.add_trace(
@@ -2807,19 +2662,14 @@ def build_donor_hits_figure(
             ),
         )
     )
-    fig.update_layout(
-        title={
-            "text": title,
-            "x": 0.5,
-            "xanchor": "center",
-        },
+    layout_kwargs = dict(
         showlegend=False,
         height=height,
         boxgroupgap=0.3,
         margin=margin or dict(l=70, r=20, t=70, b=30),
         template="plotly_white",
         yaxis=dict(
-            title="Precursor Frequency (Per Million)",
+            title="Frequency (Per Million)",
             type="linear",
             range=list(y_axis_range),
             tickmode="array",
@@ -2829,6 +2679,9 @@ def build_donor_hits_figure(
             zeroline=False,
         ),
     )
+    if title:
+        layout_kwargs["title"] = {"text": title, "x": 0.5, "xanchor": "center"}
+    fig.update_layout(**layout_kwargs)
     return fig
 
 
@@ -2838,6 +2691,7 @@ def render_subject_hits_boxplot(
     filtered_df: Optional[pd.DataFrame] = None,
     meta: Optional[Dict[str, Any]] = None,
     chain_type: str = "Heavy",
+    height: int = 248,
 ) -> None:
     """
     Render donor-level hits-per-million distribution.
@@ -2917,9 +2771,9 @@ def render_subject_hits_boxplot(
     fig = build_donor_hits_figure(
         filtered_df,
         meta,
-        title="Precursor Frequency by Donor",
-        height=380,
-        margin=dict(l=50, r=20, t=45, b=15),
+        title=None,
+        height=height,
+        margin=dict(l=50, r=10, t=8, b=8),
         chain_type=chain_type,
     )
     if fig is None:

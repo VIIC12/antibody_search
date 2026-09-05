@@ -2,8 +2,17 @@ import streamlit as st
 from app import render_sidebar
 
 # Override page title (inherits other settings from app.py)
-st.set_page_config(page_title="ABHunter - Imprint")
-
+st.set_page_config(page_title="ABHunter Imprint")
+# st.markdown(
+#     """
+#     <style>
+#     div.block-container {
+#         padding-top: 2rem;
+#     }
+#     </style>
+#     """,
+#     unsafe_allow_html=True,
+# )
 # Main content
 st.title(":material/info: Imprint")
 st.markdown("---")
@@ -12,6 +21,7 @@ st.markdown("""
 ### Legal Information
 
 **Responsible for Content:**  
+Tom U. Schlegel  
 Institute for Drug Discovery, Faculty of Medicine, Leipzig University  
 Liebigstraße 19  
 04103 Leipzig, Germany
@@ -19,8 +29,6 @@ Liebigstraße 19
 **Contact:**  
 Email: abhunter[at]uni-leipzig.de  
 Phone: On Request
-
-
 
 ### Disclaimer
 

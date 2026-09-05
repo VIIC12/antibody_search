@@ -14,7 +14,7 @@ import gzip
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 
 import pandas as pd
 import pyarrow as pa
@@ -43,50 +43,6 @@ def extract_metadata(filepath: Path) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to extract metadata from {filepath}: {e}")
         return {}
-
-
-def calculate_identity_percentage(sequence: str, germline: str) -> float:
-    """
-    Calculate percentage identity between sequence and germline (reference).
-    The germline sequence is the reference (100% identity), any changes represent mutations.
-    
-    Args:
-        sequence: The actual sequence (e.g., v_sequence_alignment_aa)
-        germline: The germline reference sequence (e.g., v_germline_alignment_aa)
-    
-    Returns:
-        Percentage identity (0-100) based on the germline sequence length, rounded to 2 decimal places
-    """
-    # Check if both are empty/NaN - return NaN
-    seq_empty = pd.isna(sequence) or sequence == ""
-    germline_empty = pd.isna(germline) or germline == ""
-    
-    if seq_empty and germline_empty:
-        return float('nan')
-    
-    # Check if only one is empty - this should not happen, return error
-    if seq_empty or germline_empty:
-        raise ValueError(f"Only one sequence is empty: sequence_empty={seq_empty}, germline_empty={germline_empty}")
-    
-    # Remove gaps and convert to uppercase for comparison
-    sequence_clean = sequence.replace('-', '').replace('.', '').upper()
-    germline_clean = germline.replace('-', '').replace('.', '').upper()
-    
-    # If either sequence is empty after cleaning, return 0
-    if len(sequence_clean) == 0 or len(germline_clean) == 0:
-        return 0.0
-    
-    # Use the germline sequence length as the reference (100%)
-    germline_length = len(germline_clean)
-    
-    # Count identical positions up to the germline sequence length
-    # If sequence is shorter, missing positions count as differences
-    identical = sum(1 for i, germline_char in enumerate(germline_clean) 
-                   if i < len(sequence_clean) and sequence_clean[i] == germline_char)
-    
-    # Calculate percentage based on the germline sequence length and round to 2 decimal places
-    percentage = (identical / germline_length) * 100
-    return round(percentage, 2)
 
 
 def get_columns_for_chain(chain_type: str, extraction_level: int = 1) -> list:
@@ -317,8 +273,17 @@ def get_columns_for_chain(chain_type: str, extraction_level: int = 1) -> list:
         )
 
 
+METADATA_PARQUET_COLUMNS = [
+    'file_path', 'chain', 'file_source', 'species', 'subject', 'author',
+    'disease', 'vaccine', 'isotype', 'total_sequences',
+]
+
+
 def convert_file(
-    input_path: Path, output_dir: Path, extraction_level: int = 1
+    input_path: Path,
+    output_dir: Path,
+    extraction_level: int = 1,
+    metadata_override: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Convert single CSV.gz file to Parquet.
@@ -327,14 +292,18 @@ def convert_file(
         input_path: Path to input CSV.gz file
         output_dir: Directory for output Parquet files
         extraction_level: Extraction level (1=Basic, 2=+Additional, 3=+Full)
+        metadata_override: Optional OAS JSON metadata to merge into the CSV header
+            metadata (e.g. Author from the index when downloading via update_from_oas)
 
     Returns:
         Dictionary with conversion statistics
     """
     logger.info(f"Processing: {input_path.name}")
 
-    # Extract metadata
+    # Extract metadata from CSV header, optionally enriched by OAS index metadata
     metadata = extract_metadata(input_path)
+    if metadata_override:
+        metadata = {**metadata, **metadata_override}
 
     # Get chain type from metadata
     chain_type = metadata.get("Chain", "Unknown")
@@ -367,137 +336,30 @@ def convert_file(
 
         # Calculate CDR lengths from amino acid sequences
         # Handle both unpaired and paired data
-        # -> cdr1_length, cdr1_lengt_hevy, cdr1_length_light
+        # -> cdr1_length, cdr1_length_heavy, cdr1_length_light
         for col in df.columns:
             if col.endswith("_aa") and "cdr" in col:
                 length_col = col.replace("_aa", "_length")
                 df[length_col] = df[col].fillna("").str.len()
 
-        # Calculate percentage identity for V, D, J gene alignments (%SHM)
-        if chain_type_lower == "paired":
-            # Paired data: calculate for both heavy and light chains
-            # Heavy chain %SHM calculations
-            try:
-                df["v_%SHM_heavy"] = df.apply(
-                    lambda row: calculate_identity_percentage(
-                        row["v_sequence_alignment_aa_heavy"], 
-                        row["v_germline_alignment_aa_heavy"]
-                    ), axis=1
-                )
-            except ValueError as e:
-                logger.error(f"Error calculating v_%SHM_heavy: {e}")
-                df["v_%SHM_heavy"] = float('nan')
-            
-            try:
-                df["d_%SHM_heavy"] = df.apply(
-                    lambda row: calculate_identity_percentage(
-                        row["d_sequence_alignment_aa_heavy"], 
-                        row["d_germline_alignment_aa_heavy"]
-                    ), axis=1
-                )
-            except ValueError as e:
-                logger.error(f"Error calculating d_%SHM_heavy: {e}")
-                df["d_%SHM_heavy"] = float('nan')
-            
-            try:
-                df["j_%SHM_heavy"] = df.apply(
-                    lambda row: calculate_identity_percentage(
-                        row["j_sequence_alignment_aa_heavy"], 
-                        row["j_germline_alignment_aa_heavy"]
-                    ), axis=1
-                )
-            except ValueError as e:
-                logger.error(f"Error calculating j_%SHM_heavy: {e}")
-                df["j_%SHM_heavy"] = float('nan')
-            
-            # Light chain %SHM calculations
-            try:
-                df["v_%SHM_light"] = df.apply(
-                    lambda row: calculate_identity_percentage(
-                        row["v_sequence_alignment_aa_light"], 
-                        row["v_germline_alignment_aa_light"]
-                    ), axis=1
-                )
-            except ValueError as e:
-                logger.error(f"Error calculating v_%SHM_light: {e}")
-                df["v_%SHM_light"] = float('nan')
-            
-            try:
-                df["d_%SHM_light"] = df.apply(
-                    lambda row: calculate_identity_percentage(
-                        row["d_sequence_alignment_aa_light"], 
-                        row["d_germline_alignment_aa_light"]
-                    ), axis=1
-                )
-            except ValueError as e:
-                logger.error(f"Error calculating d_%SHM_light: {e}")
-                df["d_%SHM_light"] = float('nan')
-            
-            try:
-                df["j_%SHM_light"] = df.apply(
-                    lambda row: calculate_identity_percentage(
-                        row["j_sequence_alignment_aa_light"], 
-                        row["j_germline_alignment_aa_light"]
-                    ), axis=1
-                )
-            except ValueError as e:
-                logger.error(f"Error calculating j_%SHM_light: {e}")
-                df["j_%SHM_light"] = float('nan')
-        
-        elif chain_type_lower in ["heavy", "light"]:
-            # Unpaired data: calculate for single chain (heavy or light)
-            try:
-                df["v_%SHM"] = df.apply(
-                    lambda row: calculate_identity_percentage(
-                        row["v_sequence_alignment_aa"], 
-                        row["v_germline_alignment_aa"]
-                    ), axis=1
-                )
-            except ValueError as e:
-                logger.error(f"Error calculating v_%SHM: {e}")
-                df["v_%SHM"] = float('nan')
-            
-            try:
-                df["d_%SHM"] = df.apply(
-                    lambda row: calculate_identity_percentage(
-                        row["d_sequence_alignment_aa"], 
-                        row["d_germline_alignment_aa"]
-                    ), axis=1
-                )
-            except ValueError as e:
-                logger.error(f"Error calculating d_%SHM: {e}")
-                df["d_%SHM"] = float('nan')
-            
-            try:
-                df["j_%SHM"] = df.apply(
-                    lambda row: calculate_identity_percentage(
-                        row["j_sequence_alignment_aa"], 
-                        row["j_germline_alignment_aa"]
-                    ), axis=1
-                )
-            except ValueError as e:
-                logger.error(f"Error calculating j_%SHM: {e}")
-                df["j_%SHM"] = float('nan')
-        
-        else:
-            # Invalid chain type
-            raise ValueError(f"Invalid chain type: '{chain_type}'. Expected 'Paired', 'Heavy', or 'Light'")
+        if chain_type_lower not in ("paired", "heavy", "light"):
+            raise ValueError(
+                f"Invalid chain type: '{chain_type}'. Expected 'Paired', 'Heavy', or 'Light'"
+            )
 
         # Exclude columns that should not be in the data based on chain type
         # Light chains: exclude D-gene columns (always NaN)
         LIGHT_CHAIN_EXCLUDE_COLUMNS = [
             'd_call',
-            'd_%SHM',
             'd_sequence_alignment_aa',
-            'd_germline_alignment_aa'
+            'd_germline_alignment_aa',
         ]
         
         # Paired chains: exclude D-gene light chain columns (always NaN)
         PAIRED_CHAIN_EXCLUDE_COLUMNS = [
             'd_call_light',
-            'd_%SHM_light',
             'd_sequence_alignment_aa_light',
-            'd_germline_alignment_aa_light'
+            'd_germline_alignment_aa_light',
         ]
         
         if chain_type_lower == 'light':
@@ -520,6 +382,7 @@ def convert_file(
             b'file_source': str(input_path.stem.replace('.csv', '') + '.csv').encode(),
             b'species': str(metadata.get("Species", "Unknown")).encode(),
             b'subject': str(metadata.get("Subject", "Unknown")).encode(),
+            b'author': str(metadata.get("Author", "Unknown")).encode(),
             b'disease': str(metadata.get("Disease", "Unknown")).encode(),
             b'vaccine': str(metadata.get("Vaccine", "Unknown")).encode(),
             b'isotype': str(metadata.get("Isotype", "Unknown")).encode(),
@@ -602,7 +465,7 @@ def extract_metadata_from_parquet_file(parquet_path: Path, output_dir: Path) -> 
             file_path = parquet_path.name
         
         # Build metadata record (matching optimized structure)
-        # Optimized metadata columns: file_path, chain, file_source, species, subject, 
+        # Optimized metadata columns: file_path, chain, file_source, species, subject, author,
         # disease, vaccine, isotype, total_sequences
         # Note: NO unique_sequences, filename, or rows columns
         record = {
@@ -611,6 +474,7 @@ def extract_metadata_from_parquet_file(parquet_path: Path, output_dir: Path) -> 
             'file_source': file_metadata.get('file_source', 'Unknown'),
             'species': file_metadata.get('species', 'Unknown'),
             'subject': file_metadata.get('subject', 'Unknown'),
+            'author': file_metadata.get('author', 'Unknown'),
             'disease': file_metadata.get('disease', 'Unknown'),
             'vaccine': file_metadata.get('vaccine', 'Unknown'),
             'isotype': file_metadata.get('isotype', 'Unknown'),
@@ -681,12 +545,7 @@ def create_metadata_table(stats_list: list, output_dir: Path):
         # Create DataFrame from metadata records
         new_df = pd.DataFrame(metadata_records)
         
-        # Define the correct columns for optimized metadata
-        # Matching structure: file_path, chain, file_source, species, subject, 
-        # disease, vaccine, isotype, total_sequences
-        # Note: NO unique_sequences, filename, or rows columns
-        correct_columns = ['file_path', 'chain', 'file_source', 'species', 'subject', 
-                          'disease', 'vaccine', 'isotype', 'total_sequences']
+        correct_columns = METADATA_PARQUET_COLUMNS
         
         # Load existing metadata if it exists and merge
         if metadata_path.exists():
@@ -782,10 +641,7 @@ def create_metadata_table(stats_list: list, output_dir: Path):
                 
                 if metadata_records:
                     metadata_df = pd.DataFrame(metadata_records)
-                    # Ensure correct column order (matching optimized structure)
-                    correct_columns = ['file_path', 'chain', 'file_source', 'species', 'subject', 
-                                      'disease', 'vaccine', 'isotype', 'total_sequences']
-                    metadata_df = metadata_df[[col for col in correct_columns if col in metadata_df.columns]]
+                    metadata_df = metadata_df[[col for col in METADATA_PARQUET_COLUMNS if col in metadata_df.columns]]
                     metadata_df.to_parquet(metadata_path, index=False)
                     logger.info(f"  💾 Created metadata: {metadata_path}")
 

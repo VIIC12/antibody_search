@@ -3,14 +3,14 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
-from pathlib import Path
+from components.search.styling import HEAVY_COLOR, LIGHT_COLOR
 
 PLOTLY_DISPLAY_CONFIG = {
     "displayModeBar": False,
 }
 
 # Override page title (inherits other settings from app.py)
-st.set_page_config(page_title="ABHunter - Statistics", layout="wide")
+st.set_page_config(page_title="ABHunter Statistics")
 
 # Main content
 st.markdown("# :material/bar_chart: Statistics")
@@ -223,10 +223,10 @@ if vh_marginals is not None:
                 [0, '#D9D8D8'],
                 [0.01, '#d6e0ec'],
                 [0.2, '#8fa1c1'],
-                [0.4, '#4C6085'],
+                [0.4, HEAVY_COLOR],
                 [0.6, '#8c516d'],
-                [0.8, '#cb4154'],
-                [1, '#cb4154']
+                [0.8, LIGHT_COLOR],
+                [1, LIGHT_COLOR]
             ],
             colorbar=dict(
                 title="Observed Frequency (%)",
@@ -294,11 +294,11 @@ if vh_marginals is not None:
                 x=[str(col) for col in ratio_matrix.columns],
                 y=[str(row) for row in ratio_matrix.index],
                 colorscale=[
-                    [0, '#4C6085'],
+                    [0, HEAVY_COLOR],
                     [0.3, '#d6e0ec'],
                     [0.5, '#ffffff'],
                     [0.7, '#e3a6b2'],
-                    [1, '#cb4154']
+                    [1, LIGHT_COLOR]
                 ],
                 zmid=1.0,
                 zmin=0,
@@ -333,11 +333,11 @@ if vh_marginals is not None:
                 x=[str(col) for col in diff_matrix.columns],
                 y=[str(row) for row in diff_matrix.index],
                 colorscale=[
-                    [0, '#4C6085'],
+                    [0, HEAVY_COLOR],
                     [0.3, '#879EBA'],
                     [0.5, '#ffffff'],
                     [0.7, '#CD8A97'],
-                    [1, '#cb4154']
+                    [1, LIGHT_COLOR]
                 ],
                 zmid=0.0,
                 zmin=-diff_max,
@@ -410,7 +410,7 @@ if vh_marginals is not None:
             x=vh_merged_sorted['vh_family'],
             y=vh_merged_sorted['unpaired_frequency'] * 100,
             name='Unpaired Dataset',
-            marker_color='#cb4154'
+            marker_color=LIGHT_COLOR
         ))
         
         fig_vh_comparison.update_layout(
@@ -448,7 +448,7 @@ if vh_marginals is not None:
             x=vl_merged_sorted['vl_family'],
             y=vl_merged_sorted['unpaired_frequency'] * 100,
             name='Unpaired Dataset',
-            marker_color='#cb4154'
+            marker_color=LIGHT_COLOR
         ))
         
         fig_vl_comparison.update_layout(
@@ -533,10 +533,10 @@ if vh_marginals is not None:
                     [0, '#D9D8D8'],
                     [0.01, '#d6e0ec'],
                     [0.2, '#8fa1c1'],
-                    [0.4, '#4C6085'],
+                    [0.4, HEAVY_COLOR],
                     [0.6, '#8c516d'],
-                    [0.8, '#cb4154'],
-                    [1, '#cb4154']
+                    [0.8, LIGHT_COLOR],
+                    [1, LIGHT_COLOR]
                 ],
                 colorbar=dict(title="Probability (%)", title_side="right"),
                 hovertemplate='V<sub>H</sub>: %{y}<br>V<sub>L</sub>: %{x}<br>Probability: %{z:.2f}%<extra></extra>',
@@ -570,10 +570,10 @@ if vh_marginals is not None:
                     [0, '#D9D8D8'],
                     [0.01, '#d6e0ec'],
                     [0.2, '#8fa1c1'],
-                    [0.4, '#4C6085'],
+                    [0.4, HEAVY_COLOR],
                     [0.6, '#8c516d'],
-                    [0.8, '#cb4154'],
-                    [1, '#cb4154']
+                    [0.8, LIGHT_COLOR],
+                    [1, LIGHT_COLOR]
                 ],
                 colorbar=dict(title="Probability (%)", title_side="right"),
                 hovertemplate='V<sub>H</sub>: %{y}<br>V<sub>L</sub>: %{x}<br>Probability: %{z:.2f}%<extra></extra>',

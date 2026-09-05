@@ -7,6 +7,7 @@ otel-collector-config.yaml
 oas_json_index.pkl
 
 publication/
+REVISION/
 
 # Python
 __pycache__/
@@ -26,6 +27,9 @@ logs/
 *.egg-info/
 ENV/
 uv.lock
+downloads/
+tmp/
+static/downloads
 
 # Database Files
 data/

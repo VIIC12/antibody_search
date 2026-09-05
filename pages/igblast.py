@@ -11,9 +11,10 @@ from components.igblast_utils import (
 )
 from components.search.styling import get_chain_color
 
-st.set_page_config(page_title="ABHunter - IgBLAST Gene ID", page_icon="🧬")
+st.set_page_config(page_title="ABHunter IgBLAST")
 
 st.title(":material/genetics: IgBLAST Gene Identification")
+st.markdown("---")
 st.markdown(
     "Enter heavy and/or light chain **nucleotide** sequence(s) (V region or full chain)."
     "IgBLAST will run with V, D, J germline databases and return **V, D, J** (heavy) or **V, J** (light) genes.\n\n"
@@ -288,7 +289,7 @@ def _cdr_motif(cdr: dict, name: str) -> str:
 
 
 def _build_igblast_prefill(mode: str, res_h: dict | None, res_l: dict | None) -> dict:
-    """Build search_prefill_from_igblast from checked boxes only. mode: unpaired_heavy | unpaired_light | paired | dual_unpaired."""
+    """Build search_prefill_from_igblast from checked boxes only. mode: unpaired_heavy | unpaired_light | paired."""
     heavy = None
     if res_h and (res_h.get("V", {}).get("gene") or res_h.get("D", {}).get("gene") or res_h.get("J", {}).get("gene")):
         v = res_h.get("V") or {}
@@ -345,32 +346,39 @@ if results_heavy is not None or results_light is not None:
         st.markdown("#### Use results for Database search")
         prefill_btns = st.columns([1, 1, 1])
         with prefill_btns[0]:
-            if has_heavy and not has_light:
-                if st.button("Use in Database search (unpaired heavy)", type="secondary", width="content"):
-                    st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
-                        "unpaired_heavy", results_heavy[0], None
-                    )
-                    st.switch_page("pages/search.py")
-            elif has_light and not has_heavy:
-                if st.button("Use in Database search (unpaired light)", type="secondary", width="content"):
-                    st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
-                        "unpaired_light", None, results_light[0]
-                    )
-                    st.switch_page("pages/search.py")
-            elif has_heavy and has_light:
+            if has_heavy and has_light:
                 if st.button("Use in Database search (paired)", type="secondary", width="content"):
                     st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
                         "paired", results_heavy[0], results_light[0]
                     )
                     st.switch_page("pages/search.py")
-        with prefill_btns[1]:
-            if has_heavy and has_light:
-                if st.button("Use in Database search (dual unpaired)", type="secondary", width="content"):
+            elif has_heavy:
+                if st.button("Use in Database search (unpaired heavy)", type="secondary", width="content"):
                     st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
-                        "dual_unpaired", results_heavy[0], results_light[0]
+                        "unpaired_heavy", results_heavy[0], None
                     )
                     st.switch_page("pages/search.py")
-        st.info("You may have to adjust gen names for the database search.")
+            elif has_light:
+                if st.button("Use in Database search (unpaired light)", type="secondary", width="content"):
+                    st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
+                        "unpaired_light", None, results_light[0]
+                    )
+                    st.switch_page("pages/search.py")
+        with prefill_btns[1]:
+            if has_heavy and has_light:
+                if st.button("Use in Database search (unpaired heavy)", type="secondary", width="content"):
+                    st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
+                        "unpaired_heavy", results_heavy[0], None
+                    )
+                    st.switch_page("pages/search.py")
+        with prefill_btns[2]:
+            if has_heavy and has_light:
+                if st.button("Use in Database search (unpaired light)", type="secondary", width="content"):
+                    st.session_state["search_prefill_from_igblast"] = _build_igblast_prefill(
+                        "unpaired_light", None, results_light[0]
+                    )
+                    st.switch_page("pages/search.py")
+        st.info("You may have to adjust gen names for the database search.", icon=":material/info:")
 
     # Heavy chain results (full width)
     if results_heavy is not None:

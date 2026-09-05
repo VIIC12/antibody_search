@@ -2,7 +2,7 @@
 from pathlib import Path
 import sys
 
-# Load .env from project root so ABHUNTER_DOWNLOAD_DIR, ABHUNTER_DB_PATH, etc. are set when running locally
+# Load .env from project root so ABHUNTER_DOWNLOAD_DIR, ABHUNTER_TMP_DIR, ABHUNTER_DB_PATH, etc. are set when running locally
 try:
     from dotenv import load_dotenv
     load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -29,6 +29,13 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 def render_sidebar():
     """Render sidebar content (About and License sections)."""
+    st.logo(
+        image="./static/logo.gif",
+        size="large",
+        link=None,
+        icon_image=None,
+    )
+
     st.markdown("""
     ## **ABHunter** - Real time OAS antibody database search
     
@@ -37,7 +44,7 @@ def render_sidebar():
 
     ---
     ### :material/lab_profile: License & Credits
-    **If you use this software, please cite:** Schlegel et al. (2026). [Link](#)
+    **If you use this software, please cite:** Schlegel et al. (2026). *Under submission.*
     
     **Data Source Citations:**
     - [OAS Database](https://opig.stats.ox.ac.uk/webapps/oas/)
@@ -46,24 +53,15 @@ def render_sidebar():
 
     This software is licensed under the GNU GPLv3 License.
     
-    [ABHunter GitHub Repository](https://github.com/VIIC12/antibody_search#)    
+    [ABHunter GitHub Repository](https://github.com/VIIC12/antibody_search#)
     """)
-    # # Add a blank line and the "Made in" text at the bottom with spacing
-    # flag_path = Path(__file__).parent / "public" / "images" / "flag_leipzig.svg"
-    flag_img = ""
-    # if flag_path.exists():
-    #     import base64
-    #     flag_svg = flag_path.read_text(encoding='utf-8')
-    #     # Encode SVG as base64 data URI
-    #     flag_base64 = base64.b64encode(flag_svg.encode('utf-8')).decode('utf-8')
-    #     flag_img = f'<img src="data:image/svg+xml;base64,{flag_base64}" alt="Leipzig Flag" style="height: 1.2em; vertical-align: middle; margin-right: 0.3em;" />'
     
     # Stick inside the sidebar near the bottom, without overflowing when the sidebar is resized
     st.markdown(
         f"""
         ---
         <div style='bottom: 0px; opacity: 0.85; font-size: 0.9rem;'>
-            Made in Leipzig, Germany <br/>Institute for Drug Discovery, Leipzig University.
+            Made in Leipzig, Germany <br/> Institute for Drug Discovery, Leipzig University
         </div>
         """,
         unsafe_allow_html=True
@@ -75,7 +73,7 @@ def main():
     
     # Global page configuration - applies to all pages by default
     st.set_page_config(
-        page_title="ABHunter - Antibody Database Search",
+        page_title="ABHunter Database Search",
         page_icon=':material/vaccines:',
         layout="wide",
         initial_sidebar_state="expanded",
@@ -86,15 +84,18 @@ def main():
         }
     )
 
-    st.logo(
-        image="./static/logo.gif",
-        size="large",
-        link=None,
-        icon_image=None,
+    st.markdown(
+        """
+        <style>
+        div.block-container {
+            padding-top: 4rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
     with st.sidebar:
-        # Common sidebar content (About and License sections)
         render_sidebar()
 
     search = st.Page("pages/search.py", title="Database Search", icon=":material/search:", default=True)

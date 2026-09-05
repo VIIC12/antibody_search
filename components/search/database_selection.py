@@ -92,11 +92,12 @@ def render_database_selection(
     paired_currently_selected = st.session_state.get('paired_main', False)
     heavy_currently_selected = st.session_state.get('heavy_main', False)
     light_currently_selected = st.session_state.get('light_main', False)
-    
-    # Determine disabled states: Paired disables Heavy/Light, Heavy/Light disable Paired
-    # Store these before auto-unchecking so they remain correct
-    heavy_conflict_disabled = paired_currently_selected
-    light_conflict_disabled = paired_currently_selected
+    prev_heavy_selected = st.session_state.get('heavy_main_prev', False)
+    prev_light_selected = st.session_state.get('light_main_prev', False)
+
+    # Exactly one mode: Paired XOR Heavy XOR Light
+    heavy_conflict_disabled = paired_currently_selected or light_currently_selected
+    light_conflict_disabled = paired_currently_selected or heavy_currently_selected
     paired_conflict_disabled = heavy_currently_selected or light_currently_selected
     
     heavy_disabled = heavy_conflict_disabled or selection_locked
@@ -104,24 +105,48 @@ def render_database_selection(
     paired_disabled = paired_conflict_disabled or selection_locked
     
     # Auto-uncheck incompatible selections
-    # If Paired is selected, uncheck Heavy and Light
     if not selection_locked:
         if paired_currently_selected:
             if heavy_currently_selected:
                 st.session_state['heavy_main'] = False
-                # Uncheck all heavy subdirectories
                 for subdir in db_structure['Heavy'].keys():
                     st.session_state[f"heavy_{subdir}"] = False
+                heavy_currently_selected = False
             if light_currently_selected:
                 st.session_state['light_main'] = False
-                # Uncheck all light subdirectories
                 for subdir in db_structure['Light'].keys():
                     st.session_state[f"light_{subdir}"] = False
+                light_currently_selected = False
         
         # If Heavy or Light is selected, uncheck Paired
         if (heavy_currently_selected or light_currently_selected) and paired_currently_selected:
             st.session_state['paired_main'] = False
             st.session_state['paired_real_bundle'] = False
+            paired_currently_selected = False
+
+        # Heavy and Light are mutually exclusive: keep the most recently enabled one
+        if heavy_currently_selected and light_currently_selected:
+            heavy_just_enabled = heavy_currently_selected and not prev_heavy_selected
+            light_just_enabled = light_currently_selected and not prev_light_selected
+            if light_just_enabled and not heavy_just_enabled:
+                st.session_state['heavy_main'] = False
+                for subdir in db_structure['Heavy'].keys():
+                    st.session_state[f"heavy_{subdir}"] = False
+                heavy_currently_selected = False
+            else:
+                # Prefer Heavy when both were already on or Heavy was just enabled
+                st.session_state['light_main'] = False
+                for subdir in db_structure['Light'].keys():
+                    st.session_state[f"light_{subdir}"] = False
+                light_currently_selected = False
+
+        # Recompute disabled flags after auto-uncheck
+        heavy_conflict_disabled = paired_currently_selected or light_currently_selected
+        light_conflict_disabled = paired_currently_selected or heavy_currently_selected
+        paired_conflict_disabled = heavy_currently_selected or light_currently_selected
+        heavy_disabled = heavy_conflict_disabled or selection_locked
+        light_disabled = light_conflict_disabled or selection_locked
+        paired_disabled = paired_conflict_disabled or selection_locked
     
     # Heavy Chain selection
     with col1:
@@ -135,7 +160,10 @@ def render_database_selection(
         if selection_locked:
             heavy_help = DB_SELECTION_LOCK_MESSAGE
         elif heavy_conflict_disabled:
-            heavy_help = "Disabled when Paired is selected. Inferred data is automatically included when searching Heavy or Light chains."
+            heavy_help = (
+                "Disabled when Paired or Light is selected. "
+                "Choose Heavy, Light, or Paired."
+            )
         else:
             heavy_help = "Inferred data is automatically included when searching Heavy or Light chains." if has_inferred_overlay else None
         
@@ -186,6 +214,7 @@ def render_database_selection(
     
     # Light Chain selection
     with col2:
+        prev_light_selected = st.session_state.get('light_main_prev', False)
         light_total_sequences = sum(info['sequence_count'] for info in db_structure['Light'].values())
         icon_heading("light", "Light Chain", level=3)
         # Build label with inferred indicator if available
@@ -195,7 +224,10 @@ def render_database_selection(
         if selection_locked:
             light_help = DB_SELECTION_LOCK_MESSAGE
         elif light_conflict_disabled:
-            light_help = "Disabled when Paired is selected. Inferred data is automatically included when searching Heavy or Light chains."
+            light_help = (
+                "Disabled when Paired or Heavy is selected. "
+                "Choose Heavy, Light, or Paired."
+            )
         else:
             light_help = "Inferred data is automatically included when searching Heavy or Light chains." if has_inferred_overlay else None
         
@@ -213,9 +245,10 @@ def render_database_selection(
             else:
                 # For multiple subdirectories, auto-select all by default
                 # Always set all subdirectories to True when main is selected
-                for subdir in db_structure['Light'].keys():
-                    checkbox_key = f"light_{subdir}"
-                    st.session_state[checkbox_key] = True
+                if not prev_light_selected:
+                    for subdir in db_structure['Light'].keys():
+                        checkbox_key = f"light_{subdir}"
+                        st.session_state[checkbox_key] = True
                 
                 # Show checkboxes for multiple subdirectories
                 sub_col1, sub_col2 = st.columns(2)
@@ -239,6 +272,8 @@ def render_database_selection(
             # Uncheck all light subdirectories if main category is unchecked
             for subdir in db_structure['Light'].keys():
                 st.session_state[f"light_{subdir}"] = False
+
+        st.session_state['light_main_prev'] = light_selected
     
     prev_paired_selected = st.session_state.get('paired_main_prev', False)
     
@@ -296,14 +331,6 @@ def render_database_selection(
             st.session_state['paired_real_bundle'] = False
     
     st.session_state['paired_main_prev'] = paired_selected
-
-    # Show warning if both Heavy and Light are selected but not Paired
-    if heavy_selected and light_selected and not paired_selected:
-        st.info(
-            ":material/info: Selecting both Heavy Chain and Light Chain does not create paired data. "
-            "This performs two separate searches (one in unpaired Heavy Chain data, one in unpaired Light Chain data) "
-            "and combines the results. For true paired sequences, select **Paired** instead."
-        )
 
     st.session_state['selected_databases_raw'] = list(selected_databases)
     previous_selected_databases = st.session_state.get('selected_databases', [])
@@ -495,5 +522,5 @@ def display_database_status(
             if not parquet_files:
                 st.error("No Parquet files found in this database.")
             elif not check_metadata_freshness(selected_db):
-                st.warning("🔄 Database files have been updated!")
+                st.warning("Database files have been updated!")
 
