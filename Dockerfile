@@ -4,11 +4,13 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (including Chromium for Plotly/Kaleido image export)
+# Install system dependencies (including Chromium for Plotly/Kaleido image export,
+# and pigz for the parallel-gzip tar archives built by components/search/download_utils.py)
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     chromium \
+    pigz \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
