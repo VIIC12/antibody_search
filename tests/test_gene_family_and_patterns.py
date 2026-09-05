@@ -454,19 +454,87 @@ def test_build_gene_pattern_light_j_no_auto_dash_returns_exact(
 
 
 @pytest.mark.parametrize(
-    "column, gene, force_light_chain, expected",
+    "column, gene, force_light_chain, lambda_like, kappa_like",
     [
-        ("d_call_light", "2", False, "d_call_light LIKE 'IGKD2-%'"),
-        ("d_call", "2", True, "d_call LIKE 'IGKD2-%'"),
-        ("d_call_light", "2-2", False, "d_call_light LIKE 'IGKD2-2*%'"),
+        (
+            "d_call_light",
+            "2",
+            False,
+            "d_call_light LIKE 'IGLD2-%'",
+            "d_call_light LIKE 'IGKD2-%'",
+        ),
+        (
+            "d_call",
+            "2",
+            True,
+            "d_call LIKE 'IGLD2-%'",
+            "d_call LIKE 'IGKD2-%'",
+        ),
+        (
+            "d_call_light",
+            "2-2",
+            False,
+            "d_call_light LIKE 'IGLD2-2*%'",
+            "d_call_light LIKE 'IGKD2-2*%'",
+        ),
     ],
     ids=["d_family_via_suffix", "d_family_via_force", "d_gene_level"],
 )
-def test_build_gene_pattern_light_d_maps_to_igkd_never_igld(
+def test_build_gene_pattern_light_both_chains_contains_igld_and_igkd(
+    engine, column, gene, force_light_chain, lambda_like, kappa_like
+):
+    # Arrange
+    # (Inputs via parametrization)
+
+    # Act
+    result = engine._build_gene_pattern(column, gene, force_light_chain=force_light_chain)
+
+    # Assert
+    # Exact equality avoided: OR-clause operand order is an implementation detail.
+    assert lambda_like in result
+    assert kappa_like in result
+    assert result.startswith("(") and result.endswith(")")
+
+
+@pytest.mark.parametrize(
+    "column, gene, force_light_chain, expected",
+    [
+        ("d_call_light", "L2", False, "d_call_light LIKE 'IGLD2-%'"),
+        ("d_call", "L2", True, "d_call LIKE 'IGLD2-%'"),
+        ("d_call_light", "IGLD2", False, "d_call_light LIKE 'IGLD2-%'"),
+        ("d_call", "IGLD2", True, "d_call LIKE 'IGLD2-%'"),
+    ],
+    ids=["L2_via_suffix", "L2_via_force", "IGLD2_via_suffix", "IGLD2_via_force"],
+)
+def test_build_gene_pattern_light_lambda_only_returns_igld(
     engine, column, gene, force_light_chain, expected
 ):
     # Arrange
-    # Pins current behavior: light D patterns always use IGKD, never IGLD.
+    # (Inputs via parametrization)
+
+    # Act
+    result = engine._build_gene_pattern(column, gene, force_light_chain=force_light_chain)
+
+    # Assert
+    assert result == expected
+    assert "IGKD" not in result
+
+
+@pytest.mark.parametrize(
+    "column, gene, force_light_chain, expected",
+    [
+        ("d_call_light", "K2", False, "d_call_light LIKE 'IGKD2-%'"),
+        ("d_call", "K2", True, "d_call LIKE 'IGKD2-%'"),
+        ("d_call_light", "IGKD2", False, "d_call_light LIKE 'IGKD2-%'"),
+        ("d_call", "IGKD2", True, "d_call LIKE 'IGKD2-%'"),
+    ],
+    ids=["K2_via_suffix", "K2_via_force", "IGKD2_via_suffix", "IGKD2_via_force"],
+)
+def test_build_gene_pattern_light_kappa_only_returns_igkd(
+    engine, column, gene, force_light_chain, expected
+):
+    # Arrange
+    # (Inputs via parametrization)
 
     # Act
     result = engine._build_gene_pattern(column, gene, force_light_chain=force_light_chain)

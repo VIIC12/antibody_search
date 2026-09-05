@@ -1232,7 +1232,7 @@ class AntibodySearchEngine:
                 gene = gene + '-'
         
         # Helper function to build light chain pattern
-        def build_light_chain_pattern(gene_pattern: str, is_v: bool, is_j: bool) -> tuple:
+        def build_light_chain_pattern(gene_pattern: str, is_v: bool, is_j: bool, is_d: bool = False) -> tuple:
             """Returns (pattern_string, is_or_pattern)"""
             if is_v:
                 if light_chain_type == 'L':
@@ -1250,6 +1250,14 @@ class AntibodySearchEngine:
                 else:
                     # Search both Lambda and Kappa
                     return (f"IGLJ{gene_pattern}%", f"IGKJ{gene_pattern}%", True)
+            elif is_d:
+                if light_chain_type == 'L':
+                    return (f"IGLD{gene_pattern}%", False)
+                elif light_chain_type == 'K':
+                    return (f"IGKD{gene_pattern}%", False)
+                else:
+                    # Search both Lambda and Kappa
+                    return (f"IGLD{gene_pattern}%", f"IGKD{gene_pattern}%", True)
             else:
                 return (f"IGKV{gene_pattern}%", False)  # Default for other cases
         
@@ -1265,7 +1273,10 @@ class AntibodySearchEngine:
                 else:
                     pattern = f"IGHV{gene}%"
             elif is_d_gene:
-                pattern = f"IGHD{gene}%" if not is_light_chain else f"IGKD{gene}%"
+                if is_light_chain:
+                    pattern_result = build_light_chain_pattern(gene, False, False, True)
+                else:
+                    pattern = f"IGHD{gene}%"
             elif is_j_gene:
                 if is_light_chain:
                     pattern_result = build_light_chain_pattern(gene, False, True)
@@ -1281,7 +1292,10 @@ class AntibodySearchEngine:
                 else:
                     pattern = f"IGHV{gene}%"
             elif is_d_gene:
-                pattern = f"IGHD{gene}%" if not is_light_chain else f"IGKD{gene}%"
+                if is_light_chain:
+                    pattern_result = build_light_chain_pattern(gene, False, False, True)
+                else:
+                    pattern = f"IGHD{gene}%"
             elif is_j_gene:
                 if is_light_chain:
                     pattern_result = build_light_chain_pattern(gene, False, True)
@@ -1298,7 +1312,10 @@ class AntibodySearchEngine:
                 else:
                     pattern = f"IGHV{gene}*%"
             elif is_d_gene:
-                pattern = f"IGHD{gene}*%" if not is_light_chain else f"IGKD{gene}*%"
+                if is_light_chain:
+                    pattern_result = build_light_chain_pattern(gene + '*', False, False, True)
+                else:
+                    pattern = f"IGHD{gene}*%"
             elif is_j_gene:
                 if is_light_chain:
                     pattern_result = build_light_chain_pattern(gene + '*', False, True)
@@ -1314,7 +1331,10 @@ class AntibodySearchEngine:
                 else:
                     pattern = f"IGHV{gene}%"
             elif is_d_gene:
-                pattern = f"IGHD{gene}%" if not is_light_chain else f"IGKD{gene}%"
+                if is_light_chain:
+                    pattern_result = build_light_chain_pattern(gene, False, False, True)
+                else:
+                    pattern = f"IGHD{gene}%"
             elif is_j_gene:
                 if is_light_chain:
                     pattern_result = build_light_chain_pattern(gene, False, True)
