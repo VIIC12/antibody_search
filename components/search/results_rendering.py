@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
 from textwrap import dedent
 import pandas as pd
+import time
 
 from components.search.results_display import (
     format_results_dataframe,
@@ -20,7 +21,10 @@ from components.search.download_utils import (
     prepare_stats_download,
     prepare_frequency_download,
     prepare_full_results_download_background,
-    prepare_fasta_download_background
+    prepare_fasta_download_background,
+    record_download_throughput,
+    estimate_download_seconds,
+    format_eta_seconds,
 )
 from components.search.search_execution import execute_search
 from components.search.results_plotting import (
@@ -596,7 +600,13 @@ def render_full_download_button(
         # Full Results download button
         with col_full:
             if status == "preparing":
-                set_progress = create_preparing_progress("Writing results table...")
+                eta = estimate_download_seconds("full_results", statistics.get("total_hits", 0))
+                set_progress = create_preparing_progress(
+                    f"Writing results table... (est. {format_eta_seconds(eta)})"
+                    if eta
+                    else "Writing results table..."
+                )
+                t0 = time.time()
                 result = prepare_full_results_download_background(
                     loadable_databases,
                     search_params_with_metadata,
@@ -604,10 +614,17 @@ def render_full_download_button(
                     chain_label,
                     progress_callback=set_progress,
                 )
+                elapsed = time.time() - t0
                 st.session_state[full_result_key] = result
                 st.session_state[full_status_key] = "completed" if result.get("success") else "failed"
                 if result.get("success"):
                     st.toast("Full results table is ready for download!", icon="⬇")
+                    record_download_throughput(
+                        "full_results",
+                        elapsed,
+                        statistics.get("total_hits", 0),
+                        result.get("file_size_bytes", 0),
+                    )
                 st.rerun()
             elif downloads_locked:
                 st.button(
@@ -619,11 +636,15 @@ def render_full_download_button(
                     icon="⬇"
                 )
             elif status == "idle":
+                eta_idle = estimate_download_seconds("full_results", statistics.get("total_hits", 0))
+                help_text = "Full results table and search parameters."
+                if eta_idle is not None:
+                    help_text += f" Estimated time: {format_eta_seconds(eta_idle)}."
                 if st.button(
                     "Download Results Table",
                     width='stretch',
                     key=f"{download_key}_button",
-                    help="Full results table and search parameters.",
+                    help=help_text,
                     icon="⬇"
                 ):
                     st.session_state[full_status_key] = "preparing"
@@ -689,7 +710,13 @@ def render_full_download_button(
         # FASTA download button (right column)
         with col_new:
             if new_status == "preparing":
-                set_progress = create_preparing_progress("Writing FASTA sequences...")
+                eta = estimate_download_seconds("fasta", statistics.get("total_hits", 0))
+                set_progress = create_preparing_progress(
+                    f"Writing FASTA sequences... (est. {format_eta_seconds(eta)})"
+                    if eta
+                    else "Writing FASTA sequences..."
+                )
+                t0 = time.time()
                 result = prepare_fasta_download_background(
                     loadable_databases,
                     search_params_with_metadata,
@@ -697,10 +724,17 @@ def render_full_download_button(
                     chain_label,
                     progress_callback=set_progress,
                 )
+                elapsed = time.time() - t0
                 st.session_state[new_result_key] = result
                 st.session_state[new_status_key] = "completed" if result.get("success") else "failed"
                 if result.get("success"):
                     st.toast("FASTA download is ready!", icon="⬇")
+                    record_download_throughput(
+                        "fasta",
+                        elapsed,
+                        statistics.get("total_hits", 0),
+                        result.get("file_size_bytes", 0),
+                    )
                 st.rerun()
             elif downloads_locked:
                 st.button(
@@ -712,12 +746,15 @@ def render_full_download_button(
                     icon="⬇"
                 )
             elif new_status == "idle":
-                if st.button(
-                    "Download FASTA",
+                eta_idle = estimate_download_seconds("fasta", statistics.get("total_hits", 0))
+                button_kwargs = dict(
                     width='stretch',
                     key=f"{new_download_key}_button",
-                    icon="⬇"
-                ):
+                    icon="⬇",
+                )
+                if eta_idle is not None:
+                    button_kwargs["help"] = f"Estimated time: {format_eta_seconds(eta_idle)}."
+                if st.button("Download FASTA", **button_kwargs):
                     st.session_state[new_status_key] = "preparing"
                     st.rerun()
             
