@@ -1,4 +1,5 @@
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -10,11 +11,33 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.benchmarks/
 .coverage
+coverage.xml
+htmlcov/
 .DS_Store
 *.ipynb_checkpoints
+
+# Secrets: never let these end up baked into an image layer.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Bind-mounted at runtime; excluding keeps images small and avoids
+# baking large or host-local data into a layer.
+data/
+downloads/
+logs/
+
 .git/
 .gitignore
+.devcontainer/
+.vscode/
+.idea/
 README.md
 docs/
 tests/

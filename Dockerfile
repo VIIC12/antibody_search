@@ -1,5 +1,5 @@
-# ABDB V3.0 - Docker Configuration
-FROM python:3.11-slim
+# ABHunter - Docker Configuration
+FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app
@@ -14,14 +14,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-server.txt .
+RUN pip install --no-cache-dir -r requirements-server.txt
 
 # Copy application code
 COPY . .
 
-# Create data directory
-RUN mkdir -p data/parquet
+# Create mount points for the volumes docker-compose.yml binds at runtime
+RUN mkdir -p /app/data/abhunter /app/downloads /app/logs
 
 # Expose Streamlit port
 EXPOSE 8501
