@@ -601,18 +601,20 @@ def render_full_download_button(
         with col_full:
             if status == "preparing":
                 eta = estimate_download_seconds("full_results", statistics.get("total_hits", 0))
-                set_progress = create_preparing_progress(
-                    f"Writing results table... (est. {format_eta_seconds(eta)})"
-                    if eta
-                    else "Writing results table..."
-                )
+                eta_suffix = f" (est. {format_eta_seconds(eta)})" if eta else ""
+                set_progress = create_preparing_progress(f"Writing results table...{eta_suffix}")
+                # Each internal stage (e.g. "Compressing archive...") reports through this
+                # same callback; without re-appending eta_suffix here, the ETA shown above
+                # would be overwritten by the very next progress update.
+                def _progress_with_eta(message: str, _set=set_progress, _suffix=eta_suffix) -> None:
+                    _set(f"{message}{_suffix}")
                 t0 = time.time()
                 result = prepare_full_results_download_background(
                     loadable_databases,
                     search_params_with_metadata,
                     is_paired,
                     chain_label,
-                    progress_callback=set_progress,
+                    progress_callback=_progress_with_eta,
                 )
                 elapsed = time.time() - t0
                 st.session_state[full_result_key] = result
@@ -711,18 +713,20 @@ def render_full_download_button(
         with col_new:
             if new_status == "preparing":
                 eta = estimate_download_seconds("fasta", statistics.get("total_hits", 0))
-                set_progress = create_preparing_progress(
-                    f"Writing FASTA sequences... (est. {format_eta_seconds(eta)})"
-                    if eta
-                    else "Writing FASTA sequences..."
-                )
+                eta_suffix = f" (est. {format_eta_seconds(eta)})" if eta else ""
+                set_progress = create_preparing_progress(f"Writing FASTA sequences...{eta_suffix}")
+                # Re-append eta_suffix on every stage update so it survives the internal
+                # "Compressing archive..." / "Finalizing..." progress calls, which otherwise
+                # overwrite the initial ETA-bearing label within milliseconds.
+                def _progress_with_eta(message: str, _set=set_progress, _suffix=eta_suffix) -> None:
+                    _set(f"{message}{_suffix}")
                 t0 = time.time()
                 result = prepare_fasta_download_background(
                     loadable_databases,
                     search_params_with_metadata,
                     is_paired,
                     chain_label,
-                    progress_callback=set_progress,
+                    progress_callback=_progress_with_eta,
                 )
                 elapsed = time.time() - t0
                 st.session_state[new_result_key] = result
