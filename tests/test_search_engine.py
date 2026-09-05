@@ -27,6 +27,41 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from search_engine import AntibodySearchEngine
 
 
+def _write_chain_data(data_dir: Path, chain: str, filename: str, mock_data: pd.DataFrame) -> None:
+    """Write mock sequence data plus a matching metadata.parquet.
+
+    Two production requirements this mirrors (src/search_engine.py
+    AntibodySearchEngine._register_data / scripts/convert_to_parquet.py),
+    both silent-empty-result traps if skipped:
+
+    1. Every registered directory needs a metadata.parquet (a
+       FileNotFoundError otherwise); self.total_sequences is the SUM of its
+       total_sequences column, independent of the sequence data itself.
+    2. The sequence file must live under a `Heavy/`, `Light/`, or `Paired/`
+       directory, and metadata's file_path must equal "<Chain>/<filename>":
+       the antibodies/metadata join extracts that segment from the parquet
+       file's own path via regexp_replace, and _search_unpaired filters on
+       `chain = '<chain_type>'` whenever a 'chain' column is present -- a
+       missing subdirectory or mismatched chain value makes that join (and
+       so every 'chain' value) NULL, which zeroes out every search result
+       without raising.
+    """
+    chain_dir = data_dir / chain
+    chain_dir.mkdir(parents=True, exist_ok=True)
+    mock_data.to_parquet(chain_dir / filename, index=False)
+
+    metadata = pd.DataFrame({
+        'filename': [filename],
+        'file_path': [f"{chain}/{filename}"],
+        'subject': [mock_data['subject'].iloc[0]],
+        'isotype': [mock_data['isotype'].iloc[0]],
+        'chain': [chain],
+        'rows': [len(mock_data)],
+        'total_sequences': [len(mock_data)],
+    })
+    metadata.to_parquet(data_dir / "metadata.parquet", index=False)
+
+
 class TestAntibodySearchEngine:
     """Test suite for AntibodySearchEngine class."""
     
@@ -59,12 +94,10 @@ class TestAntibodySearchEngine:
             'sequence_id': ['seq1', 'seq2', 'seq3', 'seq4', 'seq5']
         })
         
-        # Save as parquet
-        parquet_path = data_dir / "test_data.parquet"
-        mock_data.to_parquet(parquet_path, index=False)
-        
+        _write_chain_data(data_dir, "Heavy", "test_data.parquet", mock_data)
+
         return str(data_dir), mock_data
-    
+
     @pytest.fixture
     def mock_light_unpaired_data(self, temp_dir):
         """Create mock unpaired light-chain antibody data."""
@@ -86,9 +119,8 @@ class TestAntibodySearchEngine:
             'sequence_id': ['seqL1', 'seqK1', 'seqL2', 'seqK2']
         })
         
-        parquet_path = data_dir / "test_light_data.parquet"
-        mock_data.to_parquet(parquet_path, index=False)
-        
+        _write_chain_data(data_dir, "Light", "test_light_data.parquet", mock_data)
+
         return str(data_dir), mock_data
     
     @pytest.fixture
@@ -123,11 +155,10 @@ class TestAntibodySearchEngine:
         })
         
         # Save as parquet
-        parquet_path = data_dir / "test_paired_data.parquet"
-        mock_data.to_parquet(parquet_path, index=False)
-        
+        _write_chain_data(data_dir, "Paired", "test_paired_data.parquet", mock_data)
+
         return str(data_dir), mock_data
-    
+
     @pytest.fixture
     def mock_metadata(self, temp_dir):
         """Create mock metadata file."""
@@ -136,9 +167,10 @@ class TestAntibodySearchEngine:
         
         metadata = pd.DataFrame({
             'filename': ['test_data.parquet', 'test_paired_data.parquet'],
-            'file_path': ['parquet/test_data.parquet', 'parquet/test_paired_data.parquet'],
+            'file_path': ['Heavy/test_data.parquet', 'Paired/test_paired_data.parquet'],
             'subject': ['Subject1', 'Subject2'],
             'isotype': ['IgG', 'IgM'],
+            'chain': ['Heavy', 'Paired'],
             'rows': [5, 4],
             'total_sequences': [5, 4]
         })
@@ -281,20 +313,21 @@ class TestAntibodySearchEngine:
         data_dir, mock_data = mock_unpaired_data
         engine = AntibodySearchEngine(data_dir=data_dir)
         
-        # Test CDR1 length
-        results_df, stats_df, stats = engine.search(chain_mode="heavy", heavy_cdr1_length=5)
+        # Test CDR1 length (search() takes cdr length as str, e.g. "5", "2-5", ">2";
+        # see AntibodySearchEngine._parse_cdr_length_condition)
+        results_df, stats_df, stats = engine.search(chain_mode="heavy", heavy_cdr1_length="5")
         assert stats['total_hits'] == 5  # All sequences have CDR1 length 5
-        
+
         # Test CDR2 length
-        results_df, stats_df, stats = engine.search(chain_mode="heavy", heavy_cdr2_length=5)
+        results_df, stats_df, stats = engine.search(chain_mode="heavy", heavy_cdr2_length="5")
         assert stats['total_hits'] == 5  # All sequences have CDR2 length 5
-        
+
         # Test CDR3 length
-        results_df, stats_df, stats = engine.search(chain_mode="heavy", heavy_cdr3_length=6)
+        results_df, stats_df, stats = engine.search(chain_mode="heavy", heavy_cdr3_length="6")
         assert stats['total_hits'] == 5  # All sequences have CDR3 length 6
-        
+
         # Test non-matching length
-        results_df, stats_df, stats = engine.search(chain_mode="heavy", heavy_cdr1_length=10)
+        results_df, stats_df, stats = engine.search(chain_mode="heavy", heavy_cdr1_length="10")
         assert stats['total_hits'] == 0  # No sequences have CDR1 length 10
         
         engine.close()
@@ -332,7 +365,7 @@ class TestAntibodySearchEngine:
         engine = AntibodySearchEngine(data_dir=data_dir)
         
         # Test V gene + CDR length combination
-        results_df, stats_df, stats = engine.search(chain_mode="heavy", heavy_v="3-23", heavy_cdr3_length=6)
+        results_df, stats_df, stats = engine.search(chain_mode="heavy", heavy_v="3-23", heavy_cdr3_length="6")
         assert stats['total_hits'] == 2  # Two sequences match both criteria
         
         # Test V gene + D gene + J gene combination
@@ -350,9 +383,9 @@ class TestAntibodySearchEngine:
             heavy_v="3-23",
             heavy_d="3-10",
             heavy_j="J4",
-            heavy_cdr1_length=5,
-            heavy_cdr2_length=5,
-            heavy_cdr3_length=6,
+            heavy_cdr1_length="5",
+            heavy_cdr2_length="5",
+            heavy_cdr3_length="6",
             heavy_cdr1_motif="ARSSS",
             heavy_cdr2_motif="ISSGG",
             heavy_cdr3_motif="CARGGY"
@@ -379,7 +412,7 @@ class TestAntibodySearchEngine:
         assert stats['total_hits'] == 3  # Three sequences with IGHJ4
         
         # Test heavy CDR lengths
-        results_df, stats_df, stats = engine.search(heavy_cdr1_length=5)
+        results_df, stats_df, stats = engine.search(heavy_cdr1_length="5")
         assert stats['total_hits'] == 4  # All sequences have CDR1 length 5
         
         # Test heavy CDR motifs
@@ -402,7 +435,7 @@ class TestAntibodySearchEngine:
         assert stats['total_hits'] == 2  # Two sequences with IGKJ1
         
         # Test light CDR lengths
-        results_df, stats_df, stats = engine.search(light_cdr1_length=5)
+        results_df, stats_df, stats = engine.search(light_cdr1_length="5")
         assert stats['total_hits'] == 4  # All sequences have CDR1 length 5
         
         # Test light CDR motifs
@@ -421,9 +454,9 @@ class TestAntibodySearchEngine:
         assert stats['total_hits'] == 1  # One sequence matches both heavy and light V genes
         
         # Test heavy + light CDR lengths
-        results_df, stats_df, stats = engine.search(heavy_cdr3_length=6, light_cdr3_length=5)
+        results_df, stats_df, stats = engine.search(heavy_cdr3_length="6", light_cdr3_length="5")
         assert stats['total_hits'] == 4  # All sequences match both CDR3 lengths
-        
+
         # Test complex combination
         results_df, stats_df, stats = engine.search(
             heavy_v="3-23",
@@ -431,8 +464,8 @@ class TestAntibodySearchEngine:
             heavy_j="J4",
             light_v="1-39",
             light_j="J1",
-            heavy_cdr3_length=6,
-            light_cdr3_length=5
+            heavy_cdr3_length="6",
+            light_cdr3_length="5"
         )
         assert stats['total_hits'] == 1  # One sequence matches all criteria
         
@@ -505,11 +538,14 @@ class TestAntibodySearchEngine:
         
         # Test metadata query
         results_df, stats_df, stats = engine.search(chain_mode="heavy", heavy_v="3-23")
-        
-        # Verify statistics include percentage calculations
-        if not results_df.empty:
-            assert 'percentage' in results_df.columns or 'per_million' in results_df.columns
-        
+
+        # Percentage/per_million are per-subject stats in stats_df, not in
+        # results_df (the original assertion checked the wrong dataframe and
+        # so passed vacuously regardless of whether the columns existed).
+        assert not stats_df.empty
+        assert 'percentage' in stats_df.columns
+        assert 'per_million' in stats_df.columns
+
         engine.close()
     
     def test_edge_cases_and_error_handling(self, temp_dir):
