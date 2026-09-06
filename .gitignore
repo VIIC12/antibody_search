@@ -17,6 +17,7 @@ __pycache__/
 .Python
 venv/
 .venv/
+.venv-prod/
 build/
 dist/
 env/
