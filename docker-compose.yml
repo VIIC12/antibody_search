@@ -42,7 +42,51 @@ services:
     networks:
       - antibody-search-network
   # Development service with hot reloading, and mounted volume for development
-
+  abhunter-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: abhunter-app-dev
+    env_file:
+      - .env
+    volumes:
+      # Mount entire app directory for development (overwrites copied files)
+      - .:/app
+      # Mount data directory for persistence
+      - ${ABHUNTER_DB_PATH}:/app/data/abhunter
+      # Mount logs directory if needed
+      - ./logs:/app/logs
+      # Mount download directory for large file storage
+      - ${ABHUNTER_DOWNLOAD_DIR:-./downloads}:/app/downloads
+    environment:
+      - PYTHONPATH=/app
+      - STREAMLIT_SERVER_PORT=8502
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_RUN_ON_SAVE=true
+      - STREAMLIT_SERVER_FILE_WATCHER_TYPE=poll
+      - STREAMLIT_SERVER_FILE_WATCHER_POLL_INTERVAL=1
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+      - ABHUNTER_DB_PATH=/app/data/abhunter
+      - ABHUNTER_DOWNLOAD_DIR=/app/downloads
+    command: ["streamlit", "run", "app.py"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service,environment"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8502/_stcore/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    ports:
+      - "127.0.0.1:8502:8502"
+    networks:
+      - antibody-search-network
 
   # nginx service for serving large file downloads
   nginx-downloads:
