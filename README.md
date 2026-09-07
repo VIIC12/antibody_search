@@ -114,7 +114,7 @@ If you use this repository code or data in your work, please cite the relavant w
 ```bibtex
 @unpublished{Schlegel2026,
     title = {"Real-Time Exploration of the Billion-Scale Human Repertoire for Precursor Frequency Analysis and Rational Antibody Design},
-    author = {Tom U. Schlegel and Jannis de Riz and Jakob R. Riccabona and Franz Dietzmeyer and Jens Meiler and Clara T. Schoeder and Torben Schiffner},
+    author = {Tom U. Schlegel and Jannis de Riz and Jakob R. Riccabona and Franz Dietzmeyer and and Julia Koehler and Jens Meiler and Clara T. Schoeder and Torben Schiffner},
     year = {2026},
    doi = {to appear},
    journal = {to appear},
