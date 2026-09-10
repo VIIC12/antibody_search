@@ -18,7 +18,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -r requirements-server.txt
 ```
 
 #### Try the app with the minimal example dataset (no OAS download)
