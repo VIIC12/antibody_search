@@ -8,7 +8,7 @@ In this work, we developed ABHunter, a framework designed for the exploration an
 ```bash
 # Only once for installation:
 # Clone the repository
-git clone --branch publication git@github.com:VIIC12/antibody_search.git
+git clone https://github.com/VIIC12/antibody_search.git --branch publication
 cd antibody_search
 
 # Create virtual environment
