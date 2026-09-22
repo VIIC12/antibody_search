@@ -89,19 +89,19 @@ def get_column_config(is_paired: bool) -> Dict[str, Any]:
             # V gene inferred partners
             "inferred_light_v_partners": st.column_config.TextColumn("Inferred Light V Families", width="large"),
             "inferred_light_v_top_family": st.column_config.TextColumn("Top Light V Family", width="medium"),
-            "inferred_light_v_top_percent": st.column_config.NumberColumn("Top Light V %", width="small", format="%.1f%%"),
+            "inferred_light_v_top_log2_R": st.column_config.NumberColumn("Top Light V log₂R", width="small", format="%.2f"),
             # J gene inferred partners
             "inferred_light_j_partners": st.column_config.TextColumn("Inferred Light J Families", width="large"),
             "inferred_light_j_top_family": st.column_config.TextColumn("Top Light J Family", width="medium"),
-            "inferred_light_j_top_percent": st.column_config.NumberColumn("Top Light J %", width="small", format="%.1f%%"),
+            "inferred_light_j_top_log2_R": st.column_config.NumberColumn("Top Light J log₂R", width="small", format="%.2f"),
             # Heavy chain inferred partners
             "inferred_heavy_v_partners": st.column_config.TextColumn("Inferred Heavy V Families", width="large"),
             "inferred_heavy_v_top_family": st.column_config.TextColumn("Top Heavy V Family", width="medium"),
-            "inferred_heavy_v_top_percent": st.column_config.NumberColumn("Top Heavy V %", width="small", format="%.1f%%"),
+            "inferred_heavy_v_top_log2_R": st.column_config.NumberColumn("Top Heavy V log₂R", width="small", format="%.2f"),
             # J gene inferred partners for heavy chain
             "inferred_heavy_j_partners": st.column_config.TextColumn("Inferred Heavy J Families", width="large"),
             "inferred_heavy_j_top_family": st.column_config.TextColumn("Top Heavy J Family", width="medium"),
-            "inferred_heavy_j_top_percent": st.column_config.NumberColumn("Top Heavy J %", width="small", format="%.1f%%"),
+            "inferred_heavy_j_top_log2_R": st.column_config.NumberColumn("Top Heavy J log₂R", width="small", format="%.2f"),
         }
 
 

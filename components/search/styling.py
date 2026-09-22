@@ -17,6 +17,20 @@ LIGHT_COLORSCALE = [
     (1.0, LIGHT_COLOR),
 ]
 
+# Inferred pairing log2(R): diverging around 0
+# Heavy search → predicted light: red (>0) → white (0) → blue (<0)
+INFERRED_LIGHT_COLORSCALE = [
+    (0.0, HEAVY_COLOR),
+    (0.5, "#FFFFFF"),
+    (1.0, LIGHT_COLOR),
+]
+# Light search → predicted heavy: blue (>0) → white (0) → red (<0)
+INFERRED_HEAVY_COLORSCALE = [
+    (0.0, LIGHT_COLOR),
+    (0.5, "#FFFFFF"),
+    (1.0, HEAVY_COLOR),
+]
+
 HEAVY_LINE = "rgba(76, 96, 133, 0.5)"
 HEAVY_FILL = "rgba(76, 96, 133, 0.2)"
 LIGHT_LINE = "rgba(203, 65, 84, 0.5)"

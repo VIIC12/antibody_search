@@ -20,6 +20,8 @@ from components.search.styling import (
     HEAVY_COLORSCALE,
     HEAVY_FILL,
     HEAVY_LINE,
+    INFERRED_HEAVY_COLORSCALE,
+    INFERRED_LIGHT_COLORSCALE,
     LIGHT_COLOR,
     LIGHT_COLORSCALE,
     LIGHT_FILL,
@@ -1142,7 +1144,7 @@ def _create_inferred_heatmap(
         max_partners: Maximum number of partner families
     
     Returns:
-        Tuple of (pivot_df, row_label, col_label, title, caption) or None if no data
+        Tuple of (pivot_df, text_df, row_label, col_label, title, caption) or None if no data
     """
     chain_type = (chain_type or "Heavy").capitalize()
     gene_type = gene_type.upper()
@@ -1219,13 +1221,17 @@ def _create_inferred_heatmap(
         distribution = engine.get_inferred_distribution(chain_type, source_family, gene_type=yaxis_gene_type, top_n=max_partners * 3)
         if not distribution:
             continue
-        for partner_family, probability in distribution:
-            if probability is None:
+        for partner_family, log2_r in distribution:
+            if log2_r is None:
                 continue
+            status = engine.get_inferred_pair_status(
+                chain_type, source_family, partner_family, gene_type=yaxis_gene_type
+            )
             records.append({
                 'source_family': source_family,
                 'partner_family': partner_family,
-                'probability': float(probability)
+                'log2_R': float(log2_r),
+                'significant': status in ('Enriched', 'Depleted'),
             })
 
     if not records:
@@ -1233,7 +1239,7 @@ def _create_inferred_heatmap(
 
     matrix_df = pd.DataFrame(records)
     partner_scores = (
-        matrix_df.groupby('partner_family')['probability']
+        matrix_df.groupby('partner_family')['log2_R']
         .max()
         .sort_values(ascending=False)
         .head(max_partners)
@@ -1245,58 +1251,110 @@ def _create_inferred_heatmap(
     pivot_df = matrix_df.pivot_table(
         index='source_family',
         columns='partner_family',
-        values='probability',
+        values='log2_R',
         aggfunc='max',
         fill_value=0.0
     )
+    text_df = matrix_df.pivot_table(
+        index='source_family',
+        columns='partner_family',
+        values='significant',
+        aggfunc='max',
+        fill_value=False,
+    )
     
-    # Order x-axis (columns) by probability for the top gene (most frequent, first in top_sources)
+    # Order x-axis (columns) by enrichment for the top gene (most frequent, first in top_sources)
     if top_sources and top_sources[0] in pivot_df.index:
         top_gene = top_sources[0]
-        # Get probabilities for the top gene, order by highest to lowest
-        top_gene_probs = pivot_df.loc[top_gene].sort_values(ascending=False)
+        # Get log2_R for the top gene, order by highest to lowest
+        top_gene_scores = pivot_df.loc[top_gene].sort_values(ascending=False)
         # Use this order for columns (x-axis)
-        column_order = top_gene_probs.index.tolist()
+        column_order = top_gene_scores.index.tolist()
     else:
         # Fallback to previous ordering
         column_order = partner_scores.index.tolist()
     
     pivot_df = pivot_df.reindex(index=top_sources, columns=column_order, fill_value=0.0)
+    text_df = (
+        text_df.reindex(index=top_sources, columns=column_order, fill_value=False)
+        .fillna(False)
+        .map(lambda significant: "*" if significant else "")
+    )
 
     if pivot_df.empty or not np.any(pivot_df.values):
         return None
 
     # Set labels based on chain type and gene type
+    # Scores are log2_R = log2(P_obs / P_rand), not pairing probabilities
+    log2_r_caption = "Values are log₂(R) = log₂(P_obs / P_rand); * = significant Enriched/Depleted."
     if chain_type == 'Heavy':
         if gene_type == 'V':
             row_label = "Heavy V Family"
-            col_label = "Predicted Light V Family"
-            title = "Predicted V<sub>L</sub> Families"
-            caption = "Based on heavy-to-light V pairing frequencies (`h_to_l`)."
+            col_label = "Predicted IG(K/L)V Family"
+            title = "Predicted IG(K/L)V Families"
+            caption = log2_r_caption
         else:  # J
             row_label = "Heavy J Family"
-            col_label = "Predicted Light J Family"
-            title = "Predicted J<sub>L</sub> Families"
-            caption = "Based on heavy-to-light J pairing frequencies (`h_to_l`)."
+            col_label = "Predicted IG(K/L)J Family"
+            title = "Predicted IG(K/L)J Families"
+            caption = log2_r_caption
     else:  # Light
         if gene_type == 'V':
             row_label = "Light V Family"
             col_label = "Predicted Heavy V Family"
             title = "Predicted V<sub>H</sub> Families"
-            caption = "Based on light-to-heavy V pairing frequencies (`l_to_h`)."
+            caption = log2_r_caption
         else:  # J
             row_label = "Light J Family"
             col_label = "Predicted Heavy J Family"
             title = "Predicted J<sub>H</sub> Families"
-            caption = "Based on light-to-heavy J pairing frequencies (`l_to_h`)."
+            caption = log2_r_caption
     
-    return (pivot_df, row_label, col_label, title, caption)
+    return (pivot_df, text_df, row_label, col_label, title, caption)
 
 
 def _apply_heatmap_axis_outline(fig: go.Figure) -> go.Figure:
     """Draw a black box outline around a heatmap (same as paired V/J pairing plots)."""
     fig.update_xaxes(showline=True, linewidth=1, linecolor="black", mirror=True)
     fig.update_yaxes(showline=True, linewidth=1, linecolor="black", mirror=True)
+    return fig
+
+
+def _apply_inferred_significance_markers(fig: go.Figure, text_df: pd.DataFrame) -> go.Figure:
+    """Overlay '*' on cells with significant Enriched/Depleted Status."""
+    fig.update_traces(
+        text=text_df.values,
+        texttemplate="%{text}",
+        textfont={"size": 33, "color": "black"},
+    )
+    return fig
+
+
+def _build_inferred_heatmap_figure(
+    pivot_df: pd.DataFrame,
+    text_df: pd.DataFrame,
+    row_label: str,
+    col_label: str,
+    title: str,
+    color_scale,
+) -> go.Figure:
+    """Build an inferred pairing heatmap with log2(R) colors and significance stars."""
+    fig = px.imshow(
+        pivot_df,
+        labels=dict(x=col_label, y=row_label, color="log₂(R)"),
+        color_continuous_scale=color_scale,
+        color_continuous_midpoint=0,
+        aspect="auto",
+    )
+    fig.update_layout(
+        title={"text": title, "x": 0.5, "xanchor": "center", "font": {"size": 16}},
+        margin=dict(l=60, r=40, t=60, b=60),
+        xaxis=dict(side="bottom"),
+        yaxis=dict(autorange="reversed"),
+        coloraxis_colorbar=dict(title="log₂(R)"),
+    )
+    _apply_inferred_significance_markers(fig, text_df)
+    _apply_heatmap_axis_outline(fig)
     return fig
 
 
@@ -1344,7 +1402,8 @@ def render_inferred_pairing_plots(
         "show_v": show_v,
         "show_j": show_j,
         "max_sources": max_sources,
-        "max_partners": max_partners
+        "max_partners": max_partners,
+        "inferred_heatmap_version": 2,  # log2_R + Status stars
     }
     cache_key_hash = abs(hash(json.dumps(cache_key_seed, sort_keys=True, default=str)))
     inferred_cache_key = f"inferred_heatmap_{cache_key_hash}"
@@ -1387,15 +1446,13 @@ def render_inferred_pairing_plots(
     heading_icon = ":material/genetics:" if chain_type == "Heavy" else "🧬"
     heading_chain = "Light" if chain_type == "Heavy" else "Heavy"
     
-    # Color scheme based on what we're inferring (not the chain type being searched)
-    # "Inferred Light" -> red (matching light chain plots)
-    # "Inferred Heavy" -> blue (matching heavy chain plots)
+    # Diverging log2(R) scale centered at 0
+    # Heavy search → predicted light: red (>0) → white (0) → blue (<0)
+    # Light search → predicted heavy: blue (>0) → white (0) → red (<0)
     if chain_type == 'Heavy':
-        # Inferring Light families — light-chain palette
-        color_scale = LIGHT_COLORSCALE
+        color_scale = INFERRED_LIGHT_COLORSCALE
     else:
-        # Inferring Heavy families — heavy-chain palette
-        color_scale = HEAVY_COLORSCALE
+        color_scale = INFERRED_HEAVY_COLORSCALE
     
     # Render plots in a row matching the gene plot widths
     # For heavy: V plot in first column (same width as IGHV), J plot in third column (same width as IGHJ)
@@ -1407,40 +1464,18 @@ def render_inferred_pairing_plots(
         
         cols = st.columns(num_columns)
         
-        for gene_type, (pivot_df, row_label, col_label, title, caption) in plots_to_render:
+        for gene_type, (pivot_df, text_df, row_label, col_label, title, caption) in plots_to_render:
             if gene_type == 'V':
                 with cols[0]:  # Match IGHV plot width
-                    fig = px.imshow(
-                        pivot_df,
-                        labels=dict(x=col_label, y=row_label, color="Pair Probability (%)"),
-                        color_continuous_scale=color_scale,
-                        aspect="auto"
+                    fig = _build_inferred_heatmap_figure(
+                        pivot_df, text_df, row_label, col_label, title, color_scale
                     )
-                    fig.update_layout(
-                        title={"text": title, "x": 0.5, "xanchor": "center", "font": {"size": 16}},
-                        margin=dict(l=60, r=40, t=60, b=60),
-                        xaxis=dict(side="bottom"),
-                        yaxis=dict(autorange="reversed"),
-                        coloraxis_colorbar=dict(title="Probability (%)")
-                    )
-                    _apply_heatmap_axis_outline(fig)
                     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG, key=f"inferred_{chain_type.lower()}_v_plot")
             elif gene_type == 'J':
                 with cols[2]:  # Match IGHJ plot width
-                    fig = px.imshow(
-                        pivot_df,
-                        labels=dict(x=col_label, y=row_label, color="Pair Probability (%)"),
-                        color_continuous_scale=color_scale,
-                        aspect="auto"
+                    fig = _build_inferred_heatmap_figure(
+                        pivot_df, text_df, row_label, col_label, title, color_scale
                     )
-                    fig.update_layout(
-                        title={"text": title, "x": 0.5, "xanchor": "center", "font": {"size": 16}},
-                        margin=dict(l=60, r=40, t=60, b=60),
-                        xaxis=dict(side="bottom"),
-                        yaxis=dict(autorange="reversed"),
-                        coloraxis_colorbar=dict(title="Probability (%)")
-                    )
-                    _apply_heatmap_axis_outline(fig)
                     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG, key=f"inferred_{chain_type.lower()}_j_plot")
     else:
         # Light chain: V, J gene plots (2 columns)
@@ -1449,44 +1484,29 @@ def render_inferred_pairing_plots(
 
         cols = st.columns(num_columns)
         
-        for i, (gene_type, (pivot_df, row_label, col_label, title, caption)) in enumerate(plots_to_render):
+        for i, (gene_type, (pivot_df, text_df, row_label, col_label, title, caption)) in enumerate(plots_to_render):
             with cols[i]:  # Match V and J plot widths
-                fig = px.imshow(
-                    pivot_df,
-                    labels=dict(x=col_label, y=row_label, color="Pair Probability (%)"),
-                    color_continuous_scale=color_scale,
-                    aspect="auto"
+                fig = _build_inferred_heatmap_figure(
+                    pivot_df, text_df, row_label, col_label, title, color_scale
                 )
-                fig.update_layout(
-                    title={"text": title, "x": 0.5, "xanchor": "center", "font": {"size": 16}},
-                    margin=dict(l=60, r=40, t=60, b=60),
-                    xaxis=dict(side="bottom"),
-                    yaxis=dict(autorange="reversed"),
-                    coloraxis_colorbar=dict(title="Probability (%)")
-                )
-                _apply_heatmap_axis_outline(fig)
                 st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG, key=f"inferred_light_{gene_type.lower()}_plot_{i}")
 
     # Add to collector if provided
     if collector is not None:
-        for gene_type, (pivot_df, row_label, col_label, title, caption) in plots_to_render:
+        for gene_type, (pivot_df, text_df, row_label, col_label, title, caption) in plots_to_render:
             heatmap_export = pivot_df.copy()
             heatmap_export.index.name = row_label
             heatmap_export.columns.name = col_label
-            fig = px.imshow(
-                pivot_df,
-                labels=dict(x=col_label, y=row_label, color="Pair Probability (%)"),
-                color_continuous_scale=color_scale,
-                aspect="auto"
+            fig = _build_inferred_heatmap_figure(
+                pivot_df, text_df, row_label, col_label, title, color_scale
             )
-            _apply_heatmap_axis_outline(fig)
             collector.append((
                 f"inferred_{heading_chain.lower()}_{gene_type.lower()}_heatmap",
                 prepare_export_figure(fig),
                 heatmap_export.reset_index().melt(
                     id_vars=[row_label],
                     var_name=col_label,
-                    value_name="probability"
+                    value_name="log2_R"
                 )
             ))
 

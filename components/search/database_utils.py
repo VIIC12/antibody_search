@@ -187,6 +187,7 @@ def get_database_structure() -> dict:
     
     # Check for ABHUNTER_DB_PATH environment variable first
     # If not set, fall back to project_root / "data" for backward compatibility
+    project_root = Path(__file__).parent.parent.parent
     abhunter_db_path = os.getenv("ABHUNTER_DB_PATH")
     if abhunter_db_path:
         data_dir = Path(abhunter_db_path)
@@ -194,64 +195,61 @@ def get_database_structure() -> dict:
     else:
         # Use data directory relative to project root
         # This assumes the function is called from pages/search.py
-        project_root = Path(__file__).parent.parent.parent
         data_dir = project_root / "data"
         logger.debug(f"Using default data directory: {data_dir}")
     
     if not data_dir.exists():
         logger.warning(f"Data directory not found: {data_dir}")
-        return structure
-    
-    # Scan each main category
-    for category in ['Heavy', 'Light', 'Paired']:
-        category_dir = data_dir / category
-        if category_dir.exists():
-            # Find all subdirectories with metadata.parquet
-            for subdir in category_dir.iterdir():
-                if not subdir.is_dir():
-                    continue
+    else:
+        # Scan each main category
+        for category in ['Heavy', 'Light', 'Paired']:
+            category_dir = data_dir / category
+            if category_dir.exists():
+                # Find all subdirectories with metadata.parquet
+                for subdir in category_dir.iterdir():
+                    if not subdir.is_dir():
+                        continue
 
-                metadata_file = subdir / "metadata.parquet"
+                    metadata_file = subdir / "metadata.parquet"
 
-                if metadata_file.exists():
-                    # Check if there are parquet files (not just metadata)
-                    parquet_files = [
-                        f for f in subdir.glob("*.parquet")
-                        if f.name != "metadata.parquet"
-                    ]
-                    if parquet_files:
-                        # Read sequence count from metadata file
-                        sequence_count = 0
-                        try:
-                            import pandas as pd
-                            metadata_df = pd.read_parquet(metadata_file)
-                            if 'total_sequences' in metadata_df.columns:
-                                sequence_count = metadata_df['total_sequences'].sum()
-                        except Exception as e:
-                            logger.warning(
-                                f"Could not read sequence count from {metadata_file}: {e}"
-                            )
+                    if metadata_file.exists():
+                        # Check if there are parquet files (not just metadata)
+                        parquet_files = [
+                            f for f in subdir.glob("*.parquet")
+                            if f.name != "metadata.parquet"
+                        ]
+                        if parquet_files:
+                            # Read sequence count from metadata file
                             sequence_count = 0
+                            try:
+                                import pandas as pd
+                                metadata_df = pd.read_parquet(metadata_file)
+                                if 'total_sequences' in metadata_df.columns:
+                                    sequence_count = metadata_df['total_sequences'].sum()
+                            except Exception as e:
+                                logger.warning(
+                                    f"Could not read sequence count from {metadata_file}: {e}"
+                                )
+                                sequence_count = 0
 
-                        structure[category][subdir.name] = {
-                            'path': str(subdir),
-                            'parquet_count': len(parquet_files),
-                            'sequence_count': sequence_count,
-                            'has_metadata': True,
-                            'is_inferred': False
-                        }
-                        logger.debug(
-                            f"Found {category}/{subdir.name}: "
-                            f"{len(parquet_files)} parquet files, "
-                            f"{sequence_count:,} sequences"
-                        )
+                            structure[category][subdir.name] = {
+                                'path': str(subdir),
+                                'parquet_count': len(parquet_files),
+                                'sequence_count': sequence_count,
+                                'has_metadata': True,
+                                'is_inferred': False
+                            }
+                            logger.debug(
+                                f"Found {category}/{subdir.name}: "
+                                f"{len(parquet_files)} parquet files, "
+                                f"{sequence_count:,} sequences"
+                            )
     
-    # Check for inferred directory directly in data/Inferred/
-    inferred_dir = data_dir / "Inferred"
+    # Check for inferred pairing CSVs in static/inferred/ (same static root as icons)
+    inferred_dir = project_root / "static" / "inferred"
     if inferred_dir.exists() and inferred_dir.is_dir():
-        # Check for inferred overlay files
-        inferred_overlay_file_vh_vl = inferred_dir / "adj_vh_vl_freq_table_for_search_wo_epsilon.parquet"
-        inferred_overlay_file_jh_jl = inferred_dir / "adj_jh_vj_freq_table_for_search_wo_epsilon.parquet"
+        inferred_overlay_file_vh_vl = inferred_dir / "vh_vl_R_values.csv"
+        inferred_overlay_file_jh_jl = inferred_dir / "jh_jl_R_values.csv"
         
         if inferred_overlay_file_vh_vl.exists() or inferred_overlay_file_jh_jl.exists():
             structure['Inferred'] = {

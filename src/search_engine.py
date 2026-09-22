@@ -89,6 +89,17 @@ def _get_verbose_default() -> bool:
     verbose_env = os.getenv('ABHUNTER_VERBOSE', '').lower().strip()
     return verbose_env == 'true'
 
+
+def _aggregate_inferred_status(series: pd.Series) -> str:
+    """Prefer Enriched/Depleted when aggregating duplicate Status values."""
+    vals = {str(v).strip() for v in series.dropna()}
+    if "Enriched" in vals:
+        return "Enriched"
+    if "Depleted" in vals:
+        return "Depleted"
+    return next(iter(vals), "NS")
+
+
 class AntibodySearchEngine:
     """High-performance antibody sequence search using DuckDB.
     Supports both paired and unpaired antibody data.
@@ -497,13 +508,13 @@ class AntibodySearchEngine:
 
     def load_inferred_pairs(self, overlay_directories: Optional[List[Union[str, Path]]]) -> None:
         """
-        Load inferred VH↔VL and JH↔JL pairing frequencies from overlay directories.
+        Load inferred VH↔VL and JH↔JL pairing log2_R values from overlay directories.
 
         Args:
             overlay_directories: List of directories containing inferred pairing files.
                                  Looks for:
-                                 - adj_vh_vl_freq_table_for_search_wo_epsilon.parquet (VH-VL)
-                                 - adj_jh_vj_freq_table_for_search_wo_epsilon.parquet (JH-JL)
+                                 - vh_vl_R_values.csv (VH-VL)
+                                 - jh_jl_R_values.csv (JH-JL)
         """
         if not overlay_directories:
             self._reset_inferred_lookup()
@@ -521,19 +532,19 @@ class AntibodySearchEngine:
                 overlay_path = Path(str(overlay_dir))
             
             # Try to load VH-VL file
-            v_freq_path = overlay_path / "adj_vh_vl_freq_table_for_search_wo_epsilon.parquet"
+            v_freq_path = overlay_path / "vh_vl_R_values.csv"
             if v_freq_path.exists():
                 try:
-                    df = pd.read_parquet(v_freq_path)
+                    df = pd.read_csv(v_freq_path)
                     v_tables.append(df)
                 except Exception as exc:
                     print(f"⚠️ Failed to load VH-VL inferred pairings from {v_freq_path}: {exc}")
             
             # Try to load JH-JL file
-            j_freq_path = overlay_path / "adj_jh_vj_freq_table_for_search_wo_epsilon.parquet"
+            j_freq_path = overlay_path / "jh_jl_R_values.csv"
             if j_freq_path.exists():
                 try:
-                    df = pd.read_parquet(j_freq_path)
+                    df = pd.read_csv(j_freq_path)
                     j_tables.append(df)
                 except Exception as exc:
                     print(f"⚠️ Failed to load JH-JL inferred pairings from {j_freq_path}: {exc}")
@@ -554,10 +565,15 @@ class AntibodySearchEngine:
                     v_combined['heavy_v_family'] = v_combined['heavy_v_family'].astype(str).str.upper().str.strip()
                     v_combined['light_v_family'] = v_combined['light_v_family'].astype(str).str.upper().str.strip()
 
-                    if 'h_to_l' in v_combined.columns:
-                        v_combined['h_to_l'] = pd.to_numeric(v_combined['h_to_l'], errors='coerce')
-                    if 'l_to_h' in v_combined.columns:
-                        v_combined['l_to_h'] = pd.to_numeric(v_combined['l_to_h'], errors='coerce')
+                    # log2_R = log2(P_obs / P_rand): Laplace-smoothed enrichment vs random pairing
+                    if 'log2_R' in v_combined.columns:
+                        v_combined['h_to_l'] = pd.to_numeric(v_combined['log2_R'], errors='coerce')
+                        v_combined['l_to_h'] = v_combined['h_to_l']
+                    else:
+                        if 'h_to_l' in v_combined.columns:
+                            v_combined['h_to_l'] = pd.to_numeric(v_combined['h_to_l'], errors='coerce')
+                        if 'l_to_h' in v_combined.columns:
+                            v_combined['l_to_h'] = pd.to_numeric(v_combined['l_to_h'], errors='coerce')
                     
                     drop_subset = [col for col in ('h_to_l', 'l_to_h') if col in v_combined.columns]
                     if drop_subset:
@@ -569,6 +585,9 @@ class AntibodySearchEngine:
                             agg_dict['h_to_l'] = 'mean'
                         if 'l_to_h' in v_combined.columns:
                             agg_dict['l_to_h'] = 'mean'
+                        if 'Status' in v_combined.columns:
+                            v_combined['Status'] = v_combined['Status'].astype(str).str.strip()
+                            agg_dict['Status'] = _aggregate_inferred_status
                         
                         if agg_dict:
                             v_aggregated = v_combined.groupby(['heavy_v_family', 'light_v_family'], as_index=False).agg(agg_dict)
@@ -576,9 +595,7 @@ class AntibodySearchEngine:
                             if 'h_to_l' not in v_aggregated.columns:
                                 v_aggregated['h_to_l'] = 0.0
                             if 'l_to_h' not in v_aggregated.columns:
-                                v_aggregated['l_to_h'] = v_aggregated.groupby('light_v_family')['h_to_l'].transform(
-                                    lambda values: (values / values.sum() * 100.0) if values.sum() else values * 0.0
-                                )
+                                v_aggregated['l_to_h'] = v_aggregated['h_to_l']
                             
                             v_aggregated['h_to_l'] = v_aggregated['h_to_l'].fillna(0.0)
                             v_aggregated['l_to_h'] = v_aggregated['l_to_h'].fillna(0.0)
@@ -600,10 +617,15 @@ class AntibodySearchEngine:
                     j_combined['heavy_j_family'] = j_combined['heavy_j_family'].astype(str).str.upper().str.strip()
                     j_combined['light_j_family'] = j_combined['light_j_family'].astype(str).str.upper().str.strip()
                     
-                    if 'h_to_l' in j_combined.columns:
-                        j_combined['h_to_l'] = pd.to_numeric(j_combined['h_to_l'], errors='coerce')
-                    if 'l_to_h' in j_combined.columns:
-                        j_combined['l_to_h'] = pd.to_numeric(j_combined['l_to_h'], errors='coerce')
+                    # log2_R = log2(P_obs / P_rand): Laplace-smoothed enrichment vs random pairing
+                    if 'log2_R' in j_combined.columns:
+                        j_combined['h_to_l'] = pd.to_numeric(j_combined['log2_R'], errors='coerce')
+                        j_combined['l_to_h'] = j_combined['h_to_l']
+                    else:
+                        if 'h_to_l' in j_combined.columns:
+                            j_combined['h_to_l'] = pd.to_numeric(j_combined['h_to_l'], errors='coerce')
+                        if 'l_to_h' in j_combined.columns:
+                            j_combined['l_to_h'] = pd.to_numeric(j_combined['l_to_h'], errors='coerce')
 
                     drop_subset = [col for col in ('h_to_l', 'l_to_h') if col in j_combined.columns]
                     if drop_subset:
@@ -615,6 +637,9 @@ class AntibodySearchEngine:
                             agg_dict['h_to_l'] = 'mean'
                         if 'l_to_h' in j_combined.columns:
                             agg_dict['l_to_h'] = 'mean'
+                        if 'Status' in j_combined.columns:
+                            j_combined['Status'] = j_combined['Status'].astype(str).str.strip()
+                            agg_dict['Status'] = _aggregate_inferred_status
 
                         if agg_dict:
                             j_aggregated = j_combined.groupby(['heavy_j_family', 'light_j_family'], as_index=False).agg(agg_dict)
@@ -622,9 +647,7 @@ class AntibodySearchEngine:
                             if 'h_to_l' not in j_aggregated.columns:
                                 j_aggregated['h_to_l'] = 0.0
                             if 'l_to_h' not in j_aggregated.columns:
-                                j_aggregated['l_to_h'] = j_aggregated.groupby('light_j_family')['h_to_l'].transform(
-                                    lambda values: (values / values.sum() * 100.0) if values.sum() else values * 0.0
-                                )
+                                j_aggregated['l_to_h'] = j_aggregated['h_to_l']
 
                             j_aggregated['h_to_l'] = j_aggregated['h_to_l'].fillna(0.0)
                             j_aggregated['l_to_h'] = j_aggregated['l_to_h'].fillna(0.0)
@@ -653,7 +676,6 @@ class AntibodySearchEngine:
                 v_lookup_heavy[heavy_family] = [
                     (partner, float(value))
                     for partner, value in zip(ordered['light_v_family'], ordered['h_to_l'])
-                    if float(value) > 0
                 ]
 
             for light_family, group in df.groupby('light_v_family'):
@@ -661,7 +683,6 @@ class AntibodySearchEngine:
                 v_lookup_light[light_family] = [
                     (partner, float(value))
                     for partner, value in zip(ordered['heavy_v_family'], ordered['l_to_h'])
-                    if float(value) > 0
                 ]
 
         # Process JH-JL pairings
@@ -677,7 +698,6 @@ class AntibodySearchEngine:
                 j_lookup_heavy[heavy_family] = [
                     (partner, float(value))
                     for partner, value in zip(ordered['light_j_family'], ordered['h_to_l'])
-                    if float(value) > 0
                 ]
 
             for light_family, group in df.groupby('light_j_family'):
@@ -685,7 +705,6 @@ class AntibodySearchEngine:
                 j_lookup_light[light_family] = [
                     (partner, float(value))
                     for partner, value in zip(ordered['heavy_j_family'], ordered['l_to_h'])
-                    if float(value) > 0
                 ]
 
         self._inferred_lookup = {
@@ -746,6 +765,9 @@ class AntibodySearchEngine:
         """
         Return the top inferred partner families for a given V or J gene.
 
+        Partner scores are log2_R = log2(P_obs / P_rand) enrichment values
+        (positive = enriched, negative = depleted vs random pairing).
+
         Args:
             chain_type: 'Heavy' if the gene belongs to a heavy chain search, else 'Light'.
             gene_name: V or J gene string from dataset or query.
@@ -795,6 +817,44 @@ class AntibodySearchEngine:
         """Return inferred partner distribution for a heavy or light V or J family."""
         return self._get_inferred_partners(chain_type, gene_or_family, gene_type=gene_type, top_n=top_n)
 
+    def get_inferred_pair_status(
+        self,
+        chain_type: str,
+        source_family: str,
+        partner_family: str,
+        gene_type: str = 'V',
+    ) -> Optional[str]:
+        """Return Status (Enriched/Depleted/NS) for a source→partner family pair."""
+        gene_type = (gene_type or 'V').upper()
+        if gene_type == 'V':
+            df = self.inferred_v_pairs_df
+            heavy_col, light_col = 'heavy_v_family', 'light_v_family'
+            extract = self._extract_v_family
+        elif gene_type == 'J':
+            df = self.inferred_j_pairs_df
+            heavy_col, light_col = 'heavy_j_family', 'light_j_family'
+            extract = self._extract_j_family
+        else:
+            return None
+
+        if df is None or df.empty or 'Status' not in df.columns:
+            return None
+
+        source = extract(source_family) or str(source_family).upper().strip()
+        partner = extract(partner_family) or str(partner_family).upper().strip()
+        if not source or not partner:
+            return None
+
+        if (chain_type or '').capitalize() == 'Heavy':
+            mask = (df[heavy_col] == source) & (df[light_col] == partner)
+        else:
+            mask = (df[light_col] == source) & (df[heavy_col] == partner)
+
+        matches = df.loc[mask, 'Status']
+        if matches.empty:
+            return None
+        return str(matches.iloc[0]).strip()
+
     def _attach_inferred_partners(
         self,
         df: pd.DataFrame,
@@ -813,46 +873,46 @@ class AntibodySearchEngine:
         if v_lookup and 'v_call' in df.columns:
             v_summaries: List[str] = []
             v_top_family: List[Optional[str]] = []
-            v_top_percent: List[Optional[float]] = []
+            v_top_log2_r: List[Optional[float]] = []
 
             for gene in df['v_call']:
                 partners = self._get_inferred_partners(chain_type, gene, gene_type='V', top_n=top_n)
                 if partners:
-                    v_summaries.append(", ".join(f"{partner} ({percent:.1f}%)" for partner, percent in partners))
+                    v_summaries.append(", ".join(f"{partner} (log₂R={score:.2f})" for partner, score in partners))
                     v_top_family.append(partners[0][0])
-                    v_top_percent.append(round(partners[0][1], 1))
+                    v_top_log2_r.append(round(partners[0][1], 4))
                 else:
                     v_summaries.append("")
                     v_top_family.append(None)
-                    v_top_percent.append(None)
+                    v_top_log2_r.append(None)
 
             if any(v_summaries):
                 df[f'{partner_prefix}_v_partners'] = v_summaries
                 df[f'{partner_prefix}_v_top_family'] = v_top_family
-                df[f'{partner_prefix}_v_top_percent'] = v_top_percent
+                df[f'{partner_prefix}_v_top_log2_R'] = v_top_log2_r
         
         # Attach J gene inferred partners
         j_lookup = self._inferred_lookup.get('J', {}).get(chain_type.capitalize(), {})
         if j_lookup and 'j_call' in df.columns:
             j_summaries: List[str] = []
             j_top_family: List[Optional[str]] = []
-            j_top_percent: List[Optional[float]] = []
+            j_top_log2_r: List[Optional[float]] = []
 
             for gene in df['j_call']:
                 partners = self._get_inferred_partners(chain_type, gene, gene_type='J', top_n=top_n)
                 if partners:
-                    j_summaries.append(", ".join(f"{partner} ({percent:.1f}%)" for partner, percent in partners))
+                    j_summaries.append(", ".join(f"{partner} (log₂R={score:.2f})" for partner, score in partners))
                     j_top_family.append(partners[0][0])
-                    j_top_percent.append(round(partners[0][1], 1))
+                    j_top_log2_r.append(round(partners[0][1], 4))
                 else:
                     j_summaries.append("")
                     j_top_family.append(None)
-                    j_top_percent.append(None)
+                    j_top_log2_r.append(None)
 
             if any(j_summaries):
                 df[f'{partner_prefix}_j_partners'] = j_summaries
                 df[f'{partner_prefix}_j_top_family'] = j_top_family
-                df[f'{partner_prefix}_j_top_percent'] = j_top_percent
+                df[f'{partner_prefix}_j_top_log2_R'] = j_top_log2_r
 
         return df
 
@@ -867,7 +927,7 @@ class AntibodySearchEngine:
             return None
         partner_label = "Light" if chain_type.lower() == 'heavy' else "Heavy"
         gene_label = gene_type.upper()  # 'V' or 'J'
-        summary = ", ".join(f"{partner} ({percent:.1f}%)" for partner, percent in partners)
+        summary = ", ".join(f"{partner} (log₂R={score:.2f})" for partner, score in partners)
         return f"{partner_label} {gene_label} families: {summary}"
     
     def _motif_to_search_regex(
