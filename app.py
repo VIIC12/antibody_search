@@ -44,7 +44,7 @@ def render_sidebar():
 
     ---
     ### :material/lab_profile: License & Credits
-    **If you use this software, please cite:** Schlegel et al. (2026). *Under submission.*
+    **If you use this software, please cite:** Schlegel et al. *Front. Immunol.* (2026). *accepted.*
     
     **Data Source Citations:**
     - [OAS Database](https://opig.stats.ox.ac.uk/webapps/oas/)
