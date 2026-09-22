@@ -583,7 +583,7 @@ def search_page_content():
                 type="secondary",
                 disabled=disable_form_controls,
                 width="content",
-                help="Empty all search criteria fields (database selection is kept).",
+                help="Empty all search criteria fields.",
             )
         with btn_example:
             example_submitted = st.form_submit_button(
@@ -592,8 +592,7 @@ def search_page_content():
                 disabled=disable_form_controls,
                 width="content",
                 help=(
-                    "Fill the search mask with an example for the currently selected "
-                    "Heavy, Light, or Paired database (database selection is kept)."
+                    "Fill the search mask with an example."
                 ),
             )
 
