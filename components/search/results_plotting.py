@@ -17,16 +17,17 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from components.search.styling import (
     HEAVY_COLOR,
-    HEAVY_COLORSCALE,
     HEAVY_FILL,
     HEAVY_LINE,
     INFERRED_HEAVY_COLORSCALE,
     INFERRED_LIGHT_COLORSCALE,
     LIGHT_COLOR,
-    LIGHT_COLORSCALE,
     LIGHT_FILL,
     LIGHT_LINE,
     get_chain_color,
+    get_chain_colorscale,
+    get_heavy_colorscale,
+    get_light_colorscale,
     icon_heading,
     ensure_spinner_css,
     render_preparing_button,
@@ -1619,7 +1620,7 @@ def render_paired_v_gene_heatmap(
     fig = px.imshow(
         heatmap_df,
         labels=dict(x="Light V Gene", y="Heavy V Gene", color="Pair Count"),
-        color_continuous_scale=HEAVY_COLORSCALE,
+        color_continuous_scale=get_heavy_colorscale(),
         aspect="auto"
     )
 
@@ -1715,7 +1716,7 @@ def render_paired_j_gene_heatmap(
     fig = px.imshow(
         heatmap_df,
         labels=dict(x="Light J Gene", y="Heavy J Gene", color="Pair Count"),
-        color_continuous_scale=LIGHT_COLORSCALE,
+        color_continuous_scale=get_light_colorscale(),
         aspect="auto"
     )
 
@@ -2318,7 +2319,12 @@ def plot_cdr_length_distribution(
         'xanchor': 'center'
     }
 
-    color_scale = LIGHT_COLORSCALE if chain_type == "light" else HEAVY_COLORSCALE
+    color_scale = get_chain_colorscale(chain_type)
+
+    # Anchor color scale at 0 so the top count always maps to the dark end.
+    # Without this, a single bar (e.g. one CDR length after a tight search) sits mid-scale.
+    max_count = float(length_counts.max()) if len(length_counts) else 1.0
+    color_range_max = max_count if max_count > 0 else 1.0
 
     # Create bar chart (not histogram) so each length is a separate bar
     fig = px.bar(
@@ -2327,7 +2333,8 @@ def plot_cdr_length_distribution(
         title=title,
         labels={'x': 'Length (amino acids)', 'y': 'Frequency'},
         color=length_counts.values,
-        color_continuous_scale=color_scale
+        color_continuous_scale=color_scale,
+        range_color=[0, color_range_max],
     )
     
     fig.update_layout(
@@ -2340,7 +2347,12 @@ def plot_cdr_length_distribution(
         yaxis_title="Frequency"
     )
     
-    fig.update_coloraxes(colorscale=color_scale, showscale=False)
+    fig.update_coloraxes(
+        colorscale=color_scale,
+        showscale=False,
+        cmin=0,
+        cmax=color_range_max,
+    )
     fig.update_traces(
         hovertemplate="Length: %{x}<br>Frequency: %{y}<extra></extra>"
     )
@@ -2396,7 +2408,7 @@ def plot_gene_distribution(
         'xanchor': 'center'
     }
 
-    color_scale = LIGHT_COLORSCALE if chain_type == "light" else HEAVY_COLORSCALE
+    color_scale = get_chain_colorscale(chain_type)
 
     # Anchor color scale at 0 so the top count always maps to the dark end.
     # Without this, a single bar (e.g. one family after grouping) sits mid-scale.
@@ -2650,6 +2662,7 @@ def build_donor_hits_figure(
         line_color = LIGHT_LINE
         fill_color = LIGHT_FILL
     else:
+        # Match CDR length / gene bar accent (colorscale max), not heading text color
         marker_color = HEAVY_COLOR
         line_color = HEAVY_LINE
         fill_color = HEAVY_FILL
