@@ -210,8 +210,8 @@ def render_subject_statistics(
 
     content_col, summary_col, plot_col = st.columns([4, 2, 1.5])
 
-    # Header + 6 rows; extra donor rows scroll. Matches Frequency Summary height.
-    donor_table_height = (6 + 1) * 35 + 3
+    # Header + 8 rows; extra donor rows scroll. Matches Frequency Summary height.
+    donor_table_height = (8 + 1) * 35 + 3
     # Plot can use the leftover space below the tables (download buttons / toggles).
     donor_plot_height = donor_table_height + 72
 
@@ -226,7 +226,11 @@ def render_subject_statistics(
         ]
         ordered_columns = [col for col in desired_order if col in stats_df.columns]
         stats_df_display = stats_df[ordered_columns] if ordered_columns else stats_df
-        if "percentage" in stats_df_display.columns:
+        if "per_million" in stats_df_display.columns:
+            stats_df_display = stats_df_display.sort_values(
+                "per_million", ascending=False, kind="mergesort"
+            ).reset_index(drop=True)
+        elif "percentage" in stats_df_display.columns:
             stats_df_display = stats_df_display.sort_values(
                 "percentage", ascending=False, kind="mergesort"
             ).reset_index(drop=True)

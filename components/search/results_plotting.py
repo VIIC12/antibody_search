@@ -29,12 +29,14 @@ from components.search.styling import (
     get_heavy_colorscale,
     get_light_colorscale,
     icon_heading,
+    is_dark_mode,
     ensure_spinner_css,
     render_preparing_button,
 )
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from math import exp, lgamma, log
 from src.search_engine import AntibodySearchEngine
 
 PLOTLY_DISPLAY_CONFIG = {
@@ -2546,14 +2548,84 @@ def prepare_donor_plot_data(
     return filtered, meta
 
 
-def _fmt_donor_hpm(value: float) -> str:
+def _fmt_donor_hpm(value: float, *, decimals: int = 2) -> str:
+    """Format hits-per-million for Frequency Summary (default 2 decimal places)."""
     if value is None or not np.isfinite(value):
         return "—"
     if value == 0:
-        return "0"
-    if abs(value) >= 1000:
-        return f"{value:,.4g}"
-    return f"{value:.4g}"
+        return f"{0:.{decimals}f}"
+    return f"{value:,.{decimals}f}"
+
+
+def _wilson_score_interval(
+    successes: int,
+    n: int,
+    *,
+    z: float = 1.959963984540054,  # Φ^{-1}(0.975) for 95% CI
+) -> Tuple[float, float]:
+    """
+    Wilson score CI for a binomial proportion (successes / n).
+
+    Returns (low, high) on the probability scale [0, 1].
+    """
+    if n <= 0:
+        return (float("nan"), float("nan"))
+    successes = int(max(0, min(int(successes), n)))
+    phat = successes / n
+    z2 = z * z
+    denom = 1.0 + z2 / n
+    center = (phat + z2 / (2.0 * n)) / denom
+    half = (z / denom) * np.sqrt((phat * (1.0 - phat) + z2 / (4.0 * n)) / n)
+    low = max(0.0, float(center - half))
+    high = min(1.0, float(center + half))
+    return (low, high)
+
+
+def _binom_cdf_le_p05(k: int, n: int) -> float:
+    """P(X ≤ k) for X ~ Binomial(n, 0.5), evaluated in log-space."""
+    if n <= 0:
+        return 1.0
+    if k < 0:
+        return 0.0
+    if k >= n:
+        return 1.0
+    log_terms = [
+        lgamma(n + 1) - lgamma(i + 1) - lgamma(n - i + 1) - n * log(2.0)
+        for i in range(k + 1)
+    ]
+    m = max(log_terms)
+    return float(sum(exp(t - m) for t in log_terms) * exp(m))
+
+
+def _median_exact_binomial_ci(
+    values: np.ndarray,
+    *,
+    alpha: float = 0.05,
+) -> Tuple[float, float]:
+    """
+    Non-parametric exact binomial CI for the median via order statistics.
+
+    Finds the largest d with Binomial(n, 0.5) CDF at d ≤ α/2, then returns
+    [X_(d+1), X_(n-d)] from the sorted sample (1-based ranks).
+    """
+    x = np.sort(np.asarray(values, dtype=float))
+    x = x[np.isfinite(x)]
+    n = int(x.size)
+    if n == 0:
+        return (float("nan"), float("nan"))
+    if n == 1:
+        return (float(x[0]), float(x[0]))
+
+    target = float(alpha) / 2.0
+    d = -1
+    for i in range(n):
+        if _binom_cdf_le_p05(i, n) <= target + 1e-15:
+            d = i
+        else:
+            break
+    if d < 0:
+        return (float(x[0]), float(x[-1]))
+    return (float(x[d]), float(x[n - d - 1]))
 
 
 def compute_donor_plot_summary_stats(
@@ -2565,17 +2637,47 @@ def compute_donor_plot_summary_stats(
         return pd.DataFrame(columns=["Metric", "Value"])
 
     n = len(filtered_df)
+    n_total_available = int(meta.get("n_input", n) or n)
     n_zero = int((filtered_df["hits"] == 0).sum()) if "hits" in filtered_df.columns else 0
+    n_positive = n - n_zero
     zero_pct = (100.0 * n_zero / n) if n else 0.0
+    prevalence_pct = (100.0 * n_positive / n) if n else 0.0
+    prev_low, prev_high = _wilson_score_interval(n_positive, n)
+    if n and np.isfinite(prev_low) and np.isfinite(prev_high):
+        prevalence_value = (
+            f"{prevalence_pct:.1f}% "
+            f"(95% CI {100.0 * prev_low:.1f}–{100.0 * prev_high:.1f}%)"
+        )
+    else:
+        prevalence_value = "—"
     threshold = meta.get("required_sequences", float("nan"))
     include_zeros = meta.get("include_zero_hit_donors", True)
     n_zero_above = meta.get("n_zero_hit_above_threshold", n_zero)
 
     linear = filtered_df["hits_per_million"].astype(float).to_numpy()
-    lin_mean = float(np.nanmean(linear))
-    lin_median = float(np.nanmedian(linear))
-    lin_q1, lin_q3 = [float(x) for x in np.nanpercentile(linear, [25, 75])]
-    lin_iqr = lin_q3 - lin_q1
+    finite = linear[np.isfinite(linear)]
+    lin_mean = float(np.nanmean(finite)) if finite.size else float("nan")
+    lin_median = float(np.nanmedian(finite)) if finite.size else float("nan")
+    med_low, med_high = _median_exact_binomial_ci(finite, alpha=0.05)
+    if finite.size and np.isfinite(lin_median) and np.isfinite(med_low) and np.isfinite(med_high):
+        median_value = (
+            f"{_fmt_donor_hpm(lin_median)} /M "
+            f"(95% CI {_fmt_donor_hpm(med_low)}–{_fmt_donor_hpm(med_high)} /M)"
+        )
+    else:
+        median_value = "—"
+    if finite.size:
+        lin_q1, lin_q3 = [float(x) for x in np.nanpercentile(finite, [25, 75])]
+        lin_iqr = lin_q3 - lin_q1
+    else:
+        lin_q1 = lin_q3 = lin_iqr = float("nan")
+    # GeoMean on real HPM (plot flooring is display-only). Any zero ⇒ GeoMean = 0.
+    if finite.size == 0:
+        lin_geomean = float("nan")
+    elif np.any(finite <= 0):
+        lin_geomean = 0.0
+    else:
+        lin_geomean = float(np.exp(np.mean(np.log(finite))))
 
     if include_zeros:
         zero_hit_value = f"{n_zero:,} ({zero_pct:.1f}%)"
@@ -2585,17 +2687,19 @@ def compute_donor_plot_summary_stats(
     apply_threshold = meta.get("apply_sequence_threshold", True)
     if apply_threshold and np.isfinite(threshold):
         threshold_value = f"≥ {int(threshold):,} sequences"
-    elif np.isfinite(threshold):
-        threshold_value = f"not applied (all donors; ref. ≥ {int(threshold):,})"
+    elif not apply_threshold:
+        threshold_value = "not applied (using all donors)"
     else:
         threshold_value = "—"
 
     rows = [
-        ("Donors in plot", f"{n:,}"),
+        ("Donors in plot", f"{n:,} (of {n_total_available:,})"),
         ("Sequence threshold", threshold_value),
         ("Zero-hit donors", zero_hit_value),
+        ("Prevalence", prevalence_value),
         ("Mean", f"{_fmt_donor_hpm(lin_mean)} /M"),
-        ("Median", f"{_fmt_donor_hpm(lin_median)} /M"),
+        ("Median", median_value),
+        ("GeoMean", f"{_fmt_donor_hpm(lin_geomean)} /M"),
         (
             "IQR",
             f"{_fmt_donor_hpm(lin_iqr)}  [Q1={_fmt_donor_hpm(lin_q1)}, Q3={_fmt_donor_hpm(lin_q3)}]",
@@ -2700,7 +2804,7 @@ def build_donor_hits_figure(
         height=height,
         boxgroupgap=0.3,
         margin=margin or dict(l=70, r=20, t=70, b=30),
-        template="plotly_white",
+        template="plotly_dark" if is_dark_mode() else "plotly_white",
         yaxis=dict(
             title="Frequency (Per Million)",
             type="linear",
@@ -2708,7 +2812,10 @@ def build_donor_hits_figure(
             tickmode="array",
             tickvals=yticks,
             ticktext=ticktext,
-            gridcolor="rgba(0,0,0,0.15)",
+            showgrid=True,
+            gridwidth=1,
+            # Black grid is invisible on dark Streamlit theme; match CDR plot visibility.
+            gridcolor="rgba(255,255,255,0.15)" if is_dark_mode() else "rgba(0,0,0,0.15)",
             zeroline=False,
         ),
     )
