@@ -2314,6 +2314,8 @@ def plot_cdr_length_distribution(
     
     # Count occurrences of each length (each length gets its own bar)
     length_counts = lengths.value_counts().sort_index()
+    total = float(length_counts.sum())
+    length_pct = (length_counts.astype(float) / total * 100.0) if total > 0 else length_counts.astype(float)
     
     title_config = {
         'text': title,
@@ -2325,16 +2327,16 @@ def plot_cdr_length_distribution(
 
     # Anchor color scale at 0 so the top count always maps to the dark end.
     # Without this, a single bar (e.g. one CDR length after a tight search) sits mid-scale.
-    max_count = float(length_counts.max()) if len(length_counts) else 1.0
-    color_range_max = max_count if max_count > 0 else 1.0
+    max_pct = float(length_pct.max()) if len(length_pct) else 1.0
+    color_range_max = max_pct if max_pct > 0 else 1.0
 
     # Create bar chart (not histogram) so each length is a separate bar
     fig = px.bar(
-        x=length_counts.index,
-        y=length_counts.values,
+        x=length_pct.index,
+        y=length_pct.values,
         title=title,
-        labels={'x': 'Length (amino acids)', 'y': 'Frequency'},
-        color=length_counts.values,
+        labels={'x': 'Length (amino acids)', 'y': 'Relative Occurrence (%)'},
+        color=length_pct.values,
         color_continuous_scale=color_scale,
         range_color=[0, color_range_max],
     )
@@ -2346,7 +2348,7 @@ def plot_cdr_length_distribution(
         xaxis={'type': 'category'},  # Ensure discrete x-axis (each length is separate)
         title=title_config,
         xaxis_title="Length (amino acids)",
-        yaxis_title="Frequency"
+        yaxis_title="Relative Occurrence (%)"
     )
     
     fig.update_coloraxes(
@@ -2355,16 +2357,27 @@ def plot_cdr_length_distribution(
         cmin=0,
         cmax=color_range_max,
     )
-    fig.update_traces(
-        hovertemplate="Length: %{x}<br>Frequency: %{y}<extra></extra>"
-    )
+    # A single category otherwise fills almost the full plot width.
+    n_lengths = int(len(length_pct))
+    trace_updates = {
+        "hovertemplate": "Length: %{x}<br>%: %{y:.1f}<extra></extra>",
+        "customdata": length_counts.values,
+    }
+    if n_lengths == 1:
+        trace_updates["width"] = 0.35
+    elif n_lengths == 2:
+        trace_updates["width"] = 0.45
+    fig.update_traces(**trace_updates)
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
     if collector is not None:
-        export_df = length_counts.reset_index()
-        export_df.columns = ["cdr_length", "count"]
-        export_df["chain_type"] = chain_type
+        export_df = pd.DataFrame({
+            "cdr_length": length_counts.index,
+            "count": length_counts.values,
+            "percent": length_pct.values,
+            "chain_type": chain_type,
+        })
         collector.append((f"{chain_type}_{title}", prepare_export_figure(fig), export_df.copy()))
 
 
@@ -2395,14 +2408,19 @@ def plot_gene_distribution(
     # Get gene counts (optionally aggregated by subfamily/family)
     if group_mode in ("subfamily", "family"):
         grouped = df[column].map(lambda g: _map_gene_to_group_label(g, group_mode))
-        gene_counts = grouped.value_counts().head(max_genes)
+        gene_counts_all = grouped.value_counts()
         y_label = "Subfamily" if group_mode == "subfamily" else "Family"
     else:
-        gene_counts = df[column].value_counts().head(max_genes)
+        gene_counts_all = df[column].value_counts()
         y_label = "Gene"
+
+    gene_counts = gene_counts_all.head(max_genes)
     
     if len(gene_counts) == 0:
         return
+
+    total = float(gene_counts_all.sum())
+    gene_pct = (gene_counts.astype(float) / total * 100.0) if total > 0 else gene_counts.astype(float)
     
     title_config = {
         'text': title,
@@ -2414,17 +2432,17 @@ def plot_gene_distribution(
 
     # Anchor color scale at 0 so the top count always maps to the dark end.
     # Without this, a single bar (e.g. one family after grouping) sits mid-scale.
-    max_count = float(gene_counts.max()) if len(gene_counts) else 1.0
-    color_range_max = max_count if max_count > 0 else 1.0
+    max_pct = float(gene_pct.max()) if len(gene_pct) else 1.0
+    color_range_max = max_pct if max_pct > 0 else 1.0
 
     # Create bar chart
     fig = px.bar(
-        x=gene_counts.values,
-        y=gene_counts.index,
+        x=gene_pct.values,
+        y=gene_pct.index,
         orientation='h',
         title=title,
-        labels={'x': 'Count', 'y': y_label},
-        color=gene_counts.values,
+        labels={'x': 'Relative Occurrence (%)', 'y': y_label},
+        color=gene_pct.values,
         color_continuous_scale=color_scale,
         range_color=[0, color_range_max],
     )
@@ -2435,7 +2453,7 @@ def plot_gene_distribution(
         margin=dict(l=120, r=40, t=60, b=70),
         yaxis={'categoryorder': 'total ascending'},
         title=title_config,
-        xaxis_title="Count",
+        xaxis_title="Relative Occurrence (%)",
         yaxis_title=y_label
     )
     
@@ -2445,17 +2463,28 @@ def plot_gene_distribution(
         cmin=0,
         cmax=color_range_max,
     )
-    fig.update_traces(
-        hovertemplate=f"{y_label}: %{{y}}<br>Count: %{{x}}<extra></extra>"
-    )
+    # A single category otherwise fills almost the full plot height.
+    n_genes = int(len(gene_pct))
+    trace_updates = {
+        "hovertemplate": f"{y_label}: %{{y}}<br>%: %{{x:.1f}}<extra></extra>",
+        "customdata": gene_counts.values,
+    }
+    if n_genes == 1:
+        trace_updates["width"] = 0.35
+    elif n_genes == 2:
+        trace_updates["width"] = 0.45
+    fig.update_traces(**trace_updates)
 
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_DISPLAY_CONFIG)
 
     if collector is not None:
-        export_df = gene_counts.reset_index()
-        export_df.columns = [y_label.lower(), "count"]
-        export_df["chain_type"] = chain_type
-        export_df["group_mode"] = group_mode
+        export_df = pd.DataFrame({
+            y_label.lower(): gene_counts.index,
+            "count": gene_counts.values,
+            "percent": gene_pct.values,
+            "chain_type": chain_type,
+            "group_mode": group_mode,
+        })
         collector.append((f"{chain_type}_{title}", prepare_export_figure(fig), export_df.copy()))
 
 
