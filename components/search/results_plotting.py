@@ -2835,7 +2835,7 @@ def build_donor_hits_figure(
         margin=margin or dict(l=70, r=20, t=70, b=30),
         template="plotly_dark" if is_dark_mode() else "plotly_white",
         yaxis=dict(
-            title="Frequency (Per Million)",
+            title="Frequency (Hits per Million)",
             type="linear",
             range=list(y_axis_range),
             tickmode="array",
